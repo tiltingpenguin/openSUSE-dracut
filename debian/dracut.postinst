@@ -1,0 +1,8 @@
+#!/bin/sh
+
+set -e
+
+# Regenerate initramfs when we're `installed`
+/etc/kernel/postinst.d/dracut `uname -r`
+
+#DEBHELPER#
