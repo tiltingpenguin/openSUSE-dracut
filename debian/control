@@ -4,8 +4,9 @@ Priority: optional
 Maintainer: Thomas Lange <lange@debian.org>
 Build-Depends: debhelper
 Standards-Version: 3.9.1
-Vcs-Browser: http://git.kernel.org/?p=boot/dracut/dracut.git
-Vcs-Git: git://git.kernel.org/pub/scm/boot/dracut/dracut.git
+Vcs-Browser: http://anonscm.debian.org/git/collab-maint/dracut.git
+Vcs-Git: git://anonscm.debian.org/collab-maint/dracut.git
+Homepage: http://www.kernel.org/pub/linux/utils/boot/dracut/dracut.html
 
 Package: dracut
 Architecture: all

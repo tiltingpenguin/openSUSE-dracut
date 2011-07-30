@@ -5,8 +5,8 @@ dracut (011+36+gd727c5a-1) unstable; urgency=low
   * dracut.install,dracut.dirs: remove non-existing modules, add
     dracut.logger, lsinitrd
   * rules: use new debhelper, no more cdbs
-  * control: new URL for upstream project, update dependencies, update to
-    standards 3.9.1
+  * control: new URL for git repository, update dependencies, update to
+    standards 3.9.1, add URL for homepage
   * add file watch
   * copyright: move to machine readable format, fix URLs
   * compat: update to 8
