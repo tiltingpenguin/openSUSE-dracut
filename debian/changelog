@@ -11,10 +11,10 @@ dracut (011+36+gd727c5a-1) unstable; urgency=low
   * copyright: move to machine readable format, fix URLs
   * compat: update to 8
   * dracut.docs: add missing files, remove COPYING
-  * postinst.d/dracut: add script that creates the initrd (closes: 627023)
-  * postrm.d/dracut: add script that removes initrd (closes: 627023)
+  * postinst.d/dracut: add script that creates the initrd Closes: #627023
+  * postrm.d/dracut: add script that removes initrd Closes: #627023
 
- -- Thomas Lange <lange@debian.org>  Tue, 02 Aug 2011 17:39:42 +0200
+ -- Thomas Lange <lange@debian.org>  Wed, 03 Aug 2011 17:01:36 +0200
 
 dracut (005-1) unstable; urgency=low
 
