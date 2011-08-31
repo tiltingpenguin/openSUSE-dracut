@@ -74,7 +74,7 @@ _dogetarg() {
         fi
     done
     if [ -n "$_val" ]; then
-        [ "x$_doecho" != "x" ] && echo $_val;
+        [ "x$_doecho" != "x" ] && echo "$_val";
         return 0;
     fi
     return 1;
@@ -123,34 +123,45 @@ getargbool() {
 
 _dogetargs() {
     set +x
-    local _o _found
+    local _o _found _key
     unset _o
     unset _found
     _getcmdline
-
+    _key=$1
+    set --
     for _o in $CMDLINE; do
-        if [ "$_o" = "$1" ]; then
-            return 0;
-        fi
-        if [ "${_o%%=*}" = "${1%=}" ]; then
-            echo -n "${_o#*=} ";
+        if [ "$_o" = "$_key" ]; then
+            _found=1;
+        elif [ "${_o%%=*}" = "${_key%=}" ]; then
+            [ -n "${_o%%=*}" ] && set -- "$@" "${_o#*=}";
             _found=1;
         fi
     done
-    [ -n "$_found" ] && return 0;
+    if [ -n "$_found" ]; then
+        [ $# -gt 0 ] && echo -n "$@"
+        return 0
+    fi
     return 1;
 }
 
 getargs() {
-    local _val
-    unset _val
     set +x
-    while [ $# -gt 0 ]; do
-        _val="$_val $(_dogetargs $1)"
-        shift
+    local _val _i _args _gfound
+    unset _val
+    unset _gfound
+    _args="$@"
+    set --
+    for _i in $_args; do
+        _val="$(_dogetargs $_i)"
+        [ $? -eq 0 ] && _gfound=1
+        [ -n "$_val" ] && set -- "$@" "$_val"
     done
-    if [ -n "$_val" ]; then
-        echo -n $_val
+    if [ -n "$_gfound" ]; then
+        if [ $# -gt 0 ]; then
+            echo -n "$@"
+        else
+            echo -n 1
+        fi
         [ "$RD_DEBUG" = "yes" ] && set -x
         return 0
     fi
@@ -533,50 +544,3 @@ foreach_uuid_until() (
 
     return 1
 )
-
-# Wrap fsck call for device _dev with additional fsck options _fsckopts return
-# fsck's return code
-wrap_fsck() {
-    local _ret _out _dev="$1" _fsckopts="$2"
-
-    info "Checking filesystem."
-    info fsck -T $_fsckopts "$_dev"
-    _out=$(fsck -T $_fsckopts "$_dev") ; _ret=$?
-
-    # A return of 4 or higher means there were serious problems.
-    if [ $_ret -gt 3 ]; then
-        echo $_out|vwarn
-        warn "fsck returned with error code $_ret"
-        warn "*** An error occurred during the file system check."
-        warn "*** Dropping you to a shell; the system will try"
-        warn "*** to mount the filesystem, when you leave the shell."
-        emergency_shell -n "(Repair filesystem)"
-    else
-        echo $_out|vinfo
-        [ $_ret -gt 0 ] && warn "fsck returned with $_ret"
-    fi
-
-    return $_ret
-}
-
-# Verify supplied filesystem type, fix if it's invalid, warn user if
-# appropriate
-det_fs() {
-    local _dev="$1" _fs="${2:-auto}" _inf="$3" _orig
-
-    _orig="$_fs"
-    _fs=$(udevadm info --query=env --name="$_dev" | \
-    while read line; do
-        if str_starts $line "ID_FS_TYPE="; then
-            echo ${line#ID_FS_TYPE=}
-            break
-        fi
-    done)
-    _fs=${_fs:-auto}
-    if [ "$_fs" = "auto" ]; then
-        warn "Cannon detect filesystem type for device $_dev"
-    elif [ "$_orig" != "auto" -a "$_fs" != "$_orig" ]; then
-        warn "$_inf: detected filesystem '$_fs' instead of '$_orig' for device: $_dev"
-    fi
-    echo "$_fs"
-}

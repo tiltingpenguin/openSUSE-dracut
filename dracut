@@ -61,6 +61,7 @@ Creates initial ramdisk images for preloading modules
   --nolvmconf           Do not include local /etc/lvm/lvm.conf
   -h, --help            This message
   --debug               Output debug information of the build process
+  --profile             Output profile information of the build process
   -L, --stdlog [0-6]    Specify logging level (to standard error)
                          0 - suppress any messages
                          1 - only fatal errors
@@ -195,6 +196,7 @@ verbosity_mod_l=0
 while (($# > 0)); do
     case ${1%%=*} in
         -a|--add)      push_arg add_dracutmodules_l  "$@" || shift;;
+        --force-add)   push_arg force_add_dracutmodules_l  "$@" || shift;;
         --add-drivers) push_arg add_drivers_l        "$@" || shift;;
         -m|--modules)  push_arg dracutmodules_l      "$@" || shift;;
         -o|--omit)     push_arg omit_dracutmodules_l "$@" || shift;;
@@ -221,6 +223,7 @@ while (($# > 0)); do
         --lvmconf)     lvmconf_l="yes";;
         --nolvmconf)   lvmconf_l="no";;
         --debug)       debug="yes";;
+        --profile)     profile="yes";;
         -v|--verbose)  ((verbosity_mod_l++));;
         -q|--quiet)    ((verbosity_mod_l--));;
         -l|--local)    allowlocal="yes" ;;
@@ -268,6 +271,12 @@ export PATH
     set -x
 }
 
+[[ $profile ]] && {
+    export PS4='+ $(date "+%s.%N") ${BASH_SOURCE}@${LINENO}: ';
+    set -x
+    debug=yes
+}
+
 [[ $dracutbasedir ]] || dracutbasedir=/usr/share/dracut
 
 [[ $allowlocal && -f "$(readlink -f ${0%/*})/dracut-functions" ]] && \
@@ -300,6 +309,13 @@ if (( ${#add_dracutmodules_l[@]} )); then
         add_dracutmodules+=" $val "
     done
 fi
+
+if (( ${#force_add_dracutmodules_l[@]} )); then
+    while pop force_add_dracutmodules_l val; do
+        force_add_dracutmodules+=" $val "
+    done
+fi
+
 
 if (( ${#add_drivers_l[@]} )); then
     while pop add_drivers_l val; do
@@ -585,7 +601,7 @@ unset item
 if [[ $kernel_only != yes ]]; then
     # make sure that library links are correct and up to date
     for f in /etc/ld.so.conf /etc/ld.so.conf.d/*; do
-        [[ -e $f ]] && dracut_install "$f"
+        [[ -e $f ]] && inst_simple "$f"
     done
     if ! ldconfig -r "$initdir"; then
         if [[ $UID = 0 ]]; then

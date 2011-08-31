@@ -197,8 +197,8 @@ if [ $UDEVVERSION -lt 140 ]; then
     UDEV_QUEUE_EMPTY="udevadm settle --timeout=1"
 fi
 
-getargbool 0 rd.udev.info -y rdudevinfo && udevproperty "$UDEV_LOG_PRIO_ARG=info"
-getargbool 0 rd.udev.debug -y rdudevdebug && udevproperty "$UDEV_LOG_PRIO_ARG=debug"
+getargbool 0 rd.udev.info -y rdudevinfo && udevadm control "$UDEV_LOG_PRIO_ARG=info"
+getargbool 0 rd.udev.debug -y rdudevdebug && udevadm control "$UDEV_LOG_PRIO_ARG=debug"
 udevproperty "hookdir=$hookdir"
 
 getarg 'rd.break=pre-trigger' 'rdbreak=pre-trigger' && emergency_shell -n pre-trigger "Break before pre-trigger"
@@ -212,8 +212,9 @@ getarg 'rd.break=initqueue' 'rdbreak=initqueue' && emergency_shell -n initqueue 
 RDRETRY=$(getarg rd.retry 'rd_retry=')
 RDRETRY=${RDRETRY:-20}
 RDRETRY=$(($RDRETRY*2))
-
-i=0
+export RDRETRY
+main_loop=0
+export main_loop
 while :; do
 
     check_finished && break
@@ -265,12 +266,22 @@ while :; do
         fi
     done
 
-    i=$(($i+1))
-    [ $i -gt $RDRETRY ] \
+    if [ $main_loop -gt $(($RDRETRY/2)) ]; then
+	for job in $hookdir/initqueue/timeout/*.sh; do
+            [ -e "$job" ] || break
+            job=$job . $job
+            main_loop=0
+	done
+    fi
+
+    main_loop=$(($main_loop+1))
+    [ $main_loop -gt $RDRETRY ] \
         && { flock -s 9 ; emergency_shell "No root device \"$root\" found"; } 9>/.console_lock
 done
 unset job
 unset queuetriggered
+unset main_loop
+unset RDRETRY
 
 # reset cdrom polling
 for cdrom in /sys/block/sr*; do
