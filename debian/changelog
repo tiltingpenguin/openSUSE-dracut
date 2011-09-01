@@ -1,3 +1,12 @@
+dracut (013-1) unstable; urgency=low
+
+  * new upstream version, Closes: #636549
+  * control: fix Vcs-Browser Closes: #637305
+  * add dracut.postrm, dracut.logrotate Closes: #637306
+  * postrm.d,postinst.d: remove obsolete else part, Closes: #627023
+
+ -- Thomas Lange <lange@debian.org>  Thu, 01 Sep 2011 15:55:31 +0200
+
 dracut (011+36+gd727c5a-1) unstable; urgency=low
 
   * new upstream release Closes: #617893, #628190, #581092, #581091
