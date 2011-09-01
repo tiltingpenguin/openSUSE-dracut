@@ -12,9 +12,6 @@ if [ -n "$2" ]; then
 		# exit if custom kernel does not need an initramfs
 		[ "$INITRD" = 'No' ] && exit 0
 		bootdir=$(dirname "$2")
-	else
-		# official Debian linux-images take care themself
-		exit 0
 	fi
 fi
 
