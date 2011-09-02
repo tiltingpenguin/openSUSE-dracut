@@ -16,8 +16,6 @@ usr/share/dracut/modules.d/95resume
 usr/share/dracut/modules.d/95rootfs-block
 usr/share/dracut/modules.d/95terminfo
 usr/share/dracut/modules.d/95udev-rules
-usr/share/dracut/modules.d/95zfcp
-usr/share/dracut/modules.d/95znet
 usr/share/dracut/modules.d/98syslog
 usr/share/dracut/modules.d/99base
 /var/lib/dracut
