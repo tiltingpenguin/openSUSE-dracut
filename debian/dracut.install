@@ -37,3 +37,4 @@ modules.d/98selinux		usr/share/dracut/modules.d
 modules.d/98syslog		usr/share/dracut/modules.d
 modules.d/99base		usr/share/dracut/modules.d
 modules.d/99shutdown		usr/share/dracut/modules.d
+modules.d/99fs-lib		usr/share/dracut/modules.d
