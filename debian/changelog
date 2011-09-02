@@ -6,8 +6,11 @@ dracut (013-1) unstable; urgency=low
   * add dracut.postrm, dracut.logrotate Closes: #637306
   * postrm.d,postinst.d: remove obsolete else part, Closes: #627023
   * add missing dracut.kernel.7
+  * add fs-lib module to dracut
+  * add livenet module to dracut-network
+  * move znet and zfcp to dracut-network
 
- -- Thomas Lange <lange@debian.org>  Thu, 01 Sep 2011 18:28:09 +0200
+ -- Thomas Lange <lange@debian.org>  Fri, 02 Sep 2011 11:51:41 +0200
 
 dracut (011+36+gd727c5a-1) unstable; urgency=low
 
