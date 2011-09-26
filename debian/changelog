@@ -1,8 +1,9 @@
 dracut (013-2) unstable; urgency=low
 
-  * control: add Build-Depends Closes: #642683  
+  * control: add Build-Depends Closes: #642683
+  * control: add Depends on kpartx Closes: #636549
 
- -- Thomas Lange <lange@debian.org>  Mon, 26 Sep 2011 17:42:59 +0200
+ -- Thomas Lange <lange@debian.org>  Mon, 26 Sep 2011 17:49:46 +0200
 
 dracut (013-1) unstable; urgency=low
 
