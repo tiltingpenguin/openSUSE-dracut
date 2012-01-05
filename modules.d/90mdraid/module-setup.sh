@@ -20,7 +20,7 @@ check() {
             check_block_and_slaves is_mdraid "$_rootdev" || return 1
         else
             # root is not on a block device, use the shotgun approach
-            blkid | egrep -q '(linux|isw)_raid' || return 1
+            blkid | egrep -q '(linux|isw|ddf)_raid' || return 1
         fi
     }
 
@@ -37,7 +37,7 @@ installkernel() {
 }
 
 install() {
-    dracut_install mdadm partx
+    dracut_install mdadm partx cat
 
 
      # XXX: mdmon really needs to run as non-root?
@@ -50,12 +50,21 @@ install() {
 
     if [ ! -x /lib/udev/vol_id ]; then
         inst_rules 64-md-raid.rules
+        # remove incremental assembly from stock rules, so they don't shadow
+        # 65-md-inc*.rules and its fine-grained controls, or cause other problems
+        # when we explicitly don't want certain components to be incrementally
+        # assembled
+        sed -i -r -e '/RUN\+?="[[:alpha:]/]*mdadm[[:blank:]]+(--incremental|-I)[[:blank:]]+(\$env\{DEVNAME\}|\$tempnode)"/d' "${initdir}/lib/udev/rules.d/64-md-raid.rules"
     fi
 
     inst_rules "$moddir/65-md-incremental-imsm.rules"
 
+    # guard against pre-3.0 mdadm versions, that can't handle containers
     if ! mdadm -Q -e imsm /dev/null &> /dev/null; then
         inst_hook pre-trigger 30 "$moddir/md-noimsm.sh"
+    fi
+    if ! mdadm -Q -e ddf /dev/null &> /dev/null; then
+        inst_hook pre-trigger 30 "$moddir/md-noddf.sh"
     fi
 
     if [[ $hostonly ]] || [[ $mdadmconf = "yes" ]]; then
@@ -72,10 +81,9 @@ install() {
     inst_hook pre-udev 30 "$moddir/mdmon-pre-udev.sh"
 
     inst "$moddir/mdraid_start.sh" /sbin/mdraid_start
-    inst "$moddir/mdcontainer_start.sh" /sbin/mdcontainer_start
     inst "$moddir/mdadm_auto.sh" /sbin/mdadm_auto
-    inst "$moddir/md_finished.sh" /sbin/md_finished.sh
     inst_hook pre-trigger 30 "$moddir/parse-md.sh"
+    inst_hook pre-mount 10 "$moddir/mdraid-waitclean.sh"
     inst "$moddir/mdraid-cleanup.sh" /sbin/mdraid-cleanup
     inst_hook shutdown 30 "$moddir/md-shutdown.sh"
 }

@@ -4,23 +4,16 @@
 case "$root" in
   live:/dev/*)
     {
-        printf 'KERNEL=="%s", SYMLINK+="live"\n' \
-            ${root#live:/dev/}
-        printf 'SYMLINK=="%s", SYMLINK+="live"\n' \
-            ${root#live:/dev/}
-    } >> $UDEVRULESD/99-live-mount.rules
-    {
         printf 'KERNEL=="%s", RUN+="/sbin/initqueue --settled --onetime --unique /sbin/dmsquash-live-root $env{DEVNAME}"\n' \
             ${root#live:/dev/}
         printf 'SYMLINK=="%s", RUN+="/sbin/initqueue --settled --onetime --unique /sbin/dmsquash-live-root $env{DEVNAME}"\n' \
             ${root#live:/dev/}
-    } >> $UDEVRULESD/99-live-squash.rules
-    echo '[ -e /dev/root ]' > $hookdir/initqueue/finished/dmsquash.sh
+    } >> /etc/udev/rules.d/99-live-squash.rules
+    wait_for_dev "${root#live:}"
   ;;
   live:*)
     if [ -f "${root#live:}" ]; then
         /sbin/initqueue --settled --onetime --unique /sbin/dmsquash-live-root "${root#live:}"
-        echo '[ -e /dev/root ]' > $hookdir/initqueue/finished/dmsquash.sh
     fi
   ;;
 esac

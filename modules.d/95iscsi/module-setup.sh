@@ -41,20 +41,28 @@ depends() {
 }
 
 installkernel() {
-    instmods iscsi_tcp iscsi_ibft crc32c
-    iscsi_module_test() {
+    instmods iscsi_tcp iscsi_ibft crc32c bnx2i iscsi_boot_sysfs qla4xxx cxgb3i cxgb4i be2iscsi
+    iscsi_module_filter() {
         local _iscsifuncs='iscsi_register_transport'
-        fgrep -q "$_iscsifuncs" "$1"
+        local _f
+        while read _f; do case "$_f" in
+            *.ko)    [[ $(<         $_f) =~ $_iscsifuncs ]] && echo "$_f" ;;
+            *.ko.gz) [[ $(gzip -dc <$_f) =~ $_iscsifuncs ]] && echo "$_f" ;;
+            esac
+        done
     }
-    instmods $(filter_kernel_modules_by_path drivers/scsi iscsi_module_test)
+    find_kernel_modules_by_path drivers/scsi \
+    | iscsi_module_filter  |  instmods
 }
 
 install() {
     dracut_install umount
+    dracut_install -o iscsiuio
     inst iscsistart
     inst hostname
     inst iscsi-iname
     inst_hook cmdline 90 "$moddir/parse-iscsiroot.sh"
+    inst_hook pre-pivot 90 "$moddir/cleanup-iscsi.sh"
     inst "$moddir/iscsiroot" "/sbin/iscsiroot"
     inst "$moddir/mount-lun.sh" "/bin/mount-lun.sh"
 }

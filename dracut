@@ -35,7 +35,7 @@ Creates initial ramdisk images for preloading modules
   -f, --force           Overwrite existing initramfs file.
   -m, --modules [LIST]  Specify a space-separated list of dracut modules to
                          call when building the initramfs. Modules are located
-                         in /usr/share/dracut/modules.d.
+                         in /usr/lib/dracut/modules.d.
   -o, --omit [LIST]     Omit a space-separated list of dracut modules.
   -a, --add [LIST]      Add a space-separated list of dracut modules.
   -d, --drivers [LIST]  Specify a space-separated list of kernel modules to
@@ -59,6 +59,8 @@ Creates initial ramdisk images for preloading modules
   --nomdadmconf         Do not include local /etc/mdadm.conf
   --lvmconf             Include local /etc/lvm/lvm.conf
   --nolvmconf           Do not include local /etc/lvm/lvm.conf
+  --fscks [LIST]        Add a space-separated list of fsck helpers.
+  --nofscks             Inhibit installation of any fsck helpers.
   -h, --help            This message
   --debug               Output debug information of the build process
   --profile             Output profile information of the build process
@@ -78,7 +80,7 @@ Creates initial ramdisk images for preloading modules
                          from. Default: /etc/dracut.conf.d
   -l, --local           Local mode. Use modules from the current working
                          directory instead of the system-wide installed in
-                         /usr/share/dracut/modules.d.
+                         /usr/lib/dracut/modules.d.
                          Useful when running dracut from a git checkout.
   -H, --hostonly        Host-Only mode: Install only what is needed for
                          booting the local host instead of a generic host.
@@ -202,14 +204,14 @@ while (($# > 0)); do
         -o|--omit)     push_arg omit_dracutmodules_l "$@" || shift;;
         -d|--drivers)  push_arg drivers_l            "$@" || shift;;
         --filesystems) push_arg filesystems_l        "$@" || shift;;
-        -I|--install)  push_arg install_items        "$@" || shift;;
+        -I|--install)  push_arg install_items_l      "$@" || shift;;
         --fwdir)       push_arg fw_dir_l             "$@" || shift;;
+        --fscks)       push_arg fscks_l              "$@" || shift;;
+        --nofscks)     nofscks_l="yes";;
         -k|--kmoddir)  read_arg drivers_dir_l        "$@" || shift;;
         -c|--conf)     read_arg conffile             "$@" || shift;;
         --confdir)     read_arg confdir              "$@" || shift;;
         -L|--stdlog)   read_arg stdloglvl_l          "$@" || shift;;
-        -I|--install)  read_arg install_items        "$@" || shift;;
-        --fwdir)       read_arg fw_dir_l             "$@" || shift;;
         --compress)    read_arg compress_l           "$@" || shift;;
         --prefix)      read_arg prefix_l             "$@" || shift;;
         -f|--force)    force=yes;;
@@ -265,6 +267,7 @@ fi
 
 PATH=/sbin:/bin:/usr/sbin:/usr/bin
 export PATH
+unset LD_LIBRARY_PATH
 
 [[ $debug ]] && {
     export PS4='${BASH_SOURCE}@${LINENO}(${FUNCNAME[0]}): ';
@@ -277,7 +280,7 @@ export PATH
     debug=yes
 }
 
-[[ $dracutbasedir ]] || dracutbasedir=/usr/share/dracut
+[[ $dracutbasedir ]] || dracutbasedir=/usr/lib/dracut
 
 [[ $allowlocal && -f "$(readlink -f ${0%/*})/dracut-functions" ]] && \
     dracutbasedir="$(readlink -f ${0%/*})"
@@ -320,6 +323,18 @@ fi
 if (( ${#add_drivers_l[@]} )); then
     while pop add_drivers_l val; do
         add_drivers+=" $val "
+    done
+fi
+
+if (( ${#fscks_l[@]} )); then
+    while pop fscks_l val; do
+        fscks+=" $val "
+    done
+fi
+
+if (( ${#install_items_l[@]} )); then
+    while pop install_items_l val; do
+        push install_items $val
     done
 fi
 
@@ -373,11 +388,12 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 [[ $use_fstab_l ]] && use_fstab=$use_fstab_l
 [[ $mdadmconf_l ]] && mdadmconf=$mdadmconf_l
 [[ $lvmconf_l ]] && lvmconf=$lvmconf_l
-[[ $dracutbasedir ]] || dracutbasedir=/usr/share/dracut
+[[ $dracutbasedir ]] || dracutbasedir=/usr/lib/dracut
 [[ $fw_dir ]] || fw_dir="/lib/firmware/updates /lib/firmware"
 [[ $do_strip ]] || do_strip=no
 [[ $compress_l ]] && compress=$compress_l
 [[ $show_modules_l ]] && show_modules=$show_modules_l
+[[ $nofscks_l ]] && nofscks="yes"
 # eliminate IFS hackery when messing with fw_dir
 fw_dir=${fw_dir//:/ }
 
@@ -403,6 +419,13 @@ else
     echo "Cannot find $dracutbasedir/dracut-functions." >&2
     echo "Are you running from a git checkout?" >&2
     echo "Try passing -l as an argument to $0" >&2
+    exit 1
+fi
+
+# Verify bash version, curret minimum is 3.1
+if (( ${BASH_VERSINFO[0]} < 3 ||
+    ( ${BASH_VERSINFO[0]} == 3 && ${BASH_VERSINFO[1]} < 1 ) )); then
+    dfatal 'You need at least Bash 3.1 to use dracut, sorry.'
     exit 1
 fi
 
@@ -471,6 +494,10 @@ fi
 
 readonly TMPDIR=/var/tmp
 readonly initdir=$(mktemp --tmpdir=/var/tmp/ -d -t initramfs.XXXXXX)
+[ -d "$initdir" ] || {
+    dfatal "mktemp failed."
+    exit 1
+}
 
 # clean up after ourselves no matter how we die.
 trap 'ret=$?;[[ $keep ]] && echo "Not removing $initdir." >&2 || rm -rf "$initdir";exit $ret;' EXIT
@@ -483,7 +510,7 @@ chmod 755 "$initdir"
 export initdir dracutbasedir dracutmodules drivers \
     fw_dir drivers_dir debug no_kernel kernel_only \
     add_drivers mdadmconf lvmconf filesystems \
-    use_fstab libdir usrlibdir \
+    use_fstab libdir usrlibdir fscks nofscks \
     stdloglvl sysloglvl fileloglvl kmsgloglvl logfile \
     debug
 
@@ -500,7 +527,7 @@ if [[ $prefix ]]; then
 fi
 
 if [[ $kernel_only != yes ]]; then
-    for d in bin etc lib "$libdir" sbin tmp usr var usr/bin usr/sbin; do
+    for d in bin etc lib "$libdir" sbin tmp usr var var/log usr/bin usr/sbin; do
         [[ -e "${initdir}${prefix}/$d" ]] && continue
         if [ -h "/$d" ]; then
             inst "/$d" "${prefix}/$d"
@@ -509,7 +536,7 @@ if [[ $kernel_only != yes ]]; then
         fi
     done
 
-    for d in proc sys sysroot root run run/lock run/initramfs; do
+    for d in dev proc sys sysroot root run run/lock run/initramfs; do
         if [ -h "/$d" ]; then
             inst "/$d"
         else
@@ -642,14 +669,14 @@ type hardlink &>/dev/null && {
 
 if strstr "$modules_loaded" " fips " && command -v prelink >/dev/null; then
     for i in $initdir/bin/* \
-       $initdir/bin/* \
+       $initdir/sbin/* \
        $initdir/usr/bin/* \
        $initdir/usr/sbin/*; do
        [ -x $i ] && prelink -u $i &>/dev/null
     done
 fi
 
-if ! ( cd "$initdir"; find . |cpio -R 0:0 -H newc -o --quiet | \
+if ! ( cd "$initdir"; find . |cpio -R 0:0 -H newc -o --quiet| \
     $compress > "$outfile"; ); then
     dfatal "dracut: creation of $outfile failed"
     exit 1

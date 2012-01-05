@@ -271,12 +271,8 @@ _dlvl2syslvl() {
 #   - @c INFO to @c info
 #   - @c DEBUG and @c TRACE both to @c debug
 _do_dlog() {
-    [ -z "$maxloglvl" ] && return 0
     local lvl="$1"; shift
     local lvlc=$(_lvl2char "$lvl") || return 0
-
-    [ $lvl -le $maxloglvl ] || return 0
-
     local msg="$lvlc: $*"
 
     [ $lvl -le $stdloglvl ] && echo "$msg" >&2
@@ -307,6 +303,9 @@ _do_dlog() {
 # dwarn "This is a warning"
 # echo "This is a warning" | dwarn
 dlog() {
+    [ -z "$maxloglvl" ] && return 0
+    [ $1 -le $maxloglvl ] || return 0
+
     if [ $# -gt 1 ]; then
         _do_dlog "$@"
     else
@@ -314,7 +313,6 @@ dlog() {
             _do_dlog "$1" "$line"
         done
     fi
-    [ -n "$debug" ] && set -x || :
 }
 
 ## @brief Logs message at TRACE level (6)
@@ -324,6 +322,7 @@ dlog() {
 dtrace() {
     set +x
     dlog 6 "$@"
+    [ -n "$debug" ] && set -x || :
 }
 
 ## @brief Logs message at DEBUG level (5)
@@ -333,6 +332,7 @@ dtrace() {
 ddebug() {
     set +x
     dlog 5 "$@"
+    [ -n "$debug" ] && set -x || :
 }
 
 ## @brief Logs message at INFO level (4)
@@ -342,6 +342,7 @@ ddebug() {
 dinfo() {
     set +x
     dlog 4 "$@"
+    [ -n "$debug" ] && set -x || :
 }
 
 ## @brief Logs message at WARN level (3)
@@ -351,6 +352,7 @@ dinfo() {
 dwarn() {
     set +x
     dlog 3 "$@"
+    [ -n "$debug" ] && set -x || :
 }
 
 ## @brief It's an alias to dwarn() function.
@@ -360,6 +362,7 @@ dwarn() {
 dwarning() {
     set +x
     dwarn "$@"
+    [ -n "$debug" ] && set -x || :
 }
 
 ## @brief Logs message at ERROR level (2)
@@ -369,6 +372,7 @@ dwarning() {
 derror() {
     set +x
     dlog 2 "$@"
+    [ -n "$debug" ] && set -x || :
 }
 
 ## @brief Logs message at FATAL level (1)
@@ -378,4 +382,5 @@ derror() {
 dfatal() {
     set +x
     dlog 1 "$@"
+    [ -n "$debug" ] && set -x || :
 }

@@ -8,6 +8,8 @@
 # Harald Hoyer <harald@redhat.com>
 # Jeremy Katz <katzj@redhat.com>
 
+export -p > /tmp/export.orig
+
 wait_for_loginit()
 {
     set +x
@@ -84,12 +86,6 @@ RD_DEBUG=""
 [ ! -d /sys/kernel ] && \
     mount -t sysfs -o nosuid,noexec,nodev sysfs /sys >/dev/null 2>&1
 
-SECURITYFSDIR="/sys/kernel/security"
-export SECURITYFSDIR
-if ! ismounted "${SECURITYFSDIR}"; then
-    mount -t securityfs -o nosuid,noexec,nodev ${SECURITYFSDIR} ${SECURITYFSDIR} >/dev/null 2>&1
-fi
-
 if [ -x /lib/systemd/systemd-timestamp ]; then
     RD_TIMESTAMP=$(/lib/systemd/systemd-timestamp)
 else
@@ -137,7 +133,7 @@ fi
 if ! ismounted /run; then
     mkdir -m 0755 /newrun
     mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /newrun >/dev/null 2>&1
-    cp -a -t /newrun /run/*
+    cp -a /run/* /newrun
     mount --move /newrun /run
     rm -fr /newrun
 fi
@@ -205,7 +201,8 @@ getarg 'rd.break=pre-trigger' 'rdbreak=pre-trigger' && emergency_shell -n pre-tr
 source_hook pre-trigger
 
 # then the rest
-udevadm trigger --action=add $udevtriggeropts  >/dev/null 2>&1
+udevadm trigger --type=subsystems --action=add >/dev/null 2>&1
+udevadm trigger --type=devices --action=add >/dev/null 2>&1
 
 getarg 'rd.break=initqueue' 'rdbreak=initqueue' && emergency_shell -n initqueue "Break before initqueue"
 
@@ -246,25 +243,20 @@ while :; do
     # no more udev jobs and queues empty.
     sleep 0.5
 
-    # dirty hack for some cdrom drives,
-    # which report no medium for quiet
-    # some time.
-    for cdrom in /sys/block/sr*; do
-        [ -e "$cdrom" ] || continue
-        # skip, if cdrom medium was already found
-        strstr "$(udevadm info --query=env --path=${cdrom##/sys})" \
-            ID_CDROM_MEDIA && continue
-
-        if [ -e "$cdrom"/events_poll_msecs -a ! -e "/tmp/.poll_${cdrom##*/}" ]; then
-            msecs=$(while read a; do echo $a;done < "$cdrom"/events_poll_msecs)
-            if [ "$msecs" = "-1" ]; then
-                echo 250 > "$cdrom"/events_poll_msecs
-                > "/tmp/.poll_${cdrom##*/}"
-            fi
-        else
+    if [ ! -e /sys/module/block/parameters/events_dfl_poll_msecs ]; then
+        # if the kernel does not support autopolling
+        # then we have to do a
+        # dirty hack for some cdrom drives,
+        # which report no medium for quiet
+        # some time.
+        for cdrom in /sys/block/sr*; do
+            [ -e "$cdrom" ] || continue
+            # skip, if cdrom medium was already found
+            strstr "$(udevadm info --query=env --path=${cdrom##/sys})" \
+                ID_CDROM_MEDIA && continue
             echo change > "$cdrom/uevent"
-        fi
-    done
+        done
+    fi
 
     if [ $main_loop -gt $(($RDRETRY/2)) ]; then
 	for job in $hookdir/initqueue/timeout/*.sh; do
@@ -283,14 +275,6 @@ unset queuetriggered
 unset main_loop
 unset RDRETRY
 
-# reset cdrom polling
-for cdrom in /sys/block/sr*; do
-    [ -e "$cdrom" ] || continue
-    if [ -e "$cdrom"/events_poll_msecs ]; then
-        echo -1 > "$cdrom"/events_poll_msecs
-    fi
-done
-
 # pre-mount happens before we try to mount the root filesystem,
 # and happens once.
 getarg 'rd.break=pre-mount' 'rdbreak=pre-mount' && emergency_shell -n pre-mount "Break pre-mount"
@@ -302,10 +286,18 @@ getarg 'rd.break=mount' 'rdbreak=mount' && emergency_shell -n mount "Break mount
 # be sourced any number of times. As soon as one suceeds, no more are sourced.
 i=0
 while :; do
-    [ -d "$NEWROOT/proc" ] && break;
+    if ismounted "$NEWROOT"; then
+        usable_root "$NEWROOT" && break;
+        umount "$NEWROOT"
+    fi
     for f in $hookdir/mount/*.sh; do
         [ -f "$f" ] && . "$f"
-        [ -d "$NEWROOT/proc" ] && break;
+        if ismounted "$NEWROOT"; then
+            usable_root "$NEWROOT" && break;
+            warn "$NEWROOT has no proper rootfs layout, ignoring and removing offending mount hook"
+            umount "$NEWROOT"
+            rm -f "$f"
+        fi
     done
 
     i=$(($i+1))
@@ -322,33 +314,12 @@ done
 getarg 'rd.break=pre-pivot' 'rdbreak=pre-pivot' && emergency_shell -n pre-pivot "Break pre-pivot"
 source_hook pre-pivot
 
-# by the time we get here, the root filesystem should be mounted.
-# Try to find init and mount /usr, if needed to access init.
-unset __usr_found
+# By the time we get here, the root filesystem should be mounted.
+# Try to find init. 
 for i in "$(getarg real_init=)" "$(getarg init=)" /sbin/init /etc/init /init /bin/sh; do
     [ -n "$i" ] || continue
 
-    __p=$(readlink -m "$NEWROOT$i")
-    if [ -n "$__p" ] \
-        && [ "x$__usr_found" = "x" ] \
-        && [ ! -x "$__p" ] \
-        && strstr "$__p" "$NEWROOT/usr" \
-        ; then
-        # we have to mount /usr
-        while read dev mp fs opts rest; do
-            if [ "$mp" = "/usr" ]; then
-                echo "$dev $NEWROOT$mp $fs ${opts},ro $rest"
-                __usr_found="1"
-                break
-            fi
-        done < "$NEWROOT/etc/fstab" >> /etc/fstab
-        if [ "x$__usr_found" != "x" ]; then
-            info "Mounting /usr"
-            mount "$NEWROOT/usr" 2>&1 | vinfo
-        fi
-    fi
-
-    __p=$(readlink -f "$NEWROOT$i")
+    __p=$(readlink -f "${NEWROOT}/${i}")
     if [ -x "$__p" ]; then
         INIT="$i"
         break
@@ -361,7 +332,6 @@ done
     emergency_shell
 }
 
-getarg rd.break rdbreak && emergency_shell -n switch_root "Break before switch_root"
 
 if [ $UDEVVERSION -lt 168 ]; then
     # stop udev queue before killing it
@@ -395,6 +365,8 @@ for i in $(export -p); do
             unset "$i";;
     esac
 done
+. /tmp/export.orig 2>/dev/null || :
+rm -f /tmp/export.orig
 
 initargs=""
 read CLINE </proc/cmdline
@@ -443,6 +415,10 @@ fi
 
 wait_for_loginit
 
+# remove helper symlink
+[ -h /dev/root ] && rm -f /dev/root
+
+getarg rd.break rdbreak && emergency_shell -n switch_root "Break before switch_root"
 info "Switching root"
 
 unset PS4

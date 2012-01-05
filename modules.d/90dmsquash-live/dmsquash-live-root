@@ -3,6 +3,8 @@
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
 type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
+type det_fs >/dev/null 2>&1 || . /lib/fs-lib.sh
+
 [ -f /tmp/root.info ] && . /tmp/root.info
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -43,9 +45,7 @@ fi
 
 # determine filesystem type for a filesystem image
 det_img_fs() {
-    local _img="$1" _loop=$(losetup -f) _fs
-    losetup $_loop $_img; _fs=$(det_fs $_loop); losetup -d $_loop
-    echo $_fs
+    blkid -s TYPE -u noraid -o value "$1"
 }
 
 for arg in $CMDLINE; do case $arg in ro|rw) liverw=$arg ;; esac; done
@@ -54,11 +54,13 @@ mkdir -m 0755 -p /run/initramfs/live
 if [ -f $livedev ]; then
     # no mount needed - we've already got the LiveOS image in initramfs
     # check filesystem type and handle accordingly
-    case `det_img_fs $livedev` in
-        squashfs) SQUASHED=$livedev ;;
+    fstype=$(det_img_fs $livedev)
+    case $fstype in
+        squashfs) SQUASHED=$livedev;;
         auto) die "cannot mount live image (unknown filesystem type)" ;;
         *) FSIMG=$livedev ;;
     esac
+    [ -e /sys/fs/$fstype ] || modprobe $fstype
 else
     mount -n -t $fstype -o ${liverw:-ro} $livedev /run/initramfs/live
     if [ "$?" != "0" ]; then

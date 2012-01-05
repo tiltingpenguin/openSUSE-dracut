@@ -40,6 +40,8 @@ modprobe crc32c 2>/dev/null
 
 [ -e /tmp/root.info ] && . /tmp/root.info
 
+[ -e /sys/module/bnx2i ] && iscsiuio
+
 if getargbool 0 rd.iscsi.firmware -y iscsi_firmware ; then
     if [ -n "${root%%block:*}" ]; then
         # if root is not specified try to mount the whole iSCSI LUN
@@ -132,6 +134,12 @@ handle_netroot()
     # XXX rfc3720 says 'SCSI Initiator Name: The iSCSI Initiator Name specifies
     # the worldwide unique name of the initiator.' Could we use hostname/ip
     # if missing?
+    fi
+
+    if [ -z $iscsi_initiator ]; then
+       if [ -f /sys/firmware/ibft/initiator/initiator-name ]; then
+           iscsi_initiator=$(while read line; do echo $line;done < /sys/firmware/ibft/initiator-name)
+       fi
     fi
 
     if [ -z $iscsi_target_port ]; then

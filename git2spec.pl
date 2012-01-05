@@ -18,27 +18,21 @@ sub last_tag {
 
 sub create_patches {
     my $tag=shift;
+    my $pdir=shift;
     my $num=0;
-    open( GIT, 'git format-patch --no-renames -N --no-signature '.$tag.' |');
+    open( GIT, 'git format-patch -N --no-signature -o "'.$pdir.'" '.$tag.' |');
     @lines=<GIT>;
     close GIT;         # be done
     return @lines;
 };
 
-sub filter_patch {
-	my $patch=shift;
-	open(P, $patch);
-	@lines=<P>;
-	close(P);
-	grep (/^ 0 files changed/, @lines);
-}
-
 use POSIX qw(strftime);
 my $datestr = strftime "%Y%m%d", gmtime;
 
 my $tag=shift;
+my $pdir=shift;
 $tag=&last_tag if not defined $tag;
-my @patches=&create_patches($tag);
+my @patches=&create_patches($tag, $pdir);
 my $num=$#patches + 2;
 $tag=~s/[^0-9]+?([0-9]+)/$1/;
 my $release="$num.git$datestr";
@@ -55,18 +49,8 @@ while(<>) {
 	print $_;
 	$num=1;
 	for(@patches) {
-	    next if filter_patch $_;
+	    s/.*\///g;
 	    print "Patch$num: $_";
-	    $num++;
-	}
-	print "\n";
-    }
-    elsif (/^%setup/) {
-	print $_;
-	$num=1;
-	for(@patches) {
-	    next if filter_patch $_;
-	    print "%patch$num -p1\n";
 	    $num++;
 	}
 	print "\n";

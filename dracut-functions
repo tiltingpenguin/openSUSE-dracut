@@ -83,28 +83,30 @@ print_vars() {
 }
 
 normalize_path() {
-    p=$1
-    while [[ ${p#*//*} != $p ]]; do
-        p=${p/\/\///}
-    done
-    echo $p
+    shopt -q -s extglob
+    set -- "${1//+(\/)//}"
+    shopt -q -u extglob
+    echo "${1%/}"
 }
 
 convert_abs_rel() {
-    local __current __absolute __abssize __cursize __i __level __newpath
+    local __current __absolute __abssize __cursize __newpath __oldifs
+    local -i __i __level
 #    PS4='${BASH_SOURCE}@${LINENO}(${FUNCNAME[0]}): ';
 
-    if [[ "$1" == "$2" ]]
-    then
-        echo "."
-        return
-    fi
-    __current=$(normalize_path "$1")
-    __absolute=$(normalize_path "$2")
-    IFS="/"
+    set -- "$(normalize_path "$1")" "$(normalize_path "$2")"
 
-    __current=($__current)
-    __absolute=($__absolute)
+    # corner case #1 - self looping link
+    [[ "$1" == "$2" ]] && { echo "${1##*/}"; return; }
+
+    # corner case #2 - own dir link
+    [[ "${1%/*}" == "$2" ]] && { echo "."; return; }
+
+    __oldifs="$IFS"
+    IFS="/"
+    __current=($1)
+    __absolute=($2)
+    IFS="$__oldifs"
 
     __abssize=${#__absolute[@]}
     __cursize=${#__current[@]}
@@ -266,26 +268,20 @@ check_vol_slaves() {
 }
 
 # Install a directory, keeping symlinks as on the original system.
-# Example: if /lib64 points to /lib on the host, "inst_dir /lib/file"
+# Example: if /lib points to /lib64 on the host, "inst_dir /lib/file"
 # will create ${initdir}/lib64, ${initdir}/lib64/file,
 # and a symlink ${initdir}/lib -> lib64.
 inst_dir() {
-    local _file=""
-    local _oldifs="$IFS"
-    local _part
-    local _dir="$1"
-    IFS="/"
-    set -- $_dir
-    IFS=$_oldifs
-    _dir="$@"
-    [[ -e ${initdir}$_dir ]] && return 0
+    [[ -e ${initdir}/"$1" ]] && return 0  # already there
+
+    local _dir="$1" _part="${1%/*}" _file
+    while [[ "$_part" != "${_part%/*}" ]] && ! [[ -e "${initdir}/${_part}" ]]; do
+        _dir="$_part $_dir"
+        _part=${_part%/*}
+    done
 
     # iterate over parent directories
-    for _part in $_dir; do
-        [[ $_part ]] || continue
-        _file="$_file/$_part"
-        [[ -e ${initdir}$_file ]] && continue
-
+    for _file in $_dir; do
         if [[ -L $_file ]]; then
             # create link as the original
             local target=$(readlink -f "$_file")
@@ -294,12 +290,12 @@ inst_dir() {
             inst_dir "$target"
             inst_symlink "$_file"
         else
-            [[ -h ${initdir}$_file ]] && _file=$(readlink "${initdir}$_file")
+            [[ -h ${initdir}/$_file ]] && _file=$(readlink "${initdir}/$_file")
             # create directory
-            mkdir -m 0755 -p "${initdir}$_file" || return 1
+            [[ -e "${initdir}/$_file" ]] || mkdir -m 0755 -p "${initdir}/$_file" || return 1
             if [[ -d "$_file" ]]; then
-                chmod --reference="$_file" "${initdir}$_file"
-                chmod u+w "${initdir}$_file"
+                chmod --reference="$_file" "${initdir}/$_file"
+                chmod u+w "${initdir}/$_file"
             fi
         fi
     done
@@ -310,20 +306,21 @@ inst_dir() {
 # Location of the image dir is assumed to be $initdir
 # We never overwrite the target if it exists.
 inst_simple() {
-    local _src target
-    [[ -f $1 ]] || return 1
-    _src=$1 target="${2:-$1}"
-    if ! [[ -d ${initdir}$target ]]; then
-        [[ -e ${initdir}$target ]] && return 0
-        [[ -h ${initdir}$target ]] && return 0
+    [[ -f "$1" ]] || return 1
+    strstr "$1" "/" || return 1
+
+    local _src=$1 target="${2:-$1}"
+    if ! [[ -d ${initdir}/$target ]]; then
+        [[ -e ${initdir}/$target ]] && return 0
+        [[ -h ${initdir}/$target ]] && return 0
         inst_dir "${target%/*}"
     fi
     # install checksum files also
     if [[ -e "${_src%/*}/.${_src##*/}.hmac" ]]; then
-        inst_simple "${_src%/*}/.${_src##*/}.hmac" "${target%/*}/.${target##*/}.hmac"
+        inst "${_src%/*}/.${_src##*/}.hmac" "${target%/*}/.${target##*/}.hmac"
     fi
     ddebug "Installing $_src"
-    cp -pfL "$_src" "${initdir}$target" 
+    cp --sparse=always -pfL "$_src" "${initdir}/$target" 
 }
 
 # find symlinks linked to given library file
@@ -355,24 +352,25 @@ rev_lib_symlinks() {
 # It handles making symlinks according to how the original library
 # is referenced.
 inst_library() {
-    local _src=$1 _dest=${2:-$1} _lib _reallib _symlink
-    [[ -e $initdir$_dest ]] && return 0
+    local _src="$1" _dest=${2:-$1} _lib _reallib _symlink
+    strstr "$1" "/" || return 1
+    [[ -e $initdir/$_dest ]] && return 0
     if [[ -L $_src ]]; then
         # install checksum files also
         if [[ -e "${_src%/*}/.${_src##*/}.hmac" ]]; then
-            inst_simple "${_src%/*}/.${_src##*/}.hmac" "${_dest%/*}/.${_dest##*/}.hmac"
+            inst "${_src%/*}/.${_src##*/}.hmac" "${_dest%/*}/.${_dest##*/}.hmac"
         fi
         _reallib=$(readlink -f "$_src")
         inst_simple "$_reallib" "$_reallib"
         inst_dir "${_dest%/*}"
-        ln -sfn $(convert_abs_rel "${_dest}" "${_reallib}") "${initdir}${_dest}"
+        ln -sfn $(convert_abs_rel "${_dest}" "${_reallib}") "${initdir}/${_dest}"
     else
         inst_simple "$_src" "$_dest"
     fi
 
     # Create additional symlinks.  See rev_symlinks description.
     for _symlink in $(rev_lib_symlinks $_src) $(rev_lib_symlinks $_reallib); do
-        [[ ! -e $initdir$_symlink ]] && {
+        [[ ! -e $initdir/$_symlink ]] && {
             ddebug "Creating extra symlink: $_symlink"
             inst_symlink $_symlink
         }
@@ -400,7 +398,7 @@ inst_binary() {
     _bin=$(find_binary "$1") || return 1
     _target=${2:-$_bin}
     inst_symlink $_bin $_target && return 0
-    [[ -e $initdir$_target ]] && return 0
+    [[ -e $initdir/$_target ]] && return 0
 
     # If the binary being installed is also a library, add it to the loop.
     _so_regex='([^ ]*/lib[^/]*/[^ ]*\.so[^ ]*)'
@@ -418,7 +416,7 @@ inst_binary() {
         fi
         [[ $_line =~ $_so_regex ]] || continue
         _file=${BASH_REMATCH[1]}
-        [[ -e ${initdir}$_file ]] && continue
+        [[ -e ${initdir}/$_file ]] && continue
 
         # See if we are loading an optimized version of a shared lib.
         if [[ $_file =~ $_lib_regex ]]; then
@@ -443,19 +441,22 @@ inst_binary() {
 # same as above, except for shell scripts.
 # If your shell script does not start with shebang, it is not a shell script.
 inst_script() {
-    [[ -f $1 ]] || return 1
+    local _bin
+    _bin=$(find_binary "$1") || return 1
+    shift
     local _line _shebang_regex
-    read -r -n 80 _line <"$1"
+    read -r -n 80 _line <"$_bin"
     # If debug is set, clean unprintable chars to prevent messing up the term
     [[ $debug ]] && _line=$(echo -n "$_line" | tr -c -d '[:print:][:space:]')
     _shebang_regex='(#! *)(/[^ ]+).*'
     [[ $_line =~ $_shebang_regex ]] || return 1
-    inst "${BASH_REMATCH[2]}" && inst_simple "$@"
+    inst "${BASH_REMATCH[2]}" && inst_simple "$_bin" "$@"
 }
 
 # same as above, but specialized for symlinks
 inst_symlink() {
-    local _src=$1 _target=$initdir${2:-$1} _realsrc
+    local _src=$1 _target=$initdir/${2:-$1} _realsrc
+    strstr "$1" "/" || return 1
     [[ -L $1 ]] || return 1
     [[ -L $_target ]] && return 0
     _realsrc=$(readlink -f "$_src")
@@ -480,12 +481,14 @@ inst_rules() {
     inst_dir "/lib/udev/rules.d"
     inst_dir "$_target"
     for _rule in "$@"; do
-        for r in /lib/udev/rules.d /etc/udev/rules.d; do
-            if [[ -f $r/$_rule ]]; then
-                _found="$r/$_rule"
-                inst_simple "$_found"
-            fi
-        done
+        if [ "${rule#/}" = "$rule" ]; then
+            for r in /lib/udev/rules.d /etc/udev/rules.d; do
+                if [[ -f $r/$_rule ]]; then
+                    _found="$r/$_rule"
+                    inst_simple "$_found"
+                fi
+            done
+        fi
         for r in '' ./ $dracutbasedir/rules.d/; do
             if [[ -f ${r}$_rule ]]; then
                 _found="${r}$_rule"
@@ -518,7 +521,7 @@ inst() {
 
 [[ $hookdirs ]] || {
     hookdirs="cmdline pre-udev pre-trigger netroot initqueue pre-mount"
-    hookdirs+=" pre-pivot mount emergency emergency-shutdown shutdown"
+    hookdirs+=" pre-pivot mount emergency shutdown-emergency shutdown"
     export hookdirs
 }
 
@@ -535,6 +538,34 @@ inst_hook() {
         exit 1
     fi
     inst_simple "$3" "/lib/dracut/hooks/${1}/${2}${3##*/}"
+}
+
+# install any of listed files
+#
+# If first argument is '-d' and second some destination path, first accessible
+# source is installed into this path, otherwise it will installed in the same
+# path as source.  If none of listed files was installed, function return 1.
+# On first successful installation it returns with 0 status.
+#
+# Example:
+#
+# inst_any -d /bin/foo /bin/bar /bin/baz
+#
+# Lets assume that /bin/baz exists, so it will be installed as /bin/foo in
+# initramfs.
+inst_any() {
+    local to f
+
+    [[ $1 = '-d' ]] && to="$2" && shift 2
+
+    for f in "$@"; do
+        if [[ -e $f ]]; then
+            [[ $to ]] && inst "$f" "$to" && return 0
+            inst "$f" && return 0
+        fi
+    done
+
+    return 1
 }
 
 dracut_install() {
@@ -760,13 +791,14 @@ check_module_dir() {
 # Install a single kernel module along with any firmware it may require.
 # $1 = full path to kernel module to install
 install_kmod_with_fw() {
-    local _modname=${1##*/} _fwdir _found _fw
-    _modname=${_modname%.ko*}
     # no need to go further if the module is already installed
     [[ -e "${initdir}/lib/modules/$kernel/${1##*/lib/modules/$kernel/}" ]] \
         && return 0
     inst_simple "$1" "/lib/modules/$kernel/${1##*/lib/modules/$kernel/}" \
         || return $?
+
+    local _modname=${1##*/} _fwdir _found _fw
+    _modname=${_modname%.ko*}
     for _fw in $(modinfo -k $kernel -F firmware $1 2>/dev/null); do
         _found=''
         for _fwdir in $fw_dir; do
@@ -794,10 +826,11 @@ install_kmod_with_fw() {
 #      It will be passed the full path to the found kernel module
 # $2 = module to get dependencies for
 # rest of args = arguments to modprobe
+# _fderr specifies FD passed from surrounding scope
 for_each_kmod_dep() {
     local _func=$1 _kmod=$2 _cmd _modpath _options _found=0
     shift 2
-    modprobe "$@" --ignore-install --show-depends $_kmod 2>"$initdir/modprobe.err" | (
+    modprobe "$@" --ignore-install --show-depends $_kmod 2>&${_fderr} | (
         while read _cmd _modpath _options; do
             [[ $_cmd = insmod ]] || continue
             $_func ${_modpath} || exit $?
@@ -806,9 +839,6 @@ for_each_kmod_dep() {
         [[ $_found -eq 0 ]] && exit 1
         exit 0
     )
-    egrep -v 'FATAL: Module .* not found.' "$initdir/modprobe.err" | derror
-    rm -f "$initdir/modprobe.err"
-    return $?
 }
 
 # filter kernel modules to install certain modules that meet specific
@@ -840,85 +870,96 @@ filter_kernel_modules_by_path () (
         esac
     done
 )
-
-# filter kernel modules to install certain modules that meet specific
-# requirements.
-# $1 = function to call with module name to filter.
-#      This function will be passed the full path to the module to test.
-# The behaviour of this function can vary depending on whether $hostonly is set.
-# If it is, we will only look at modules that are already in memory.
-# If it is not, we will look at all kernel modules
-# This function returns the full filenames of modules that match $1
-filter_kernel_modules () (
-    local _modname _filtercmd
+find_kernel_modules_by_path () (
     if ! [[ $hostonly ]]; then
-        _filtercmd='find "$srcmods/kernel/drivers" "$srcmods/extra"'
-        _filtercmd+=' "$srcmods/weak-updates" -name "*.ko" -o -name "*.ko.gz"'
-        _filtercmd+=' 2>/dev/null'
+        find "$srcmods/kernel/$1" "$srcmods/extra" "$srcmods/weak-updates" \
+          -name "*.ko" -o -name "*.ko.gz" 2>/dev/null
     else
-        _filtercmd='cut -d " " -f 1 </proc/modules|xargs modinfo -F filename '
-        _filtercmd+='-k $kernel 2>/dev/null'
+        cut -d " " -f 1 </proc/modules \
+        | xargs modinfo -F filename -k $kernel 2>/dev/null
     fi
-    for _modname in $(eval $_filtercmd); do
-        case $_modname in
-            *.ko) "$1" "$_modname" && echo "$_modname";;
-            *.ko.gz) gzip -dc "$_modname" > $initdir/$$.ko
-                $1 $initdir/$$.ko && echo "$_modname"
-                rm -f $initdir/$$.ko
-                ;;
-        esac
-    done
 )
+
+filter_kernel_modules () {
+    filter_kernel_modules_by_path  drivers  "$1"
+}
+
+find_kernel_modules () {
+    find_kernel_modules_by_path  drivers
+}
 
 # install kernel modules along with all their dependencies.
 instmods() {
     [[ $no_kernel = yes ]] && return
-    local _mod _mpargs _moddirname
-    local _ret=0
-    while (($# > 0)); do
-        _mod=${1%.ko*}
+    # called [sub]functions inherit _fderr
+    local _fderr=9
+
+    function inst1mod() {
+        local _mod="$1"
         case $_mod in
             =*)
                 # This introduces 2 incompatible meanings for =* arguments
                 # to instmods.  We need to decide which one to keep.
                 if [[ $_mod = =ata && -f $srcmods/modules.block ]]; then
-                    instmods $_mpargs \
-                        $(egrep 'ata|ahci' "${srcmods}/modules.block")
+                    ( [[ "$_mpargs" ]] && echo $_mpargs
+                      egrep 'ata|ahci' "${srcmods}/modules.block" ) \
+                    | instmods
                 elif [ -f $srcmods/modules.${_mod#=} ]; then
-                    instmods $_mpargs $(cat ${srcmods}/modules.${_mod#=} )
+                    ( [[ "$_mpargs" ]] && echo $_mpargs
+                      cat "${srcmods}/modules.${_mod#=}" ) \
+                    | instmods
                 else
-                    instmods $_mpargs $(find "$srcmods" -path "*/${_mod#=}/*")
+                    ( [[ "$_mpargs" ]] && echo $_mpargs
+                      find "$srcmods" -path "*/${_mod#=}/*" ) \
+                    | instmods
                 fi
                 ;;
-            --*)
-                _mod=${_mod##*/}
-                _mpargs+=" $_mod";;
-            i2o_scsi) shift; continue;; # Do not load this diagnostic-only module
+            --*) _mpargs+=" $_mod" ;;
+            i2o_scsi) return ;; # Do not load this diagnostic-only module
             *)  _mod=${_mod##*/}
+
                 # if we are already installed, skip this module and go on
                 # to the next one.
-                [[ -f $initdir/$1 ]] && { shift; continue; }
+                [[ -f $initdir/$1 ]] && return
+
                 # If we are building a host-specific initramfs and this
                 # module is not already loaded, move on to the next one.
                 [[ $hostonly ]] && ! grep -qe "\<${_mod//-/_}\>" /proc/modules \
-                    && ! echo $add_drivers | grep -qe "\<${_mod}\>" && {
-                        shift; continue
-                    }
+                    && ! echo $add_drivers | grep -qe "\<${_mod}\>" \
+                    && return
 
                 # We use '-d' option in modprobe only if modules prefix path
                 # differs from default '/'.  This allows us to use Dracut with
                 # old version of modprobe which doesn't have '-d' option.
-                _moddirname=${srcmods%%/lib/modules/*}
+                local _moddirname=${srcmods%%/lib/modules/*}
                 [[ -n ${_moddirname} ]] && _moddirname="-d ${_moddirname}/"
 
                 # ok, load the module, all its dependencies, and any firmware
                 # it may require
                 for_each_kmod_dep install_kmod_with_fw $_mod \
-                    --set-version $kernel ${_moddirname}
+                    --set-version $kernel ${_moddirname} $_mpargs
                 ((_ret+=$?))
                 ;;
         esac
-        shift
-    done
-    return $_ret
+    }
+
+    function instmods_1() {
+        local _ret=0 _mod _mpargs
+        if (($# == 0)); then  # filenames from stdin
+            while read _mod; do
+                inst1mod "${_mod%.ko*}"
+            done
+        fi
+        while (($# > 0)); do  # filenames as arguments
+            inst1mod ${1%.ko*}
+            shift
+        done
+        return $_ret
+    }
+
+    # Capture all stderr from modprobe to _fderr. We could use {var}>...
+    # redirections, but that would make dracut require bash4 at least.
+    eval "( instmods_1 \"\$@\" ) ${_fderr}>&1" \
+    | egrep -v 'FATAL: Module .* not found.' | derror
+    return $?
 }

@@ -4,10 +4,31 @@
 
 installkernel() {
     if [[ -z $drivers ]]; then
-        block_module_test() {
-            local blockfuncs='ahci_init_controller|ata_scsi_ioctl|scsi_add_host|blk_init_queue|register_mtd_blktrans|scsi_esp_register|register_virtio_device'
-
-            egrep -q "$blockfuncs" "$1"
+        block_module_filter() {
+            local _blockfuncs='ahci_init_controller|ata_scsi_ioctl|scsi_add_host|blk_init_queue|register_mtd_blktrans|scsi_esp_register|register_virtio_device|usb_stor_disconnect'
+            # subfunctions inherit following FDs
+            local _merge=8 _side2=9
+            function bmf1() {
+                local _f
+                while read _f; do case "$_f" in
+                    *.ko)    [[ $(<         $_f) =~ $_blockfuncs ]] && echo "$_f" ;;
+                    *.ko.gz) [[ $(gzip -dc <$_f) =~ $_blockfuncs ]] && echo "$_f" ;;
+                    esac
+                done
+            }
+            function rotor() {
+                local _f1 _f2
+                while read _f1; do
+                    echo "$_f1"
+                    if read _f2; then
+                        echo "$_f2" 1>&${_side2}
+                    fi
+                done | bmf1 1>&${_merge}
+            }
+            # Use two parallel streams to filter alternating modules.
+            set +x
+            eval "( ( rotor ) ${_side2}>&1 | bmf1 ) ${_merge}>&1"
+            [[ $debug ]] && set -x
         }
         hostonly='' instmods sr_mod sd_mod scsi_dh scsi_dh_rdac scsi_dh_emc
         hostonly='' instmods pcmcia firewire-ohci
@@ -18,7 +39,7 @@ installkernel() {
         # install unix socket support
         hostonly='' instmods unix
         instmods "=drivers/pcmcia" =ide "=drivers/usb/storage"
-        instmods $(filter_kernel_modules block_module_test)
+        find_kernel_modules  |  block_module_filter  |  instmods
         # if not on hostonly mode, install all known filesystems,
         # if the required list is not set via the filesystems variable
         if ! [[ $hostonly ]]; then

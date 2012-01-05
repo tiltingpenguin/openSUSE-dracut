@@ -7,7 +7,7 @@ check() {
 }
 
 depends() {
-    echo masterkey
+    echo masterkey securityfs
     return 0
 }
 

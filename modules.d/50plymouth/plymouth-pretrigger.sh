@@ -2,7 +2,7 @@
 # -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
-if getargbool 1 rd.plymouth -n rd_NO_PLYMOUTH; then
+if getargbool 1 plymouth.enable && getargbool 1 rd.plymouth -n rd_NO_PLYMOUTH; then
     [ -c /dev/null ] || mknod -m 0666 /dev/null c 1 3
     # first trigger graphics subsystem
     udevadm trigger --action=add --attr-match=class=0x030000 >/dev/null 2>&1
@@ -18,7 +18,9 @@ if getargbool 1 rd.plymouth -n rd_NO_PLYMOUTH; then
 
     info "Starting plymouth daemon"
     mkdir -m 0755 /run/plymouth
-    [ -x /lib/udev/console_init ] && /lib/udev/console_init /dev/tty0
+    consoledev=$(getarg console= | sed -e 's/,.*//')
+    consoledev=${consoledev:-tty0}
+    [ -x /lib/udev/console_init ] && /lib/udev/console_init "/dev/$consoledev"
     [ -x /bin/plymouthd ] && /bin/plymouthd --attach-to-session --pid-file /run/plymouth/pid
     /bin/plymouth --show-splash 2>&1 | vinfo
     # reset tty after plymouth messed with it

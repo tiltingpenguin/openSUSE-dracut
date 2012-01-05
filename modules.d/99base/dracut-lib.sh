@@ -24,7 +24,7 @@ str_replace() {
 
     while strstr "${in}" "$s"; do
         chop="${in%%$s*}"
-        out="${out}${chop# }$r"
+        out="${out}${chop}$r"
         in="${in#*$s}"
     done
     echo "${out}${in}"
@@ -32,15 +32,22 @@ str_replace() {
 
 _getcmdline() {
     local _line
+    local _i
     unset _line
     if [ -z "$CMDLINE" ]; then
         if [ -e /etc/cmdline ]; then
-            while read _line; do
+            while read -r _line; do
                 CMDLINE_ETC="$CMDLINE_ETC $_line";
             done </etc/cmdline;
         fi
-        read CMDLINE </proc/cmdline;
-        CMDLINE="$CMDLINE $CMDLINE_ETC"
+        for _i in /etc/cmdline.d/*.conf; do
+            [ -e "$_i" ] || continue
+            while read -r _line; do
+                CMDLINE_ETC_D="$CMDLINE_ETC_D $_line";
+            done <"$_i";
+        done
+        read -r CMDLINE </proc/cmdline;
+        CMDLINE="$CMDLINE_ETC_D $CMDLINE_ETC $CMDLINE"
     fi
 }
 
@@ -254,7 +261,10 @@ source_hook() {
 
 check_finished() {
     local f
-    for f in $hookdir/initqueue/finished/*.sh; do { [ -e "$f" ] && ( . "$f" ) ; } || return 1 ; done
+    for f in $hookdir/initqueue/finished/*.sh; do 
+        [ "$f" = "$hookdir/initqueue/finished/*.sh" ] && return 0
+        { [ -e "$f" ] && ( . "$f" ) ; } || return 1
+    done
     return 0
 }
 
@@ -372,7 +382,7 @@ ismounted() {
 
 wait_for_if_up() {
     local cnt=0
-    while [ $cnt -lt 20 ]; do
+    while [ $cnt -lt 200 ]; do
         li=$(ip link show $1)
         [ -z "${li##*state UP*}" ] && return 0
         sleep 0.1
@@ -544,3 +554,87 @@ foreach_uuid_until() (
 
     return 1
 )
+
+# Get kernel name for given device.  Device may be the name too (then the same
+# is returned), a symlink (full path), UUID (prefixed with "UUID=") or label
+# (prefixed with "LABEL=").  If just a beginning of the UUID is specified or
+# even an empty, function prints all device names which UUIDs match - every in
+# single line.
+#
+# NOTICE: The name starts with "/dev/".
+#
+# Example:
+#   devnames UUID=123
+# May print:
+#   /dev/dm-1
+#   /dev/sdb1
+#   /dev/sdf3
+devnames() {
+    local dev="$1"; local d; local names
+
+    case "$dev" in
+    UUID=*)
+        dev="$(foreach_uuid_until '! blkid -U $___' "${dev#UUID=}")" \
+            && return 255
+        [ -z "$dev" ] && return 255
+        ;;
+    LABEL=*) dev="$(blkid -L "${dev#LABEL=}")" || return 255 ;;
+    /dev/?*) ;;
+    *) return 255 ;;
+    esac
+
+    for d in $dev; do
+        names="$names
+$(readlink -e -q "$d")" || return 255
+    done
+
+    echo "${names#
+}"
+}
+
+
+usable_root() {
+    local _d
+    [ -d $1 ] || return 1
+    for _d in proc sys dev; do
+        [ -e "$1"/$_d ] || return 1
+    done
+    return 0
+}
+
+wait_for_mount()
+{
+    local _name
+    _name="$(str_replace "$1" '/' '\\x2f')"
+    printf '. /lib/dracut-lib.sh\nismounted "%s"\n' $1 \
+        >> "$hookdir/initqueue/finished/ismounted-${_name}.sh"
+    {
+        printf 'ismounted "%s" || ' $1
+        printf 'warn "\"%s\" is not mounted"\n' $1
+    } >> "$hookdir/emergency/90-${_name}.sh"
+}
+
+wait_for_dev()
+{
+    local _name
+    _name="$(str_replace "$1" '/' '\\x2f')"
+    printf '[ -e "%s" ]\n' $1 \
+        >> "$hookdir/initqueue/finished/devexists-${_name}.sh"
+    {
+        printf '[ -e "%s" ] || ' $1
+        printf 'warn "\"%s\" does not exist"\n' $1
+    } >> "$hookdir/emergency/80-${_name}.sh"
+}
+
+killproc() {
+    local exe="$(command -v $1)"
+    local sig=$2
+    local i
+    [ -x "$exe" ] || return 1
+    for i in /proc/[0-9]*; do 
+        [ "$i" = "/proc/1" ] && continue
+        if [ -e "$i"/exe ] && [  "$i/exe" -ef "$exe" ] ; then
+            kill $sig ${i##*/}
+        fi
+    done
+}

@@ -41,7 +41,9 @@ case "$liveroot" in
     live:/*.[Ii][Mm][Gg]|/*.[Ii][Mm][Gg])
         [ -f "${root#live:}" ] && rootok=1 ;;
 esac
-info "root was $root, liveroot is now $liveroot"
+info "liveroot was $liveroot, is now $root"
 
 # make sure that init doesn't complain
 [ -z "$root" ] && root="live"
+
+wait_for_dev /dev/mapper/live-rw

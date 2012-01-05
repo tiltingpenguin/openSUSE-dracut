@@ -1,8 +1,9 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!-- This document was created with Syntext Serna Free. --><!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.5//EN" "http://www.oasis-open.org/docbook/xml/4.3/docbookx.dtd" []>
+<!-- vim: set ts=8 sts=2 sw=2 et: -->
 <refentry id="dracutkernel7">
   <refentryinfo>
-    <title>dracut.kernel</title>
+    <title>dracut.cmdline</title>
     <productname>dracut</productname>
     <authorgroup>
       <author>
@@ -14,12 +15,12 @@
     </authorgroup>
   </refentryinfo>
   <refmeta>
-    <refentrytitle>dracut.kernel</refentrytitle>
+    <refentrytitle>dracut.cmdline</refentrytitle>
     <manvolnum>7</manvolnum>
     <refmiscinfo class="version"/>
   </refmeta>
   <refnamediv>
-    <refname>dracut.kernel</refname>
+    <refname>dracut.cmdline</refname>
     <refpurpose>dracut kernel command line options</refpurpose>
   </refnamediv>
   <refsect1>
@@ -343,11 +344,25 @@ This parameter can be specified multiple times.</para>
           </listitem>
         </varlistentry>
         <varlistentry>
+          <term><envar>rd.md.ddf</envar>=0</term>
+          <listitem>
+            <para>disable MD RAID for SNIA ddf raids, use DM RAID instead</para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
           <term>
             <envar>rd.md.conf</envar>=0
           </term>
           <listitem>
             <para>ignore mdadm.conf included in initramfs</para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <envar>rd.md.waitclean</envar>=1
+          </term>
+          <listitem>
+            <para>wait for any resync, recovery, or reshape activity to finish before continuing</para>
           </listitem>
         </varlistentry>
         <varlistentry>
@@ -696,9 +711,15 @@ rd.znet=ctc,0.0.0600,0.0.0601,0.0.0602,protocol=bar</programlisting></para>
       <title>Plymouth Boot Splash</title>
       <variablelist>
         <varlistentry>
-          <term><envar>rd.plymouth</envar>=0</term>
+          <term><envar>plymouth.enable</envar>=0</term>
           <listitem>
             <para>disable the plymouth bootsplash.</para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term><envar>rd.plymouth</envar>=0</term>
+          <listitem>
+            <para>disable the plymouth bootsplash only for the initramfs.</para>
           </listitem>
         </varlistentry>
       </variablelist>
@@ -1251,6 +1272,14 @@ set in the configuration files.</para>
       <varlistentry>
         <term>
           <filename>/etc/cmdline</filename>
+        </term>
+        <listitem>
+          <para>Can contain additional command line options.</para>
+        </listitem>
+      </varlistentry>
+      <varlistentry>
+        <term>
+          <filename>/etc/cmdline.d/*.conf</filename>
         </term>
         <listitem>
           <para>Can contain additional command line options.</para>

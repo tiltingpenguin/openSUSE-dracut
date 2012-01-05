@@ -1,14 +1,15 @@
-VERSION=013
+VERSION=014
 GITVERSION=$(shell [ -d .git ] && git rev-list  --abbrev-commit  -n 1 HEAD  |cut -b 1-8)
 
 prefix ?= /usr
+libdir ?= ${prefix}/lib
 datadir ?= ${prefix}/share
-pkglibdir ?= ${datadir}/dracut
+pkglibdir ?= ${libdir}/dracut
 sysconfdir ?= ${prefix}/etc
-sbindir ?= ${prefix}/sbin
+bindir ?= ${prefix}/sbin
 mandir ?= ${prefix}/share/man
 
-manpages = dracut.8 dracut.kernel.7 dracut.conf.5 dracut-catimages.8  dracut-gencmdline.8
+manpages = dracut.8 dracut.cmdline.7 dracut.conf.5 dracut-catimages.8  dracut-gencmdline.8
 
 .PHONY: install clean archive rpm testimage test all check AUTHORS doc
 
@@ -26,25 +27,26 @@ dracut.html: dracut.xml $(manpages)
 
 install: doc
 	mkdir -p $(DESTDIR)$(pkglibdir)
-	mkdir -p $(DESTDIR)$(sbindir)
+	mkdir -p $(DESTDIR)$(bindir)
 	mkdir -p $(DESTDIR)$(sysconfdir)
 	mkdir -p $(DESTDIR)$(pkglibdir)/modules.d
 	mkdir -p $(DESTDIR)$(mandir)/man{5,7,8}
-	install -m 0755 dracut $(DESTDIR)$(sbindir)/dracut
-	install -m 0755 dracut-gencmdline $(DESTDIR)$(sbindir)/dracut-gencmdline
-	install -m 0755 dracut-catimages $(DESTDIR)$(sbindir)/dracut-catimages
-	install -m 0755 mkinitrd-dracut.sh $(DESTDIR)$(sbindir)/mkinitrd
-	install -m 0755 lsinitrd $(DESTDIR)$(sbindir)/lsinitrd
+	install -m 0755 dracut $(DESTDIR)$(bindir)/dracut
+	install -m 0755 dracut-gencmdline $(DESTDIR)$(bindir)/dracut-gencmdline
+	install -m 0755 dracut-catimages $(DESTDIR)$(bindir)/dracut-catimages
+	install -m 0755 mkinitrd-dracut.sh $(DESTDIR)$(bindir)/mkinitrd
+	install -m 0755 lsinitrd $(DESTDIR)$(bindir)/lsinitrd
 	install -m 0644 dracut.conf $(DESTDIR)$(sysconfdir)/dracut.conf
 	mkdir -p $(DESTDIR)$(sysconfdir)/dracut.conf.d
 	install -m 0755 dracut-functions $(DESTDIR)$(pkglibdir)/dracut-functions
 	install -m 0755 dracut-logger $(DESTDIR)$(pkglibdir)/dracut-logger
 	cp -arx modules.d $(DESTDIR)$(pkglibdir)
-	install -m 0644 dracut.8 $(DESTDIR)$(mandir)/man8
-	install -m 0644 dracut-catimages.8 $(DESTDIR)$(mandir)/man8
-	install -m 0644 dracut-gencmdline.8 $(DESTDIR)$(mandir)/man8
-	install -m 0644 dracut.conf.5 $(DESTDIR)$(mandir)/man5
-	install -m 0644 dracut.kernel.7 $(DESTDIR)$(mandir)/man7
+	install -m 0644 dracut.8 $(DESTDIR)$(mandir)/man8/dracut.8
+	install -m 0644 dracut-catimages.8 $(DESTDIR)$(mandir)/man8/dracut-catimages.8
+	install -m 0644 dracut-gencmdline.8 $(DESTDIR)$(mandir)/man8/dracut-gencmdline.8
+	install -m 0644 dracut.conf.5 $(DESTDIR)$(mandir)/man5/dracut.conf.5
+	install -m 0644 dracut.cmdline.7 $(DESTDIR)$(mandir)/man7/dracut.cmdline.7
+	ln -s dracut.cmdline.7 $(DESTDIR)$(mandir)/man7/dracut.kernel.7
 
 clean:
 	$(RM) *~
@@ -66,13 +68,13 @@ dracut-$(VERSION).tar.gz:
 	git archive --format=tar $(VERSION) --prefix=dracut-$(VERSION)/ |gzip > dracut-$(VERSION).tar.gz
 
 rpm: dracut-$(VERSION).tar.bz2
-	mkdir -p rpmbuild
-	cp dracut-$(VERSION).tar.bz2 rpmbuild
-	cd rpmbuild; ../git2spec.pl $(VERSION) < ../dracut.spec > dracut.spec; \
-	rpmbuild --define "_topdir $$PWD" --define "_sourcedir $$PWD" \
+	rpmbuild=$$(mktemp -d -t rpmbuild-dracut.XXXXXX); src=$$(pwd); \
+	cp dracut-$(VERSION).tar.bz2 "$$rpmbuild"; \
+	$$src/git2spec.pl $(VERSION) "$$rpmbuild" < dracut.spec > $$rpmbuild/dracut.spec; \
+	(cd "$$rpmbuild"; rpmbuild --define "_topdir $$PWD" --define "_sourcedir $$PWD" \
 	        --define "_specdir $$PWD" --define "_srcrpmdir $$PWD" \
-		--define "_rpmdir $$PWD" -ba dracut.spec && \
-	( cd ..; mv rpmbuild/noarch/*.rpm .; mv rpmbuild/*.src.rpm .;rm -fr rpmbuild; ls *.rpm )
+		--define "_rpmdir $$PWD" -ba dracut.spec; ) && \
+	( mv "$$rpmbuild"/noarch/*.rpm .; mv "$$rpmbuild"/*.src.rpm .;rm -fr "$$rpmbuild"; ls *.rpm )
 
 syncheck:
 	@ret=0;for i in dracut-logger modules.d/99base/init modules.d/*/*.sh; do \
