@@ -3,7 +3,7 @@ Section: utils
 Priority: optional
 Maintainer: Thomas Lange <lange@debian.org>
 Build-Depends: debhelper, docbook-xsl, xsltproc
-Standards-Version: 3.9.1
+Standards-Version: 3.9.2
 Vcs-Browser: http://anonscm.debian.org/git/collab-maint/dracut.git
 Vcs-Git: http://git.debian.org/?p=collab-maint/dracut.git
 Homepage: http://www.kernel.org/pub/linux/utils/boot/dracut/dracut.html
