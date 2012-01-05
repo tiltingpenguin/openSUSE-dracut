@@ -1,3 +1,10 @@
+dracut (014-1) unstable; urgency=low
+
+  * new upstream version
+  * control: update to Standards version 3.9.2, no changes needed
+
+ -- Thomas Lange <lange@debian.org>  Thu, 05 Jan 2012 13:39:49 +0100
+
 dracut (013-2) unstable; urgency=low
 
   * control: add Build-Depends Closes: #642683
