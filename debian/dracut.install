@@ -1,8 +1,8 @@
 dracut			usr/bin
 dracut-catimages	usr/bin
 dracut-gencmdline	usr/bin
-dracut-functions	usr/share/dracut
-dracut-logger		usr/share/dracut
+dracut-functions	usr/lib/dracut
+dracut-logger		usr/lib/dracut
 lsinitrd		usr/bin
 dracut.conf		etc
 debian/kernel			etc
