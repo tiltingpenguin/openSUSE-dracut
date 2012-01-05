@@ -1,7 +1,7 @@
 usr/share/dracut
 usr/share/dracut/modules.d/00dash
 usr/share/dracut/modules.d/01fips
-usr/share/dracut/modules.d/60xen
+usr/share/dracut/modules.d/02fips-aesni
 usr/share/dracut/modules.d/90crypt
 usr/share/dracut/modules.d/90dm
 usr/share/dracut/modules.d/90dmraid
@@ -17,6 +17,7 @@ usr/share/dracut/modules.d/95rootfs-block
 usr/share/dracut/modules.d/95terminfo
 usr/share/dracut/modules.d/95udev-rules
 usr/share/dracut/modules.d/98syslog
+usr/share/dracut/modules.d/98usrmount
 usr/share/dracut/modules.d/99base
 /var/lib/dracut
 /etc/dracut.conf.d

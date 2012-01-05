@@ -8,10 +8,10 @@ dracut.conf		etc
 debian/kernel			etc
 modules.d/00dash		usr/share/dracut/modules.d
 modules.d/01fips		usr/share/dracut/modules.d
+modules.d/02fips-aesni		usr/share/dracut/modules.d
 modules.d/02caps		usr/share/dracut/modules.d
 modules.d/05busybox		usr/share/dracut/modules.d
 modules.d/10i18n		usr/share/dracut/modules.d
-modules.d/60xen			usr/share/dracut/modules.d
 modules.d/90btrfs		usr/share/dracut/modules.d
 modules.d/90crypt		usr/share/dracut/modules.d
 modules.d/90dmraid		usr/share/dracut/modules.d
@@ -33,6 +33,7 @@ modules.d/95udev-rules		usr/share/dracut/modules.d
 modules.d/97biosdevname		usr/share/dracut/modules.d
 modules.d/98selinux		usr/share/dracut/modules.d
 modules.d/98syslog		usr/share/dracut/modules.d
+modules.d/98usrmount		usr/share/dracut/modules.d
 modules.d/99base		usr/share/dracut/modules.d
 modules.d/99shutdown		usr/share/dracut/modules.d
 modules.d/99fs-lib		usr/share/dracut/modules.d
