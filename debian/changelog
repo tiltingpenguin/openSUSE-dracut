@@ -5,8 +5,9 @@ dracut (014-1) unstable; urgency=low
     util-linux >= 2.20
   * debian/patches, rules: use quilt for a patch for Makefile
   * add aufs patch
+  * control: fix VCS fields
 
- -- Thomas Lange <lange@debian.org>  Wed, 11 Jan 2012 15:24:03 +0100
+ -- Thomas Lange <lange@debian.org>  Mon, 16 Jan 2012 12:30:47 +0100
 
 dracut (013-2) unstable; urgency=low
 
