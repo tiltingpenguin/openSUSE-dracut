@@ -1,6 +1,6 @@
 modules.d/40network	usr/share/dracut/modules.d
 modules.d/90livenet	usr/share/dracut/modules.d
-modules.d/90aufs       usr/lib/dracut/modules.d
+modules.d/90aufs	usr/share/dracut/modules.d
 modules.d/95znet	usr/share/dracut/modules.d
 modules.d/95zfcp	usr/share/dracut/modules.d
 modules.d/95fcoe	usr/share/dracut/modules.d
