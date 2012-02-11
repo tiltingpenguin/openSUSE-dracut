@@ -1,3 +1,10 @@
+dracut (013-4) unstable; urgency=low
+
+  * patches/aufs: aufs was always enabled, now aufs is only activated if
+    the string aufs was given on the command line
+
+ -- Thomas Lange <lange@debian.org>  Sat, 11 Feb 2012 12:14:23 +0100
+
 dracut (013-3) unstable; urgency=low
 
   * add aufs module, for booting a read-only nfsroot and make it writeable
