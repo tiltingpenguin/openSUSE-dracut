@@ -13,10 +13,10 @@ Index: dracut/modules.d/90aufs/aufs-mount.sh
 +
 +. /lib/dracut-lib.sh
 +
-+aufs=$(getarg aufs)
++aufs=$(getargs aufs)
 +
-+if [ -z "aufs" ] ; then
-+    exit 0
++if [ -z "$aufs" ] ; then
++    return
 +fi
 +
 +modprobe aufs
