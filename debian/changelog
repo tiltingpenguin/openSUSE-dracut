@@ -1,3 +1,9 @@
+dracut (013-5) unstable; urgency=high
+
+  * do not call dracut if no kernel was found Closes: #657754
+
+ -- Thomas Lange <lange@debian.org>  Tue, 14 Feb 2012 10:32:02 +0100
+
 dracut (013-4) unstable; urgency=low
 
   * patches/aufs: aufs was always enabled, now aufs is only activated if
