@@ -1,11 +1,11 @@
-dracut			usr/bin
-dracut-catimages	usr/bin
-dracut-gencmdline	usr/bin
-dracut-functions	usr/lib/dracut
-dracut-logger		usr/lib/dracut
-lsinitrd		usr/bin
-dracut.conf		etc
-debian/kernel			etc
+usr/bin/dracut
+usr/bin/dracut-catimages
+usr/bin/dracut-gencmdline
+usr/lib/dracut/dracut-functions
+usr/lib/dracut/dracut-logger.sh
+usr/bin/lsinitrd
+usr/etc/dracut.conf             etc
+debian/kernel                   etc
 modules.d/00dash		usr/lib/dracut/modules.d
 modules.d/01fips		usr/lib/dracut/modules.d
 modules.d/02fips-aesni		usr/lib/dracut/modules.d
