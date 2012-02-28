@@ -1,4 +1,4 @@
-dracut (014-1) unstable; urgency=low
+dracut (017-1) unstable; urgency=low
 
   * new upstream version
   * do not call dracut if no kernel was found Closes: #657754
