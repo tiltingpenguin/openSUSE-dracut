@@ -1,6 +1,9 @@
 dracut (014-1) unstable; urgency=low
 
   * new upstream version
+  * do not call dracut if no kernel was found Closes: #657754
+  * patches/aufs: aufs was always enabled, now aufs is only activated if
+    the string aufs was given on the command line
   * control: update to Standards version 3.9.2, no changes needed, needs
     util-linux >= 2.20
   * debian/patches, rules: use quilt for a patch for Makefile
