@@ -109,6 +109,20 @@ This parameter can be specified multiple times.</para>
 	    <para>force loading kernel module &lt;drivername&gt; after all automatic loading modules have been loaded. This parameter can be specified multiple times.</para>
           </listitem>
         </varlistentry>
+        <varlistentry>
+          <term>
+            <envar>rd.ctty=<replaceable>&lt;terminal&gt;</replaceable></envar>
+          </term>
+          <listitem>
+            <para>
+              if the dracut image was generated with --ctty option, try to
+              spawn an emergency shell on the specified terminal; if
+              <envar>rd.ctty</envar> is specified without a value or not
+              provided at all, the default is /dev/tty1. The '/dev' prefix
+              can be omitted.
+            </para>
+          </listitem>
+        </varlistentry>
       </variablelist>
     </refsect2>
     <refsect2 id="dracut-kernel-debug">
@@ -452,9 +466,9 @@ with a valid DHCP root-path.</para>
           </listitem>
         </varlistentry>
         <varlistentry>
-          <term><envar>ip=</envar><replaceable>&lt;client-IP&gt;</replaceable>:<optional>
-              <replaceable>&lt;server-id&gt;</replaceable>
-            </optional>:<replaceable>&lt;gateway-IP&gt;</replaceable>:<replaceable>&lt;netmask&gt;</replaceable>:<replaceable>&lt;client_hostname&gt;</replaceable>:<replaceable>&lt;interface&gt;</replaceable>:<replaceable>{none|off}</replaceable></term>
+          <term><envar>ip=</envar><replaceable>&lt;client-IP&gt;</replaceable>:
+              <replaceable>&lt;server-IP&gt;</replaceable>
+            :<replaceable>&lt;gateway-IP&gt;</replaceable>:<replaceable>&lt;netmask&gt;</replaceable>:<replaceable>&lt;client_hostname&gt;</replaceable>:<replaceable>&lt;interface&gt;</replaceable>:<replaceable>{none|off}</replaceable></term>
           <listitem>
             <para>explicit network configuration. If you want do define a IPv6 address, put it in brackets (e.g. [2001:DB8::1]).
 This parameter can be specified multiple times.</para>
@@ -464,7 +478,6 @@ This parameter can be specified multiple times.</para>
           <term><envar>ifname=</envar><replaceable>&lt;interface&gt;</replaceable>:<replaceable>&lt;MAC&gt;</replaceable></term>
           <listitem>
             <para>Assign network device name &lt;interface&gt; (ie eth0) to the NIC with MAC &lt;MAC&gt;.
-Note letters in the MAC-address must be lowercase!
 <remark>Note: If you use this option you <emphasis remap="B">must</emphasis> specify an ifname= argument for all interfaces used in ip= or fcoe= arguments.</remark>
 This parameter can be specified multiple times.</para>
           </listitem>
@@ -492,6 +505,14 @@ Required if multiple ip= lines are used.</para>
           </term>
           <listitem>
             <para>turn on/off biosdevname network interface renaming</para>
+          </listitem>
+        </varlistentry>
+        <varlistentry>
+          <term>
+            <envar>rd.neednet=</envar><replaceable>&lt;0|1&gt;</replaceable>
+          </term>
+          <listitem>
+            <para>boolean, bring up network even without netroot set</para>
           </listitem>
         </varlistentry>
       </variablelist>

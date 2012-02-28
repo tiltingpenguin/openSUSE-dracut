@@ -40,6 +40,7 @@ wait_for_loginit()
 
 emergency_shell()
 {
+    local _ctty
     set +e
     if [ "$1" = "-n" ]; then
         _rdshell_name=$2
@@ -57,8 +58,17 @@ emergency_shell()
         echo "Dropping to debug shell."
         echo
         export PS1="$_rdshell_name:\${PWD}# "
-        [ -e /.profile ] || echo "exec 0<>/dev/console 1<>/dev/console 2<>/dev/console" > /.profile
-        sh -i -l
+        [ -e /.profile ] || >/.profile
+        _ctty=/dev/console
+        if [ -n "$(command -v setsid)" ]; then
+            _ctty="$(getarg rd.ctty=)" && _ctty="/dev/${_ctty##*/}"
+            [ -c "$_ctty" ] || _ctty=/dev/tty1
+            setsid sh -i -l 0<$_ctty 1>$_ctty 2>&1
+        elif [ -n "$(command -v openvt)" ] && ! getarg "console=" >/dev/null 2>&1 && getargbool 1 "rd.openvt" ; then
+            openvt -f -c 1 -w -s -l -- sh
+        else
+            sh -i -l 0<$_ctty 1>$_ctty 2>&1
+        fi
     else
         warn "Boot has failed. To debug this issue add \"rdshell\" to the kernel command line."
         # cause a kernel panic
@@ -102,16 +112,7 @@ if [ "$RD_DEBUG" = "yes" ]; then
 fi
 
 if ! ismounted /dev; then
-    # try to mount devtmpfs
-    if ! mount -t devtmpfs -o mode=0755,nosuid devtmpfs /dev >/dev/null 2>&1; then
-        # if it failed fall back to normal tmpfs
-        mount -t tmpfs -o mode=0755,nosuid tmpfs /dev >/dev/null 2>&1
-        # Make some basic devices first, let udev handle the rest
-        mknod -m 0666 /dev/null c 1 3
-        mknod -m 0666 /dev/ptmx c 5 2
-        mknod -m 0600 /dev/console c 5 1
-        mknod -m 0660 /dev/kmsg c 1 11
-    fi
+    mount -t devtmpfs -o mode=0755,nosuid devtmpfs /dev >/dev/null 
 fi
 
 # prepare the /dev directory
@@ -122,17 +123,17 @@ fi
 
 if ! ismounted /dev/pts; then
     mkdir -m 0755 /dev/pts
-    mount -t devpts -o gid=5,mode=620,noexec,nosuid devpts /dev/pts >/dev/null 2>&1
+    mount -t devpts -o gid=5,mode=620,noexec,nosuid devpts /dev/pts >/dev/null 
 fi
 
 if ! ismounted /dev/shm; then
     mkdir -m 0755 /dev/shm
-    mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /dev/shm >/dev/null 2>&1
+    mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /dev/shm >/dev/null 
 fi
 
 if ! ismounted /run; then
     mkdir -m 0755 /newrun
-    mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /newrun >/dev/null 2>&1
+    mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /newrun >/dev/null 
     cp -a /run/* /newrun
     mount --move /newrun /run
     rm -fr /newrun
@@ -200,6 +201,7 @@ udevproperty "hookdir=$hookdir"
 getarg 'rd.break=pre-trigger' 'rdbreak=pre-trigger' && emergency_shell -n pre-trigger "Break before pre-trigger"
 source_hook pre-trigger
 
+udevadm control --reload >/dev/null 2>&1 || :
 # then the rest
 udevadm trigger --type=subsystems --action=add >/dev/null 2>&1
 udevadm trigger --type=devices --action=add >/dev/null 2>&1
@@ -259,16 +261,16 @@ while :; do
     fi
 
     if [ $main_loop -gt $(($RDRETRY/2)) ]; then
-	for job in $hookdir/initqueue/timeout/*.sh; do
+        for job in $hookdir/initqueue/timeout/*.sh; do
             [ -e "$job" ] || break
             job=$job . $job
             main_loop=0
-	done
+        done
     fi
 
     main_loop=$(($main_loop+1))
     [ $main_loop -gt $RDRETRY ] \
-        && { flock -s 9 ; emergency_shell "No root device \"$root\" found"; } 9>/.console_lock
+        && { flock -s 9 ; emergency_shell "Unable to process initqueue"; } 9>/.console_lock
 done
 unset job
 unset queuetriggered
@@ -316,7 +318,7 @@ source_hook pre-pivot
 
 # By the time we get here, the root filesystem should be mounted.
 # Try to find init. 
-for i in "$(getarg real_init=)" "$(getarg init=)" /sbin/init /etc/init /init /bin/sh; do
+for i in "$(getarg real_init=)" "$(getarg init=)" $(getargs rd.distroinit=) /sbin/init; do
     [ -n "$i" ] || continue
 
     __p=$(readlink -f "${NEWROOT}/${i}")
@@ -420,6 +422,8 @@ wait_for_loginit
 
 getarg rd.break rdbreak && emergency_shell -n switch_root "Break before switch_root"
 info "Switching root"
+
+source_hook cleanup
 
 unset PS4
 

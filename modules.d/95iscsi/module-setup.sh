@@ -23,7 +23,7 @@ check() {
         [[ -d iscsi_session ]]
     )
 
-    [[ $hostonly ]] && {
+    [[ $hostonly ]] || [[ $mount_needs ]] && {
         _rootdev=$(find_root_block_device)
         if [[ $_rootdev ]]; then
             # root lives on a block device, so we can be more precise about
@@ -48,10 +48,11 @@ installkernel() {
         while read _f; do case "$_f" in
             *.ko)    [[ $(<         $_f) =~ $_iscsifuncs ]] && echo "$_f" ;;
             *.ko.gz) [[ $(gzip -dc <$_f) =~ $_iscsifuncs ]] && echo "$_f" ;;
+            *.ko.xz) [[ $(xz -dc   <$_f) =~ $_iscsifuncs ]] && echo "$_f" ;;
             esac
         done
     }
-    find_kernel_modules_by_path drivers/scsi \
+    { find_kernel_modules_by_path drivers/scsi; find_kernel_modules_by_path drivers/s390/scsi; } \
     | iscsi_module_filter  |  instmods
 }
 
@@ -63,6 +64,6 @@ install() {
     inst iscsi-iname
     inst_hook cmdline 90 "$moddir/parse-iscsiroot.sh"
     inst_hook pre-pivot 90 "$moddir/cleanup-iscsi.sh"
-    inst "$moddir/iscsiroot" "/sbin/iscsiroot"
+    inst "$moddir/iscsiroot.sh" "/sbin/iscsiroot"
     inst "$moddir/mount-lun.sh" "/bin/mount-lun.sh"
 }

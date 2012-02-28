@@ -13,6 +13,7 @@ export TERM=linux
 
 emergency_shell()
 {
+    local _ctty
     set +e
     if [ "$1" = "-n" ]; then
         _rdshell_name=$2
@@ -25,12 +26,20 @@ emergency_shell()
     source_hook shutdown-emergency
     echo
     if getargbool 1 rd.shell -y rdshell || getarg rd.break rdbreak; then
-        [ -x /lib/udev/console_init ] && /lib/udev/console_init /dev/console
         echo "Dropping to debug shell."
         echo
         export PS1="$_rdshell_name:\${PWD}# "
-        [ -e /.profile ] || echo "exec 0<>/dev/console 1<>/dev/console 2<>/dev/console" > /.profile
-        sh -i -l
+        [ -e /.profile ] || >/.profile
+        _ctty=/dev/console
+        if [ -n "$(command -v setsid)" ]; then
+            _ctty="$(getarg rd.ctty=)" && _ctty="/dev/${_ctty##*/}"
+            [ -c "$_ctty" ] || _ctty=/dev/tty1
+            setsid sh -i -l 0<$_ctty 1>$_ctty 2>&1
+        elif [ -n "$(command -v openvt)" ] && ! getarg "console=" >/dev/null 2>&1 && getargbool 1 "rd.openvt" ; then
+            openvt -f -c 1 -w -s -l -- sh
+        else
+            sh -i -l 0<$_ctty 1>$_ctty 2>&1
+        fi
     else
         exec /lib/systemd/systemd-shutdown "$@"
         warn "Shutdown has failed. To debug this issue add \"rdshell\" to the kernel command line."

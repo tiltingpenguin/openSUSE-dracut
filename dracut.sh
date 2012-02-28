@@ -40,8 +40,10 @@ Creates initial ramdisk images for preloading modules
   -a, --add [LIST]      Add a space-separated list of dracut modules.
   -d, --drivers [LIST]  Specify a space-separated list of kernel modules to
                         exclusively include in the initramfs.
-  --add-drivers [LIST]  Specify a space-separated list of kernel
+  --add-drivers [LIST] Specify a space-separated list of kernel
                         modules to add to the initramfs.
+  --omit-drivers [LIST] Specify a space-separated list of kernel
+                        modules not to add to the initramfs.
   --filesystems [LIST]  Specify a space-separated list of kernel filesystem
                         modules to exclusively include in the generic
                         initramfs.
@@ -85,6 +87,10 @@ Creates initial ramdisk images for preloading modules
   -H, --hostonly        Host-Only mode: Install only what is needed for
                          booting the local host instead of a generic host.
   --fstab               Use /etc/fstab to determine the root device.
+  --add-fstab [FILE]    Add file to the initramfs fstab
+  --mount "[DEV] [MP] [FSTYPE] [FSOPTS]"
+                        Mount device [DEV] on mountpoint [MP] with filesystem
+                        [FSTYPE] and options [FSOPTS] in the initramfs
   -i, --include [SOURCE] [TARGET]
                         Include the files in the SOURCE directory into the
                          Target directory in the final initramfs.
@@ -114,6 +120,12 @@ Creates initial ramdisk images for preloading modules
   -M, --show-modules    Print included module's name to standard output during
                          build.
   --keep                Keep the temporary initramfs for debugging purposes
+  --sshkey [SSHKEY]     Add ssh key to initramfs (use with ssh-client module)
+  --ctty                Add control tty for emergency shells
+
+If [LIST] has multiple arguments, then you have to put these in quotes.
+For example:
+# dracut --add-drivers "module1 module2"  ...
 EOF
 }
 
@@ -200,6 +212,7 @@ while (($# > 0)); do
         -a|--add)      push_arg add_dracutmodules_l  "$@" || shift;;
         --force-add)   push_arg force_add_dracutmodules_l  "$@" || shift;;
         --add-drivers) push_arg add_drivers_l        "$@" || shift;;
+        --omit-drivers) push_arg omit_drivers_l      "$@" || shift;;
         -m|--modules)  push_arg dracutmodules_l      "$@" || shift;;
         -o|--omit)     push_arg omit_dracutmodules_l "$@" || shift;;
         -d|--drivers)  push_arg drivers_l            "$@" || shift;;
@@ -207,6 +220,8 @@ while (($# > 0)); do
         -I|--install)  push_arg install_items_l      "$@" || shift;;
         --fwdir)       push_arg fw_dir_l             "$@" || shift;;
         --fscks)       push_arg fscks_l              "$@" || shift;;
+        --add-fstab)   push_arg add_fstab_l          "$@" || shift;;
+        --mount)       push_arg fstab_lines          "$@" || shift;;
         --nofscks)     nofscks_l="yes";;
         -k|--kmoddir)  read_arg drivers_dir_l        "$@" || shift;;
         -c|--conf)     read_arg conffile             "$@" || shift;;
@@ -226,6 +241,8 @@ while (($# > 0)); do
         --nolvmconf)   lvmconf_l="no";;
         --debug)       debug="yes";;
         --profile)     profile="yes";;
+        --ctty)        cttyhack="yes";;
+        --sshkey)      read_arg sshkey   "$@" || shift;;
         -v|--verbose)  ((verbosity_mod_l++));;
         -q|--quiet)    ((verbosity_mod_l--));;
         -l|--local)    allowlocal="yes" ;;
@@ -265,9 +282,17 @@ if ! [[ $kernel ]]; then
 fi
 [[ $outfile ]] || outfile="/boot/initramfs-$kernel.img"
 
-PATH=/sbin:/bin:/usr/sbin:/usr/bin
-export PATH
+for i in /usr/sbin /sbin /usr/bin /bin; do
+    rl=$i
+    if [ -L "$i" ]; then
+        rl=$(readlink -f $i)
+    fi
+    NPATH+=":$rl"
+done
+export PATH="${NPATH#:}"
+unset NPATH
 unset LD_LIBRARY_PATH
+unset GREP_OPTIONS
 
 [[ $debug ]] && {
     export PS4='${BASH_SOURCE}@${LINENO}(${FUNCNAME[0]}): ';
@@ -282,7 +307,7 @@ unset LD_LIBRARY_PATH
 
 [[ $dracutbasedir ]] || dracutbasedir=/usr/lib/dracut
 
-[[ $allowlocal && -f "$(readlink -f ${0%/*})/dracut-functions" ]] && \
+[[ $allowlocal && -f "$(readlink -f ${0%/*})/dracut-functions.sh" ]] && \
     dracutbasedir="$(readlink -f ${0%/*})"
 
 # if we were not passed a config file, try the default one
@@ -319,22 +344,27 @@ if (( ${#force_add_dracutmodules_l[@]} )); then
     done
 fi
 
-
-if (( ${#add_drivers_l[@]} )); then
-    while pop add_drivers_l val; do
-        add_drivers+=" $val "
-    done
-fi
-
 if (( ${#fscks_l[@]} )); then
     while pop fscks_l val; do
         fscks+=" $val "
     done
 fi
 
+if (( ${#add_fstab_l[@]} )); then
+    while pop add_fstab_l val; do
+        add_fstab+=" $val "
+    done
+fi
+
+if (( ${#fstab_lines_l[@]} )); then
+    while pop fstab_lines_l val; do
+        push fstab_lines $val
+    done
+fi
+
 if (( ${#install_items_l[@]} )); then
     while pop install_items_l val; do
-        push install_items $val
+        install_items+=" $val "
     done
 fi
 
@@ -350,13 +380,6 @@ if (( ${#omit_dracutmodules_l[@]} )); then
     omit_dracutmodules=''
     while pop omit_dracutmodules_l val; do
         omit_dracutmodules+="$val "
-    done
-fi
-
-if (( ${#drivers_l[@]} )); then
-    drivers=''
-    while pop drivers_l val; do
-        drivers+="$val "
     done
 fi
 
@@ -413,10 +436,10 @@ fi
 [[ $hostonly = yes ]] && hostonly="-h"
 [[ $hostonly != "-h" ]] && unset hostonly
 
-if [[ -f $dracutbasedir/dracut-functions ]]; then
-    . $dracutbasedir/dracut-functions
+if [[ -f $dracutbasedir/dracut-functions.sh ]]; then
+    . $dracutbasedir/dracut-functions.sh
 else
-    echo "Cannot find $dracutbasedir/dracut-functions." >&2
+    echo "Cannot find $dracutbasedir/dracut-functions.sh." >&2
     echo "Are you running from a git checkout?" >&2
     echo "Try passing -l as an argument to $0" >&2
     exit 1
@@ -429,8 +452,39 @@ if (( ${BASH_VERSINFO[0]} < 3 ||
     exit 1
 fi
 
-dracutfunctions=$dracutbasedir/dracut-functions
+dracutfunctions=$dracutbasedir/dracut-functions.sh
 export dracutfunctions
+
+if (( ${#drivers_l[@]} )); then
+    drivers=''
+    while pop drivers_l val; do
+        drivers+="$val "
+    done
+fi
+drivers=${drivers/-/_}
+
+if (( ${#add_drivers_l[@]} )); then
+    while pop add_drivers_l val; do
+        add_drivers+=" $val "
+    done
+fi
+add_drivers=${add_drivers/-/_}
+
+if (( ${#omit_drivers_l[@]} )); then
+    while pop omit_drivers_l val; do
+        omit_drivers+=" $val "
+    done
+fi
+omit_drivers=${omit_drivers/-/_}
+
+omit_drivers_corrected=""
+for d in $omit_drivers; do
+    strstr " $drivers $add_drivers " " $d " && continue
+    omit_drivers_corrected+="$d|"
+done
+omit_drivers="${omit_drivers_corrected%|}"
+unset omit_drivers_corrected
+
 
 ddebug "Executing $0 $dracut_args"
 
@@ -507,12 +561,73 @@ trap 'exit 1;' SIGINT
 # Need to be able to have non-root users read stuff (rpcbind etc)
 chmod 755 "$initdir"
 
+for line in "${fstab_lines[@]}"; do
+    set -- $line
+    #dev mp fs fsopts
+    push host_devs "$1"
+    push host_fs_types "$1|$3"
+done
+
+for f in $add_fstab; do
+    [ -e $f ] || continue
+    while read dev rest; do
+        push host_devs $dev
+    done < $f
+done
+
+if [[ $hostonly ]]; then
+    # in hostonly mode, determine all devices, which have to be accessed
+    # and examine them for filesystem types
+
+    push host_mp \
+        "/" \
+        "/etc" \
+        "/usr" \
+        "/usr/bin" \
+        "/usr/sbin" \
+        "/usr/lib" \
+        "/usr/lib64" \
+        "/boot"
+
+    for mp in "${host_mp[@]}"; do
+        mountpoint "$mp" >/dev/null 2>&1 || continue
+        push host_devs $(readlink -f "/dev/block/$(find_block_device "$mp")")
+    done
+fi
+
+_get_fs_type() (
+    [[ $1 ]] || return
+    if [[ -b $1 ]] && get_fs_env $1; then
+        echo "$1|$ID_FS_TYPE"
+        return 1
+    fi
+    if [[ -b /dev/block/$1 ]] && get_fs_env /dev/block/$1; then
+        echo "/dev/block/$1|$ID_FS_TYPE"
+        return 1
+    fi
+    if fstype=$(find_dev_fstype $1); then
+        echo "$1|$fstype"
+        return 1
+    fi
+    return 1
+)
+
+for dev in "${host_devs[@]}"; do
+    unset fs_type
+    for fstype in $(_get_fs_type $dev) \
+        $(check_block_and_slaves _get_fs_type $(get_maj_min $dev)); do
+        if ! strstr " ${host_fs_types[*]} " " $fstype ";then
+            push host_fs_types "$fstype"
+        fi
+    done
+done
+
 export initdir dracutbasedir dracutmodules drivers \
     fw_dir drivers_dir debug no_kernel kernel_only \
-    add_drivers mdadmconf lvmconf filesystems \
-    use_fstab libdir usrlibdir fscks nofscks \
+    add_drivers omit_drivers mdadmconf lvmconf filesystems \
+    use_fstab fstab_lines libdir usrlibdir fscks nofscks cttyhack \
     stdloglvl sysloglvl fileloglvl kmsgloglvl logfile \
-    debug
+    debug host_fs_types host_devs sshkey
 
 # Create some directory structure first
 [[ $prefix ]] && mkdir -m 0755 -p "${initdir}${prefix}"
@@ -527,18 +642,18 @@ if [[ $prefix ]]; then
 fi
 
 if [[ $kernel_only != yes ]]; then
-    for d in bin etc lib "$libdir" sbin tmp usr var var/log usr/bin usr/sbin; do
+    for d in usr/bin usr/sbin bin etc lib "$libdir" sbin tmp usr var var/log; do
         [[ -e "${initdir}${prefix}/$d" ]] && continue
-        if [ -h "/$d" ]; then
-            inst "/$d" "${prefix}/$d"
+        if [ -L "/$d" ]; then
+            inst_symlink "/$d" "${prefix}/$d"
         else
             mkdir -m 0755 -p "${initdir}${prefix}/$d"
         fi
     done
 
     for d in dev proc sys sysroot root run run/lock run/initramfs; do
-        if [ -h "/$d" ]; then
-            inst "/$d"
+        if [ -L "/$d" ]; then
+            inst_symlink "/$d"
         else
             mkdir -m 0755 -p "$initdir/$d"
         fi
@@ -557,9 +672,16 @@ else
     done
 fi
 
+if [[ $kernel_only != yes ]]; then
+    mkdir -p "${initdir}/etc/cmdline.d"
+fi
+
+mods_to_load=""
 # check all our modules to see if they should be sourced.
 # This builds a list of modules that we will install next.
-check_module_dir
+for_each_module_dir check_module
+for_each_module_dir check_mount
+
 modules_loaded=" "
 # source our modules.
 for moddir in "$dracutbasedir/modules.d"/[0-9][0-9]*; do
@@ -617,18 +739,23 @@ while pop include_src src && pop include_target tgt; do
     fi
 done
 
-while pop install_items items; do
-    for item in $items; do
-        dracut_install "$item"
-    done
-done
-unset item
-
-
 if [[ $kernel_only != yes ]]; then
+    for item in $install_items; do
+        dracut_install -o "$item"
+    done
+    unset item
+
+    while pop fstab_lines line; do
+        echo "$line 0 0" >> "${initdir}/etc/fstab"
+    done
+
+    for f in $add_fstab; do
+        cat $f >> "${initdir}/etc/fstab"
+    done
+
     # make sure that library links are correct and up to date
     for f in /etc/ld.so.conf /etc/ld.so.conf.d/*; do
-        [[ -e $f ]] && inst_simple "$f"
+        [[ -f $f ]] && inst_simple "$f"
     done
     if ! ldconfig -r "$initdir"; then
         if [[ $UID = 0 ]]; then
@@ -668,11 +795,14 @@ type hardlink &>/dev/null && {
 }
 
 if strstr "$modules_loaded" " fips " && command -v prelink >/dev/null; then
-    for i in $initdir/bin/* \
-       $initdir/sbin/* \
-       $initdir/usr/bin/* \
-       $initdir/usr/sbin/*; do
-       [ -x $i ] && prelink -u $i &>/dev/null
+    for dir in "$initdir/bin" \
+       "$initdir/sbin" \
+       "$initdir/usr/bin" \
+       "$initdir/usr/sbin"; do
+        [[ -L "$dir" ]] && continue
+        for i in "$dir"/*; do
+            [[ -x $i ]] && prelink -u $i &>/dev/null
+        done
     done
 fi
 

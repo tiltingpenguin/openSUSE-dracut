@@ -19,19 +19,33 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-[[ $# -le 2 ]] || { echo "Usage: $(basename $0) [<initramfs file> [<filename>]]" ; exit 1 ; }
+[[ $# -le 2 ]] || { echo "Usage: $(basename $0) [-s] [<initramfs file> [<filename>]]" ; exit 1 ; }
+
+sorted=0
+while getopts "s" opt; do
+    case $opt in
+        s)  sorted=1;;
+        \?) exit 1;;
+    esac
+done
+shift $((OPTIND-1))
+
 image="${1:-/boot/initramfs-$(uname -r).img}"
 [[ -f "$image" ]]    || { echo "$image does not exist" ; exit 1 ; }
 
 CAT=zcat
 FILE_T=$(file "$image")
 
+if echo "test"|xz|xz -dc --single-stream >/dev/null 2>&1; then
+    XZ_SINGLE_STREAM="--single-stream"
+fi
+
 if [[ "$FILE_T" =~ ": gzip compressed data" ]]; then
     CAT=zcat
 elif [[ "$FILE_T" =~ ": xz compressed data" ]]; then
-    CAT=xzcat
+    CAT="xzcat $XZ_SINGLE_STREAM"
 elif [[ "$FILE_T" =~ ": XZ compressed data" ]]; then
-    CAT=xzcat
+    CAT="xzcat $XZ_SINGLE_STREAM"
 elif [[ "$FILE_T" =~ ": data" ]]; then
     CAT=lzcat
 fi
@@ -45,5 +59,9 @@ echo "$image: $(du -h $image | awk '{print $1}')"
 echo "========================================================================"
 $CAT "$image" | cpio --extract --verbose --quiet --to-stdout 'lib/dracut/dracut-*' 2>/dev/null
 echo "========================================================================"
-$CAT "$image" | cpio --extract --verbose --quiet --list
+if [ "$sorted" -eq 1 ]; then
+    $CAT "$image" | cpio --extract --verbose --quiet --list | sort -n -k5
+else
+    $CAT "$image" | cpio --extract --verbose --quiet --list
+fi
 echo "========================================================================"

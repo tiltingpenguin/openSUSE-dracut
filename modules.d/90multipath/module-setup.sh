@@ -40,11 +40,12 @@ installkernel() {
         while read _f; do case "$_f" in
             *.ko)    [[ $(<         $_f) =~ $_mpfuncs ]] && echo "$_f" ;;
             *.ko.gz) [[ $(gzip -dc <$_f) =~ $_mpfuncs ]] && echo "$_f" ;;
+            *.ko.xz) [[ $(xz -dc   <$_f) =~ $_mpfuncs ]] && echo "$_f" ;;
             esac
         done
     }
 
-    ( find_kernel_modules_by_path drivers/scsi;
+    ( find_kernel_modules_by_path drivers/scsi; find_kernel_modules_by_path drivers/s390/scsi ;
       find_kernel_modules_by_path drivers/md )  |  mp_mod_filter  |  instmods
     [[ $debug ]] && set -x
 }

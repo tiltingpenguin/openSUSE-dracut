@@ -41,7 +41,9 @@ setup_interface() {
         done
     fi >> /tmp/net.$netif.resolv.conf
 
-    [ -n "$hostname" ] && echo "echo $hostname > /proc/sys/kernel/hostname" > /tmp/net.$netif.hostname
+    # Note: hostname can be fqdn OR short hostname, so chop off any
+    # trailing domain name and explicity add any domain if set.
+    [ -n "$hostname" ] && echo "echo ${hostname%.$domain}${domain+.$domain} > /proc/sys/kernel/hostname" > /tmp/net.$netif.hostname
 }
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -74,7 +76,13 @@ case $reason in
             echo "$line"
         done >/tmp/dhclient.$netif.dhcpopts
         echo online > /sys/class/net/$netif/uevent
-        initqueue --onetime --name netroot-$netif netroot $netif
+
+        if [ -e /tmp/net.$netif.manualup ]; then
+            /sbin/netroot $netif -m
+            rm -f /tmp/net.$netif.manualup
+        else
+            initqueue --onetime --name netroot-$netif netroot $netif
+        fi
         ;;
     *) echo "dhcp: $reason";;
 esac

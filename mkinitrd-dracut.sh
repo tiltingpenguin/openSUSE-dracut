@@ -8,6 +8,7 @@ usage () {
 
     $cmd "usage: ${0##*/} [--version] [--help] [-v] [-f] [--preload <module>]"
     $cmd "       [--image-version] [--with=<module>]"
+    $cmd "       [--nocompress]"
     $cmd "       <initrd-image> <kernel-version>"
     $cmd ""
     $cmd "       (ex: ${0##*/} /boot/initramfs-$kver.img $kver)"
@@ -49,10 +50,10 @@ while (($# > 0)); do
             exit 0;;
         -v|--verbose) dracut_args="${dracut_args} -v";;
         -f|--force) dracut_args="${dracut_args} -f";;
-        --preload) read_args modname "$@" || shift
+        --preload) read_arg modname "$@" || shift
             basicmodules="$basicmodules $modname";;
         --image-version) img_vers=yes;;
-        --rootfs) read_args rootfs "$@" || shift
+        --rootfs) read_arg rootfs "$@" || shift
             dracut_args="${dracut_args} --filesystems $rootfs";;
         --nocompress) dracut_args="$dracut_args --no-compress";;
         --help) usage -n;;

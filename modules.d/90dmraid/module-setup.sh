@@ -11,19 +11,37 @@ check() {
     . $dracutfunctions
     [[ $debug ]] && set -x
 
-    is_dmraid() { get_fs_type /dev/block/$1 |grep -v linux_raid_member | \
-        grep -q _raid_member; }
+    check_dmraid() {
+        local dev=$1 fs=$2 holder DEVPATH DM_NAME
+        [[ "$fs" = "${fs%%_raid_member}" ]] && return 1
 
-    [[ $hostonly ]] && {
-        _rootdev=$(find_root_block_device)
-        if [[ $_rootdev ]]; then
-        # root lives on a block device, so we can be more precise about
-        # hostonly checking
-            check_block_and_slaves is_dmraid "$_rootdev" || return 1
-        else
-        # root is not on a block device, use the shotgun approach
-            dmraid -r | grep -q ok || return 1
+        DEVPATH=$(udevadm info --query=property --name=$dev \
+            | while read line; do
+                [[ ${line#DEVPATH} = $line ]] && continue
+                eval "$line"
+                echo $DEVPATH
+                break
+                done)
+        for holder in /sys/$DEVPATH/holders/*; do
+            [[ -e $holder ]] || continue
+            DM_NAME=$(udevadm info --query=property --path=$holder \
+                | while read line; do
+                    [[ ${line#DM_NAME} = $line ]] && continue
+                    eval "$line"
+                    echo $DM_NAME
+                    break
+                    done)
+        done
+
+        [[ ${DM_NAME} ]] || return 1
+        if ! [[ $kernel_only ]]; then
+            echo " rd.dm.uuid=${DM_NAME} " >> "${initdir}/etc/cmdline.d/90dmraid.conf"
         fi
+        return 0
+    }
+
+    [[ $hostonly ]] || [[ $mount_needs ]] && {
+        for_each_host_dev_fs check_dmraid || return 1
     }
 
     return 0

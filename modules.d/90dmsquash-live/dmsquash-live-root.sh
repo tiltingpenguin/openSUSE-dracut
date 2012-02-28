@@ -200,7 +200,12 @@ if [ -n "$ROOTFLAGS" ]; then
     ROOTFLAGS="-o $ROOTFLAGS"
 fi
 
+if [ -b "$BASE_LOOPDEV" ]; then
+    ln -s $BASE_LOOPDEV /run/initramfs/live-baseloop
+fi
 ln -s /dev/mapper/live-rw /dev/root
 printf '/bin/mount %s /dev/mapper/live-rw %s\n' "$ROOTFLAGS" "$NEWROOT" > $hookdir/mount/01-$$-live.sh
+
+need_shutdown
 
 exit 0

@@ -130,18 +130,22 @@ test_setup() {
      kernel=$KVERSION
      (
      	initdir=$TESTDIR/mnt
- 	. $basedir/dracut-functions
+ 	. $basedir/dracut-functions.sh
  	dracut_install sh ls shutdown poweroff stty cat ps ln ip \
- 	    /lib/terminfo/l/linux dmesg mkdir cp ping exportfs \
+ 	    dmesg mkdir cp ping exportfs \
  	    modprobe rpc.nfsd rpc.mountd showmount tcpdump \
  	    /etc/services sleep mount chmod
+        for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
+	    [ -f ${_terminfodir}/l/linux ] && break
+	done
+	dracut_install -o ${_terminfodir}/l/linux
  	type -P portmap >/dev/null && dracut_install portmap
  	type -P rpcbind >/dev/null && dracut_install rpcbind
  	[ -f /etc/netconfig ] && dracut_install /etc/netconfig
  	type -P dhcpd >/dev/null && dracut_install dhcpd
  	[ -x /usr/sbin/dhcpd3 ] && inst /usr/sbin/dhcpd3 /usr/sbin/dhcpd
  	instmods nfsd sunrpc ipv6
- 	inst ./server-init /sbin/init
+ 	inst ./server-init.sh /sbin/init
  	inst ./hosts /etc/hosts
  	inst ./exports /etc/exports
  	inst ./dhcpd.conf /etc/dhcpd.conf
@@ -187,11 +191,15 @@ test_setup() {
     mkdir -p $initdir
 
     (
- 	. $basedir/dracut-functions
+ 	. $basedir/dracut-functions.sh
  	dracut_install sh shutdown poweroff stty cat ps ln ip \
-         	/lib/terminfo/l/linux mount dmesg mkdir \
- 		cp ping grep ls
- 	inst ./client-init /sbin/init
+            mount dmesg mkdir \
+ 	    cp ping grep ls
+        for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
+	    [ -f ${_terminfodir}/l/linux ] && break
+	done
+	dracut_install -o ${_terminfodir}/l/linux
+ 	inst ./client-init.sh /sbin/init
  	(
  	    cd "$initdir"
  	    mkdir -p dev sys proc etc run
@@ -215,20 +223,20 @@ test_setup() {
     (
  	initdir=$TESTDIR/overlay
  	mkdir $TESTDIR/overlay
- 	. $basedir/dracut-functions
+ 	. $basedir/dracut-functions.sh
  	dracut_install poweroff shutdown
  	inst_hook emergency 000 ./hard-off.sh
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
 
     # Make server's dracut image
-    $basedir/dracut -l -i $TESTDIR/overlay / \
+    $basedir/dracut.sh -l -i $TESTDIR/overlay / \
 	-m "dash udev-rules base rootfs-block debug kernel-modules" \
 	-d "piix ide-gd_mod ata_piix ext2 sd_mod e1000" \
 	-f $TESTDIR/initramfs.server $KVERSION || return 1
 
     # Make client's dracut image
-    $basedir/dracut -l -i $TESTDIR/overlay / \
+    $basedir/dracut.sh -l -i $TESTDIR/overlay / \
 	-o "plymouth" \
 	-a "debug" \
 	-d "piix sd_mod sr_mod ata_piix ide-gd_mod e1000 nfs sunrpc" \

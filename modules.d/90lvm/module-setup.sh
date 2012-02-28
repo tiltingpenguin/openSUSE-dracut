@@ -3,25 +3,29 @@
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
 check() {
-    local _rootdev
+    local _rootdev _activated
     # No point trying to support lvm if the binaries are missing
     type -P lvm >/dev/null || return 1
 
     . $dracutfunctions
     [[ $debug ]] && set -x
 
-    is_lvm() { [[ $(get_fs_type /dev/block/$1) = LVM2_member ]]; }
-
-    [[ $hostonly ]] && {
-        _rootdev=$(find_root_block_device)
-        if [[ $_rootdev ]]; then
-            # root lives on a block device, so we can be more precise about
-            # hostonly checking
-            check_block_and_slaves is_lvm "$_rootdev" || return 1
-        else
-            # root is not on a block device, use the shotgun approach
-            blkid | grep -q LVM2_member || return 1
+    check_lvm() {
+        unset DM_VG_NAME
+        unset DM_LV_NAME
+        eval $(udevadm info --query=property --name=$1|egrep '(DM_VG_NAME|DM_LV_NAME)=')
+        [[ ${DM_VG_NAME} ]] && [[ ${DM_LV_NAME} ]] || return 1
+        if ! strstr " ${_activated[*]} " " ${DM_VG_NAME}/${DM_LV_NAME} "; then
+            if ! [[ $kernel_only ]]; then
+                echo " rd.lvm.lv=${DM_VG_NAME}/${DM_LV_NAME} " >> "${initdir}/etc/cmdline.d/90lvm.conf"
+            fi
+            push _activated "${DM_VG_NAME}/${DM_LV_NAME}"
         fi
+        return 0
+    }
+
+    [[ $hostonly ]] || [[ $mount_needs ]] && {
+        for_each_host_dev_fs check_lvm || return 1
     }
 
     return 0

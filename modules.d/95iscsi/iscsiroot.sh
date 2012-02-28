@@ -46,10 +46,16 @@ if getargbool 0 rd.iscsi.firmware -y iscsi_firmware ; then
     if [ -n "${root%%block:*}" ]; then
         # if root is not specified try to mount the whole iSCSI LUN
         printf 'ENV{DEVTYPE}!="partition", SYMLINK=="disk/by-path/*-iscsi-*-*", SYMLINK+="root"\n' >> /etc/udev/rules.d/99-iscsi-root.rules
+        udevadm control --reload
     fi
     iscsistart -b
     exit 0
 fi
+
+unset iscsi_initiator iscsi_target_name iscsi_target_ip iscsi_target_port
+unset iscsi_target_group iscsi_protocol iscsirw iscsi_lun
+unset iscsi_username iscsi_password 
+unset iscsi_in_username iscsi_in_password
 
 # override conf settings by command line options
 arg=$(getargs rd.iscsi.initiator iscsi_initiator=)
@@ -199,6 +205,8 @@ if getarg netroot; then
 else
     handle_netroot $iroot
 fi
+
+need_shutdown
 
 # now we have a root filesystem somewhere in /dev/sda*
 # let the normal block handler handle root=

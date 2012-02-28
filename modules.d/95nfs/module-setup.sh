@@ -3,13 +3,19 @@
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
 check() {
-    # If hostonly was requested, fail the check if we are not actually
-    # booting from root.
-    [ $hostonly ] && ! egrep -q '/ nfs[34 ]' /proc/mounts && return 1
-
     # If our prerequisites are not met, fail anyways.
     type -P rpcbind >/dev/null || type -P portmap >/dev/null || return 1
     type -P rpc.statd mount.nfs mount.nfs4 umount >/dev/null || return 1
+
+    [[ $hostonly ]] || [[ $mount_needs ]] && {
+        for fs in ${host_fs_types[@]}; do
+            strstr "$fs" "\|nfs"  && return 0
+            strstr "$fs" "\|nfs3" && return 0
+            strstr "$fs" "\|nfs4" && return 0
+        done
+        return 255
+    }
+
     return 0
 }
 
@@ -34,7 +40,7 @@ install() {
     for i in /etc/nsswitch.conf /etc/rpc /etc/protocols /etc/idmapd.conf; do
         inst_simple $i
     done
-    dracut_install rpc.idmapd 
+    dracut_install rpc.idmapd
     dracut_install sed
 
     for _i in {"$libdir","$usrlibdir"}/libnfsidmap_nsswitch.so* \
@@ -51,20 +57,21 @@ install() {
     dracut_install $(for _i in $(ls {/usr,}$libdir/libnss*.so 2>/dev/null); do echo $_i;done | egrep "$_nsslibs")
 
     inst_hook cmdline 90 "$moddir/parse-nfsroot.sh"
+    inst_hook pre-udev 99 "$moddir/nfs-start-rpc.sh"
     inst_hook pre-pivot 99 "$moddir/nfsroot-cleanup.sh"
-    inst "$moddir/nfsroot" "/sbin/nfsroot"
+    inst "$moddir/nfsroot.sh" "/sbin/nfsroot"
+    inst "$moddir/nfs-lib.sh" "/lib/nfs-lib.sh"
     mkdir -m 0755 -p "$initdir/var/lib/nfs/rpc_pipefs"
     mkdir -m 0755 -p "$initdir/var/lib/rpcbind"
     mkdir -m 0755 -p "$initdir/var/lib/nfs/statd/sm"
 
     # Rather than copy the passwd file in, just set a user for rpcbind
     # We'll save the state and restart the daemon from the root anyway
-    egrep '^root:' "$initdir/etc/passwd" 2>/dev/null || echo  'root:x:0:0::/:/bin/sh' >> "$initdir/etc/passwd"
-    egrep '^nobody:' /etc/passwd >> "$initdir/etc/passwd"
     egrep '^nfsnobody:' /etc/passwd >> "$initdir/etc/passwd"
     egrep '^rpc:' /etc/passwd >> "$initdir/etc/passwd"
     egrep '^rpcuser:' /etc/passwd >> "$initdir/etc/passwd"
     #type -P nologin >/dev/null && dracut_install nologin
+    egrep '^nobody:' /etc/group >> "$initdir/etc/group"
     egrep '^rpc:' /etc/group >> "$initdir/etc/group"
 
     # rpc user needs to be able to write to this directory to save the warmstart

@@ -10,18 +10,27 @@ check() {
     . $dracutfunctions
     [[ $debug ]] && set -x
 
-    is_mdraid() { [[ -d "/sys/dev/block/$1/md" ]]; }
+    check_mdraid() {
+        local dev=$1 fs=$2 holder DEVPATH MD_UUID
+        [[ "$fs" = "${fs%%_raid_member}" ]] && return 1
 
-    [[ $hostonly ]] && {
-        _rootdev=$(find_root_block_device)
-        if [[ $_rootdev ]]; then
-            # root lives on a block device, so we can be more precise about
-            # hostonly checking
-            check_block_and_slaves is_mdraid "$_rootdev" || return 1
-        else
-            # root is not on a block device, use the shotgun approach
-            blkid | egrep -q '(linux|isw|ddf)_raid' || return 1
+        MD_UUID=$(/sbin/mdadm --examine --export $dev \
+            | while read line; do
+                [[ ${line#MD_UUID} = $line ]] && continue
+                eval "$line"
+                echo $MD_UUID
+                break
+                done)
+
+        [[ ${MD_UUID} ]] || return 1
+        if ! [[ $kernel_only ]]; then
+            echo " rd.md.uuid=${MD_UUID} " >> "${initdir}/etc/cmdline.d/90mdraid.conf"
         fi
+        return 0
+    }
+
+    [[ $hostonly ]] || [[ $mount_needs ]] && {
+        for_each_host_dev_fs check_mdraid || return 1
     }
 
     return 0

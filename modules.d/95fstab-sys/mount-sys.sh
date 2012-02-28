@@ -11,7 +11,7 @@ fstab_mount() {
     info "Mounting from $1"
     while read _dev _mp _fs _opts _dump _pass _rest; do
         [ -z "${_dev%%#*}" ] && continue # Skip comment lines
-        if [ ! -e "$_dev" ]; then
+        if [[ ! "$_fs" =~ "nfs" ]] && [ ! -e "$_dev" ]; then
             warn "Device $_dev doesn't exist, skipping mount."
             continue
         fi
@@ -20,11 +20,16 @@ fstab_mount() {
         fi
         _fs=$(det_fs "$_dev" "$_fs")
         info "Mounting $_dev"
-        mount -v -t $_fs -o $_opts $_dev $NEWROOT/$_mp 2>&1 | vinfo
+        if [[ -d $NEWROOT/$_mp ]]; then
+            mount -v -t $_fs -o $_opts $_dev $NEWROOT/$_mp 2>&1 | vinfo
+        else
+            mkdir -p "$_mp"
+            mount -v -t $_fs -o $_opts $_dev $_mp 2>&1 | vinfo
+        fi
     done < $1
     return 0
 }
 
-for r in $NEWROOT /; do
-    fstab_mount "$r/etc/fstab.sys" && break
+for r in $NEWROOT/etc/fstab.sys /etc/fstab; do
+    fstab_mount $r && break
 done

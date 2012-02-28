@@ -9,7 +9,7 @@ check() {
 
     # if an nbd device is not somewhere in the chain of devices root is
     # mounted on, fail the hostonly check.
-    [[ $hostonly ]] && {
+    [[ $hostonly ]] || [[ $mount_needs ]] && {
         is_nbd() { [[ -b /dev/block/$1 && $1 == 43:* ]] ;}
         . $dracutfunctions
 
@@ -34,6 +34,6 @@ install() {
     inst nbd-client
     inst_hook cmdline 90 "$moddir/parse-nbdroot.sh"
 
-    inst "$moddir/nbdroot" "/sbin/nbdroot"
+    inst "$moddir/nbdroot.sh" "/sbin/nbdroot"
 }
 

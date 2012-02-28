@@ -124,6 +124,7 @@ getargbool() {
     if [ -n "$_b" ]; then
         [ $_b = "0" ] && return 1
         [ $_b = "no" ] && return 1
+        [ $_b = "off" ] && return 1
     fi
     return 0
 }
@@ -391,6 +392,17 @@ wait_for_if_up() {
     return 1
 }
 
+wait_for_route_ok() {
+    local cnt=0
+    while [ $cnt -lt 200 ]; do
+        li=$(ip route show)
+        [ -n "$li" ] && [ -z "${li##*$1*}" ] && return 0
+        sleep 0.1
+        cnt=$(($cnt+1))
+    done
+    return 1
+}
+
 # root=nfs:[<server-ip>:]<root-dir>[:<nfs-options>]
 # root=nfs4:[<server-ip>:]<root-dir>[:<nfs-options>]
 nfsroot_to_var() {
@@ -602,6 +614,92 @@ usable_root() {
     return 0
 }
 
+inst_hook() {
+    local _hookname _unique _name _job _exe
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --hook)
+                _hookname="/$2";shift;;
+            --unique)
+                _unique="yes";;
+            --name)
+                _name="$2";shift;;
+            *)
+                break;;
+        esac
+        shift
+    done
+
+    if [ -z "$_unique" ]; then
+        _job="${_name}$$"
+    else
+        _job="${_name:-$1}"
+        _job=${_job##*/}
+    fi
+
+    _exe=$1
+    shift
+
+    [ -x "$_exe" ] || _exe=$(command -v $_exe)
+
+    if [ -n "$onetime" ]; then
+        {
+            echo '[ -e "$_job" ] && rm "$_job"'
+            echo "$_exe $@"
+        } > "/tmp/$$-${_job}.sh"
+    else
+        echo "$_exe $@" > "/tmp/$$-${_job}.sh"
+    fi
+
+    mv -f "/tmp/$$-${_job}.sh" "$hookdir/${_hookname}/${_job}.sh"
+}
+
+# inst_mount_hook <mountpoint> <prio> <name> <script>
+#
+# Install a mount hook with priority <prio>,
+# which executes <script> as soon as <mountpoint> is mounted.
+inst_mount_hook() {
+    local _prio="$2" _jobname="$3" _script="$4"
+    local _hookname="mount-$(str_replace "$1" '/' '\\x2f')"
+    [ -d "$hookdir/${_hookname}" ] || mkdir -p "$hookdir/${_hookname}"
+    inst_hook --hook "$_hookname" --unique --name "${_prio}-${_jobname}" "$_script"
+}
+
+# add_mount_point <dev> <mountpoint> <filesystem> <fsopts>
+#
+# Mount <dev> on <mountpoint> with <filesystem> and <fsopts>
+# and call any mount hooks, as soon, as it is mounted
+add_mount_point() {
+    local _dev="$1" _mp="$2" _fs="$3" _fsopts="$4"
+    local _hookname="mount-$(str_replace "$2" '/' '\\x2f')"
+    local _devname="dev-$(str_replace "$1" '/' '\\x2f')"
+    echo "$_dev $_mp $_fs $_fsopts 0 0" >> /etc/fstab
+
+    exec 7>/etc/udev/rules.d/99-mount-${_devname}.rules
+    echo 'SUBSYSTEM!="block", GOTO="mount_end"' >&7
+    echo 'ACTION!="add|change", GOTO="mount_end"' >&7
+    if [ -n "$_dev" ]; then
+        udevmatch "$_dev" >&7 || {
+            warn "add_mount_point dev=$_dev incorrect!"
+            continue
+        }
+        printf ', ' >&7
+    fi
+
+    {
+        printf -- 'RUN+="%s --unique --onetime ' $(command -v initqueue)
+        printf -- '--name mount-%%k '
+        printf -- '%s %s"\n' "$(command -v mount_hook)" "${_mp}"
+    } >&7
+    echo 'LABEL="mount_end"' >&7
+    exec 7>&-
+}
+
+# wait_for_mount <mountpoint>
+#
+# Installs a initqueue-finished script,
+# which will cause the main loop only to exit,
+# if <mountpoint> is mounted.
 wait_for_mount()
 {
     local _name
@@ -614,6 +712,11 @@ wait_for_mount()
     } >> "$hookdir/emergency/90-${_name}.sh"
 }
 
+# wait_for_dev <dev>
+#
+# Installs a initqueue-finished script,
+# which will cause the main loop only to exit,
+# if the device <dev> is recognized by the system.
 wait_for_dev()
 {
     local _name
@@ -626,15 +729,27 @@ wait_for_dev()
     } >> "$hookdir/emergency/80-${_name}.sh"
 }
 
+cancel_wait_for_dev()
+{
+    local _name
+    _name="$(str_replace "$1" '/' '\\x2f')"
+    rm -f "$hookdir/initqueue/finished/devexists-${_name}.sh"
+    rm -f "$hookdir/emergency/80-${_name}.sh"
+}
+
 killproc() {
-    local exe="$(command -v $1)"
-    local sig=$2
-    local i
-    [ -x "$exe" ] || return 1
-    for i in /proc/[0-9]*; do 
-        [ "$i" = "/proc/1" ] && continue
-        if [ -e "$i"/exe ] && [  "$i/exe" -ef "$exe" ] ; then
-            kill $sig ${i##*/}
+    local _exe="$(command -v $1)"
+    local _sig=$2
+    local _i
+    [ -x "$_exe" ] || return 1
+    for _i in /proc/[0-9]*; do
+        [ "$_i" = "/proc/1" ] && continue
+        if [ -e "$_i"/_exe ] && [  "$_i/_exe" -ef "$_exe" ] ; then
+            kill $_sig ${_i##*/}
         fi
     done
+}
+
+need_shutdown() {
+    >/run/initramfs/.need_shutdown
 }

@@ -3,6 +3,7 @@
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
 check() {
+    [[ "$mount_needs" ]] && return 1
     return 0
 }
 
@@ -83,7 +84,7 @@ install() {
     install_base() {
         dracut_install setfont loadkeys kbd_mode stty
 
-        inst ${moddir}/console_init /lib/udev/console_init
+        inst ${moddir}/console_init.sh /lib/udev/console_init
         inst_rules ${moddir}/10-console.rules
         inst_hook cmdline 20 "${moddir}/parse-i18n.sh"
     }
@@ -110,8 +111,38 @@ install() {
         [ -f $I18N_CONF ] && . $I18N_CONF
         [ -f $VCONFIG_CONF ] && . $VCONFIG_CONF
 
+        shopt -q -s nocasematch
+        if [[ ${UNICODE} ]]
+        then
+            if [[ ${UNICODE} = YES || ${UNICODE} = 1 ]]
+            then
+                UNICODE=1
+            elif [[ ${UNICODE} = NO || ${UNICODE} = 0 ]]
+            then
+                UNICODE=0
+            else
+                UNICODE=''
+            fi
+        fi
+        if [[ ! ${UNICODE} && ${LANG} =~ .*\.UTF-?8 ]]
+        then
+            UNICODE=1
+        fi
+        shopt -q -u nocasematch
+
         # Gentoo user may have KEYMAP set to something like "-u pl2",
         KEYMAP=${KEYMAP#-* }
+
+        # KEYTABLE is a bit special - it defines base keymap name and UNICODE
+        # determines whether non-UNICODE or UNICODE version is used
+
+        if [[ ${KEYTABLE} ]]; then
+           if [[ ${UNICODE} == 1 ]]; then
+               [[ ${KEYTABLE} =~ .*\.uni.* ]] || KEYTABLE=${KEYTABLE%.map*}.uni
+           fi
+           KEYMAP=${KEYTABLE}
+        fi
+
         # I'm not sure of the purpose of UNIKEYMAP and GRP_TOGGLE.  They were in
         # original redhat-i18n module.  Anyway it won't hurt.
         EXT_KEYMAPS+=\ ${UNIKEYMAP}\ ${GRP_TOGGLE}
@@ -149,25 +180,6 @@ install() {
             FONT_UNIMAP=${FONT_UNIMAP%.uni}
             inst_simple ${kbddir}/unimaps/${FONT_UNIMAP}.uni
         fi
-
-        shopt -q -s nocasematch
-        if [[ ${UNICODE} ]]
-        then
-            if [[ ${UNICODE} = YES || ${UNICODE} = 1 ]]
-            then
-                UNICODE=1
-            elif [[ ${UNICODE} = NO || ${UNICODE} = 0 ]]
-            then
-                UNICODE=0
-            else
-                UNICODE=''
-            fi
-        fi
-        if [[ ! ${UNICODE} && ${LANG} =~ .*\.UTF-?8 ]]
-        then
-            UNICODE=1
-        fi
-        shopt -q -u nocasematch
 
         mksubdirs ${initdir}${I18N_CONF}
         mksubdirs ${initdir}${VCONFIG_CONF}
