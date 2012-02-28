@@ -1,4 +1,5 @@
 modules.d/40network	usr/lib/dracut/modules.d
+modules.d/45url-lib	usr/lib/dracut/modules.d
 modules.d/90livenet	usr/lib/dracut/modules.d
 modules.d/90aufs	usr/lib/dracut/modules.d
 modules.d/95znet	usr/lib/dracut/modules.d
