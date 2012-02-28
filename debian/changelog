@@ -12,6 +12,26 @@ dracut (014-1) unstable; urgency=low
 
  -- Thomas Lange <lange@debian.org>  Mon, 16 Jan 2012 12:30:47 +0100
 
+dracut (013-5) unstable; urgency=high
+
+  * do not call dracut if no kernel was found Closes: #657754
+
+ -- Thomas Lange <lange@debian.org>  Tue, 14 Feb 2012 10:32:02 +0100
+
+dracut (013-4) unstable; urgency=low
+
+  * patches/aufs: aufs was always enabled, now aufs is only activated if
+    the string aufs was given on the command line
+
+ -- Thomas Lange <lange@debian.org>  Sat, 11 Feb 2012 12:14:23 +0100
+
+dracut (013-3) unstable; urgency=low
+
+  * add aufs module, for booting a read-only nfsroot and make it writeable
+  * control: fix VCS fields, update to Standards 3.9.2, no changes needed
+
+ -- Thomas Lange <lange@debian.org>  Mon, 16 Jan 2012 12:32:30 +0100
+
 dracut (013-2) unstable; urgency=low
 
   * control: add Build-Depends Closes: #642683
