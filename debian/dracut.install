@@ -3,6 +3,7 @@ usr/bin/dracut-catimages
 usr/bin/dracut-gencmdline
 usr/lib/dracut/dracut-functions
 usr/lib/dracut/dracut-logger.sh
+usr/lib/dracut/dracut-initramfs-restore
 usr/bin/lsinitrd
 usr/etc/dracut.conf             etc
 debian/kernel                   etc
