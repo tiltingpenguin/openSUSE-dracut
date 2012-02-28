@@ -6,11 +6,13 @@ dracut (017-1) unstable; urgency=low
     the string aufs was given on the command line
   * control: update to Standards version 3.9.2, no changes needed, needs
     util-linux >= 2.20
-  * debian/patches, rules: use quilt for a patch for Makefile
+  * debian/patches, rules: add quilt support
   * add aufs patch
   * control: fix VCS fields
+  * add url-lib, img-lib, ssh-client modules
+  * add add dracut-initramfs-restore
 
- -- Thomas Lange <lange@debian.org>  Mon, 16 Jan 2012 12:30:47 +0100
+ -- Thomas Lange <lange@debian.org>  Tue, 28 Feb 2012 22:00:09 +0100
 
 dracut (013-5) unstable; urgency=high
 
