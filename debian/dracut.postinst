@@ -4,8 +4,7 @@ set -e
 
 # check if any kernel is available
 # do not call dracut if no kernel was found
-ls /boot/vmlinu[zx]-* >/dev/null 2>&1 || true
-if [ $? -eq 0 ]; then
+if ls /boot/vmlinu[zx]-* >/dev/null 2>&1; then
     # Regenerate initramfs when we're `installed`
     /etc/kernel/postinst.d/dracut `uname -r`
 fi
