@@ -1,7 +1,8 @@
 dracut (017-1) unstable; urgency=low
 
   * new upstream version
-  * do not call dracut if no kernel was found Closes: #657754
+  * do not call dracut if no kernel was found, fix code Closes: #657754
+  * control: update to 3.9.3, no changes needed
   * patches/aufs: aufs was always enabled, now aufs is only activated if
     the string aufs was given on the command line
   * control: update to Standards version 3.9.2, no changes needed, needs
@@ -11,8 +12,10 @@ dracut (017-1) unstable; urgency=low
   * control: fix VCS fields
   * add url-lib, img-lib, ssh-client modules
   * add add dracut-initramfs-restore
+  * add patch for missing rpc user and group
+  * add patch for missing unimaps directory Closes: #637296 #661531
 
- -- Thomas Lange <lange@debian.org>  Tue, 28 Feb 2012 22:00:09 +0100
+ -- Thomas Lange <lange@debian.org>  Wed, 29 Feb 2012 17:53:11 +0100
 
 dracut (013-5) unstable; urgency=high
 
