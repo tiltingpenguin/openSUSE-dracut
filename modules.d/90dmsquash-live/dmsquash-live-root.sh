@@ -5,8 +5,6 @@
 type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
 type det_fs >/dev/null 2>&1 || . /lib/fs-lib.sh
 
-[ -f /tmp/root.info ] && . /tmp/root.info
-
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 if getargbool 0 rd.live.debug -y rdlivedebug; then
@@ -42,6 +40,8 @@ if [ -n "$check" ]; then
     fi
     [ -x /bin/plymouth ] && /bin/plymouth --show-splash
 fi
+
+ln -s $livedev /run/initramfs/livedev
 
 # determine filesystem type for a filesystem image
 det_img_fs() {

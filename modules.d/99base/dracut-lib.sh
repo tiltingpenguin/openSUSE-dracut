@@ -383,9 +383,10 @@ ismounted() {
 
 wait_for_if_up() {
     local cnt=0
+    local li
     while [ $cnt -lt 200 ]; do
-        li=$(ip link show $1)
-        [ -z "${li##*state UP*}" ] && return 0
+        li=$(ip -o link show up dev $1)
+        [ -n "$li" ] && return 0
         sleep 0.1
         cnt=$(($cnt+1))
     done
@@ -434,32 +435,6 @@ nfsroot_to_var() {
         options=${path#*,}
         path=${path%%,*}
     fi
-}
-
-ip_to_var() {
-    local v=${1}:
-    local i
-    set --
-    while [ -n "$v" ]; do
-        if [ "${v#\[*:*:*\]:}" != "$v" ]; then
-            # handle IPv6 address
-            i="${v%%\]:*}"
-            i="${i##\[}"
-            set -- "$@" "$i"
-            v=${v#\[$i\]:}
-        else
-            set -- "$@" "${v%%:*}"
-            v=${v#*:}
-        fi
-    done
-
-    unset ip srv gw mask hostname dev autoconf
-    case $# in
-        0)  autoconf="error" ;;
-        1)  autoconf=$1 ;;
-        2)  dev=$1; autoconf=$2 ;;
-        *)  ip=$1; srv=$2; gw=$3; mask=$4; hostname=$5; dev=$6; autoconf=$7 ;;
-    esac
 }
 
 # Create udev rule match for a device with its device name, or the udev property
@@ -752,4 +727,73 @@ killproc() {
 
 need_shutdown() {
     >/run/initramfs/.need_shutdown
+}
+
+wait_for_loginit()
+{
+    [ "$RD_DEBUG" = "yes" ] || return
+    [ -e /run/initramfs/loginit.pipe ] || return
+    set +x
+    echo "DRACUT_LOG_END"
+    exec 0<>/dev/console 1<>/dev/console 2<>/dev/console
+        # wait for loginit
+    i=0
+    while [ $i -lt 10 ]; do
+        if [ ! -e /run/initramfs/loginit.pipe ]; then
+            j=$(jobs)
+            [ -z "$j" ] && break
+            [ -z "${j##*Running*}" ] || break
+        fi
+        sleep 0.1
+        i=$(($i+1))
+    done
+
+    if [ $i -eq 10 ]; then
+        kill %1 >/dev/null 2>&1
+        kill $(while read line;do echo $line;done</run/initramfs/loginit.pid)
+    fi
+
+    setdebug
+    rm -f /run/initramfs/loginit.pipe /run/initramfs/loginit.pid
+}
+
+emergency_shell()
+{
+    local _ctty
+    set +e
+    if [ "$1" = "-n" ]; then
+        _rdshell_name=$2
+        shift 2
+    else
+        _rdshell_name=dracut
+    fi
+    echo ; echo
+    warn $@
+    source_hook emergency
+    echo
+    wait_for_loginit
+    [ -e /run/initramfs/.die ] && exit 1
+    if getargbool 1 rd.shell -y rdshell || getarg rd.break rdbreak; then
+        echo "Dropping to debug shell."
+        echo
+        export PS1="$_rdshell_name:\${PWD}# "
+        [ -e /.profile ] || >/.profile
+
+        _ctty="$(getarg rd.ctty=)" && _ctty="/dev/${_ctty##*/}"
+        if [ -z "$_ctty" ]; then
+            _ctty=console
+            while [ -f /sys/class/tty/$_ctty/active ]; do
+                _ctty=$(cat /sys/class/tty/$_ctty/active)
+                _ctty=${_ctty##* } # last one in the list
+            done
+            _ctty=/dev/$_ctty
+        fi
+        [ -c "$_ctty" ] || _ctty=/dev/tty1
+        strstr "$(setsid --help 2>/dev/null)" "ctty" && CTTY="-c"
+        setsid $CTTY /bin/sh -i -l 0<$_ctty 1>$_ctty 2>&1
+    else
+        warn "Boot has failed. To debug this issue add \"rdshell\" to the kernel command line."
+        # cause a kernel panic
+        exit 1
+    fi
 }

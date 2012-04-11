@@ -40,8 +40,10 @@ BuildRequires: docbook-style-xsl docbook-dtds libxslt
 %endif
 
 %if 0%{?suse_version}
-BuildRequires: docbook-xsl-stylesheets libxslt
+-BuildRequires: docbook-xsl-stylesheets libxslt
 %endif
+
+BuildRequires: asciidoc
 
 %if 0%{?fedora} > 12 || 0%{?rhel}
 # no "provides", because dracut does not offer
@@ -65,20 +67,20 @@ Obsoletes: dracut-kernel < 005
 Provides:  dracut-kernel = %{version}-%{release}
 
 Requires: bash
-Requires: bzip2
 Requires: coreutils
 Requires: cpio
 Requires: filesystem >= 2.1.0
 Requires: findutils
 Requires: grep
-Requires: gzip
+Requires: hardlink
+Requires: gzip xz
 Requires: module-init-tools >= 3.7-9
 Requires: sed
-Requires: udev
+Requires: udev > 166
 %if 0%{?fedora} || 0%{?rhel} > 6
-Requires: util-linux >= 2.20
+Requires: util-linux >= 2.21
 %else
-Requires: util-linux-ng >= 2.17.2
+Requires: util-linux-ng >= 2.21
 %endif
 
 %if 0%{?fedora} || 0%{?rhel} > 6
@@ -161,7 +163,7 @@ git am -p1 %{patches}
 %endif
 
 %build
-make
+make all
 
 %install
 %if 0%{?fedora} || 0%{?rhel}
@@ -248,6 +250,7 @@ rm -rf $RPM_BUILD_ROOT
 %{dracutlibdir}/modules.d/30convertfs
 %{dracutlibdir}/modules.d/45url-lib
 %{dracutlibdir}/modules.d/50plymouth
+%{dracutlibdir}/modules.d/80cms
 %{dracutlibdir}/modules.d/90btrfs
 %{dracutlibdir}/modules.d/90crypt
 %{dracutlibdir}/modules.d/90dm
@@ -272,6 +275,7 @@ rm -rf $RPM_BUILD_ROOT
 %{dracutlibdir}/modules.d/97masterkey
 %{dracutlibdir}/modules.d/98ecryptfs
 %{dracutlibdir}/modules.d/98integrity
+%{dracutlibdir}/modules.d/98pollcdrom
 %{dracutlibdir}/modules.d/98selinux
 %{dracutlibdir}/modules.d/98syslog
 %{dracutlibdir}/modules.d/98usrmount
@@ -317,9 +321,7 @@ rm -rf $RPM_BUILD_ROOT
 
 %files tools
 %defattr(-,root,root,0755)
-%{_mandir}/man8/dracut-gencmdline.8*
 %{_mandir}/man8/dracut-catimages.8*
-%{_bindir}/dracut-gencmdline
 %{_bindir}/dracut-catimages
 %dir /boot/dracut
 %dir /var/lib/dracut

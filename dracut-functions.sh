@@ -34,8 +34,10 @@ fi
 
 # export standard hookdirs
 [[ $hookdirs ]] || {
-    hookdirs="cmdline pre-udev pre-trigger netroot initqueue pre-mount"
-    hookdirs+=" pre-pivot mount emergency shutdown-emergency shutdown cleanup"
+    hookdirs="cmdline pre-udev pre-trigger netroot "
+    hookdirs+="initqueue initqueue/settled initqueue/online initqueue/finished initqueue/timeout "
+    hookdirs+="pre-mount pre-pivot mount "
+    hookdirs+="emergency shutdown-emergency shutdown cleanup "
     export hookdirs
 }
 
@@ -165,50 +167,43 @@ convert_abs_rel() {
 # ext4
 # 551a39aa-4ae9-4e70-a262-ef665cadb574
 get_fs_env() {
+    local evalstr
+    local found
+
     [[ $1 ]] || return
     unset ID_FS_TYPE
     unset ID_FS_UUID
-    eval $(udevadm info --query=env --name=$1|egrep 'ID_FS_(TYPE|UUID)=')
-    [[ $ID_FS_TYPE ]] && return
-
-    if [[ -x /lib/udev/vol_id ]]; then
-        eval $(/lib/udev/vol_id --export $1)
-    elif find_binary blkid >/dev/null; then
-        eval $(blkid -o udev $1)
-    else
+    if evalstr=$(udevadm info --query=env --name=$1 \
+        | { while read line; do
+            strstr "$line" "DEVPATH" && found=1;
+            strstr "$line" "ID_FS_TYPE=" && { echo $line; exit 0;}
+            done; [[ $found ]] && exit 0; exit 1; }) ; then
+        eval $evalstr
+        [[ $ID_FS_TYPE ]] && return 0
         return 1
     fi
+
+    # Fallback, for the old vol_id
+    if [[ -x /lib/udev/vol_id ]]; then
+        if evalstr=$(/lib/udev/vol_id --export $1 \
+            | while read line; do
+                strstr "$line" "ID_FS_TYPE=" && { echo $line; exit 0;}
+                done;) ; then
+            eval $evalstr
+            [[ $ID_FS_TYPE ]] && return 0
+        fi
+    fi
+
+    # Fallback, if we don't have udev information
+    if find_binary blkid >/dev/null; then
+        eval $(blkid -o udev $1 \
+            | while read line; do
+                strstr "$line" "ID_FS_TYPE=" && echo $line;
+                done)
+        [[ $ID_FS_TYPE ]] && return 0
+    fi
+    return 1
 }
-
-# get_fs_uuid <device>
-# Prints the filesystem UUID for a device.
-# Example:
-# $ get_fs_uuid /dev/sda2
-# 551a39aa-4ae9-4e70-a262-ef665cadb574
-get_fs_uuid() (
-    get_fs_env $1 || return
-    echo $ID_FS_UUID
-)
-
-# get_fs_type <device>
-# Prints the filesystem type for a device.
-# Example:
-# $ get_fs_type /dev/sda1
-# ext4
-get_fs_type() (
-    [[ $1 ]] || return
-    if [[ $1 != ${1#/dev/block/nfs:} ]] \
-        || [[ $1 != ${1#/dev/block/nfs3:} ]] \
-        || [[ $1 != ${1#/dev/block/nfs4:} ]]; then
-        echo "nfs"
-        return
-    fi
-    if get_fs_env $1; then
-        echo $ID_FS_TYPE
-        return
-    fi
-    find_dev_fstype $1
-)
 
 # get_maj_min <device>
 # Prints the major and minor of a device node.
@@ -252,6 +247,8 @@ find_block_device() {
     fi
     # fall back to /etc/fstab
     while read _dev _mpt _fs _x; do
+        [ "${_dev%%#*}" != "$_dev" ] && continue
+
         if [[ $_mpt = $1 ]]; then
             [[ $_fs = nfs ]] && { echo $_dev; return 0;}
             [[ $_fs = nfs3 ]] && { echo $_dev; return 0;}
@@ -540,6 +537,7 @@ inst_symlink() {
             inst "$_realsrc"
         fi
     fi
+    [[ ! -e $initdir/${_target%/*} ]] && inst_dir "${_target%/*}"
     [[ -d ${_target%/*} ]] && _target=$(readlink -f ${_target%/*})/${_target##*/}
     ln -sfn $(convert_abs_rel "${_target}" "${_realsrc}") "$initdir/$_target"
 }
@@ -971,8 +969,11 @@ for_each_module_dir() {
 # $1 = full path to kernel module to install
 install_kmod_with_fw() {
     # no need to go further if the module is already installed
+
     [[ -e "${initdir}/lib/modules/$kernel/${1##*/lib/modules/$kernel/}" ]] \
         && return 0
+
+    [[ -e "$initdir/.kernelmodseen/${1##*/}" ]] && return 0
 
     if [[ $omit_drivers ]]; then
         local _kmod=${1##*/}
@@ -987,6 +988,9 @@ install_kmod_with_fw() {
             return 1
         fi
     fi
+
+    [ -d "$initdir/.kernelmodseen" ] && \
+        > "$initdir/.kernelmodseen/${1##*/}"
 
     inst_simple "$1" "/lib/modules/$kernel/${1##*/lib/modules/$kernel/}" \
         || return $?
@@ -1100,35 +1104,28 @@ instmods() {
         local _mod="$1"
         case $_mod in
             =*)
-                # This introduces 2 incompatible meanings for =* arguments
-                # to instmods.  We need to decide which one to keep.
-                if [[ $_mod = =ata && -f $srcmods/modules.block ]]; then
-                    ( [[ "$_mpargs" ]] && echo $_mpargs
-                      egrep 'ata|ahci' "${srcmods}/modules.block" ) \
-                    | instmods
-                elif [ -f $srcmods/modules.${_mod#=} ]; then
+                if [ -f $srcmods/modules.${_mod#=} ]; then
                     ( [[ "$_mpargs" ]] && echo $_mpargs
                       cat "${srcmods}/modules.${_mod#=}" ) \
                     | instmods
                 else
                     ( [[ "$_mpargs" ]] && echo $_mpargs
-                      find "$srcmods" -path "*/${_mod#=}/*" ) \
+                      find "$srcmods" -path "*/${_mod#=}/*" -printf '%f\n' ) \
                     | instmods
                 fi
                 ;;
             --*) _mpargs+=" $_mod" ;;
             i2o_scsi) return ;; # Do not load this diagnostic-only module
             *)
+                _mod=${_mod##*/}
                 # if we are already installed, skip this module and go on
                 # to the next one.
-                [[ -f $initdir/$1 ]] && return
+                [[ -f "$initdir/.kernelmodseen/${_mod%.ko}.ko" ]] && return
 
                 if [[ $omit_drivers ]] && [[ "$1" =~ $omit_drivers ]]; then
                     dinfo "Omitting driver ${_mod##$srcmods}"
                     return
                 fi
-
-                _mod=${_mod##*/}
                 # If we are building a host-specific initramfs and this
                 # module is not already loaded, move on to the next one.
                 [[ $hostonly ]] && ! grep -qe "\<${_mod//-/_}\>" /proc/modules \
@@ -1164,9 +1161,10 @@ instmods() {
         return $_ret
     }
 
+    local _filter_not_found='FATAL: Module .* not found.'
     # Capture all stderr from modprobe to _fderr. We could use {var}>...
     # redirections, but that would make dracut require bash4 at least.
     eval "( instmods_1 \"\$@\" ) ${_fderr}>&1" \
-    | egrep -v 'FATAL: Module .* not found.' | derror
+    | while read line; do [[ "$line" =~ $_filter_not_found ]] || echo $line;done | derror
     return $?
 }

@@ -10,9 +10,7 @@
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
-export PS4="ifup.$1.$$ + "
-exec >>/run/initramfs/loginit.pipe 2>>/run/initramfs/loginit.pipe
-type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
+type ip_to_var >/dev/null 2>&1 || . /lib/net-lib.sh
 
 # Huh? No $1?
 [ -z "$1" ] && exit 1
@@ -45,12 +43,10 @@ fi
 # bail immediately if the interface is already up
 # or we don't need the network
 [ -f "/tmp/net.$netif.up" ] && exit 0
-[ -f "/tmp/root.info" ] || exit 0
-. /tmp/root.info
 
 # disable manual ifup while netroot is set for simplifying our logic
 # in netroot case we prefer netroot to bringup $netif automaticlly
-[ -n "$2" ] && [ -z "$netroot" ] && manualup="$2"
+[ -n "$2" -a "$2" = "-m" ] && [ -z "$netroot" ] && manualup="$2"
 [ -z "$netroot" ] && [ -z "$manualup" ] && exit 0
 [ -n "$manualup" ] && >/tmp/net.$netif.manualup
 
@@ -109,6 +105,8 @@ do_static() {
     {
         echo ip link set $netif up
         echo wait_for_if_up $netif
+        [ -n "$macaddr" ] && echo ip link set address $macaddr
+        [ -n "$mtu" ] && echo ip link set mtu $mtu
         # do not flush addr for ipv6
         strstr $ip '*:*:*' || \
             echo ip addr flush dev $netif
@@ -221,12 +219,12 @@ for p in $(getargs ip=); do
     ip_to_var $p
     # skip ibft
     [ "$autoconf" = "ibft" ] && continue
-	
+
     # If this option isn't directed at our interface, skip it
     [ -n "$dev" ] && [ "$dev" != "$netif" ] && continue
 
     # Store config for later use
-    for i in ip srv gw mask hostname; do
+    for i in ip srv gw mask hostname macaddr; do
         eval '[ "$'$i'" ] && echo '$i'="$'$i'"'
     done > /tmp/net.$netif.override
 

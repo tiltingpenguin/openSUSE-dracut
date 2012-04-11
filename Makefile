@@ -1,4 +1,4 @@
-VERSION=017
+VERSION=018
 GITVERSION=$(shell [ -d .git ] && git rev-list  --abbrev-commit  -n 1 HEAD  |cut -b 1-8)
 
 prefix ?= /usr
@@ -9,21 +9,28 @@ sysconfdir ?= ${prefix}/etc
 bindir ?= ${prefix}/bin
 mandir ?= ${prefix}/share/man
 
-manpages = dracut.8 dracut.cmdline.7 dracut.conf.5 dracut-catimages.8  dracut-gencmdline.8
+manpages = dracut.8 dracut.cmdline.7 dracut.conf.5 dracut-catimages.8
 
 .PHONY: install clean archive rpm testimage test all check AUTHORS doc
 
-doc: $(manpages) dracut.html
 all: syncheck
+
+doc: $(manpages) dracut.html
 
 %: %.xml
 	xsltproc -o $@ -nonet http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl $<
 
-dracut.html: dracut.xml $(manpages)
+%.xml: %.asc
+	asciidoc -d manpage -b docbook -o $@ $<
+
+dracut.html: dracut.asc $(manpages)
+	asciidoc -a numbered -d book -b docbook -o dracut.xml dracut.asc
 	xsltproc -o dracut.html --xinclude -nonet \
 		--stringparam draft.mode yes \
-		--stringparam html.stylesheet http://docs.redhat.com/docs/en-US/Common_Content/css/default.css \
+		--stringparam html.stylesheet \
+		http://docs.redhat.com/docs/en-US/Common_Content/css/default.css \
 		http://docbook.sourceforge.net/release/xsl/current/xhtml/docbook.xsl dracut.xml
+	rm dracut.xml
 
 install: doc
 	mkdir -p $(DESTDIR)$(pkglibdir)
@@ -32,7 +39,6 @@ install: doc
 	mkdir -p $(DESTDIR)$(pkglibdir)/modules.d
 	mkdir -p $(DESTDIR)$(mandir)/man5 $(DESTDIR)$(mandir)/man7 $(DESTDIR)$(mandir)/man8
 	install -m 0755 dracut.sh $(DESTDIR)$(bindir)/dracut
-	install -m 0755 dracut-gencmdline.sh $(DESTDIR)$(bindir)/dracut-gencmdline
 	install -m 0755 dracut-catimages.sh $(DESTDIR)$(bindir)/dracut-catimages
 	install -m 0755 mkinitrd-dracut.sh $(DESTDIR)$(bindir)/mkinitrd
 	install -m 0755 lsinitrd.sh $(DESTDIR)$(bindir)/lsinitrd
@@ -45,7 +51,6 @@ install: doc
 	cp -arx modules.d $(DESTDIR)$(pkglibdir)
 	install -m 0644 dracut.8 $(DESTDIR)$(mandir)/man8/dracut.8
 	install -m 0644 dracut-catimages.8 $(DESTDIR)$(mandir)/man8/dracut-catimages.8
-	install -m 0644 dracut-gencmdline.8 $(DESTDIR)$(mandir)/man8/dracut-gencmdline.8
 	install -m 0644 dracut.conf.5 $(DESTDIR)$(mandir)/man5/dracut.conf.5
 	install -m 0644 dracut.cmdline.7 $(DESTDIR)$(mandir)/man7/dracut.cmdline.7
 	ln -s dracut.cmdline.7 $(DESTDIR)$(mandir)/man7/dracut.kernel.7
@@ -54,8 +59,10 @@ install: doc
 		install -m 0644 dracut-shutdown.service $(DESTDIR)$(systemdsystemunitdir); \
 		mkdir -p $(DESTDIR)$(systemdsystemunitdir)/reboot.target.wants; \
 		mkdir -p $(DESTDIR)$(systemdsystemunitdir)/shutdown.target.wants; \
-		ln -s ../dracut-shutdown.service $(DESTDIR)$(systemdsystemunitdir)/reboot.target.wants/dracut-shutdown.service; \
-		ln -s ../dracut-shutdown.service $(DESTDIR)$(systemdsystemunitdir)/shutdown.target.wants/dracut-shutdown.service; \
+		ln -s ../dracut-shutdown.service \
+		$(DESTDIR)$(systemdsystemunitdir)/reboot.target.wants/dracut-shutdown.service; \
+		ln -s ../dracut-shutdown.service \
+		$(DESTDIR)$(systemdsystemunitdir)/shutdown.target.wants/dracut-shutdown.service; \
 	fi
 
 clean:
@@ -69,13 +76,16 @@ clean:
 
 archive: dracut-$(VERSION)-$(GITVERSION).tar.bz2
 
-dist: dracut-$(VERSION).tar.gz
+dist: dracut-$(VERSION).tar.bz2
 
-dracut-$(VERSION).tar.bz2:
-	git archive --format=tar $(VERSION) --prefix=dracut-$(VERSION)/ |bzip2 > dracut-$(VERSION).tar.bz2
-
-dracut-$(VERSION).tar.gz:
-	git archive --format=tar $(VERSION) --prefix=dracut-$(VERSION)/ |gzip > dracut-$(VERSION).tar.gz
+dracut-$(VERSION).tar.bz2: doc
+	git archive --format=tar $(VERSION) --prefix=dracut-$(VERSION)/ > dracut-$(VERSION).tar
+	mkdir -p dracut-$(VERSION)
+	cp $(manpages) dracut.html dracut-$(VERSION)
+	tar -rf dracut-$(VERSION).tar dracut-$(VERSION)/*.[0-9] dracut-$(VERSION)/dracut.html
+	rm -fr dracut-$(VERSION).tar.bz2 dracut-$(VERSION)
+	bzip2 -9 dracut-$(VERSION).tar
+	rm -f dracut-$(VERSION).tar
 
 rpm: dracut-$(VERSION).tar.bz2
 	rpmbuild=$$(mktemp -d -t rpmbuild-dracut.XXXXXX); src=$$(pwd); \
@@ -90,10 +100,10 @@ syncheck:
 	@ret=0;for i in dracut-initramfs-restore.sh dracut-logger.sh \
                         modules.d/99base/init.sh modules.d/*/*.sh; do \
                 [ "$${i##*/}" = "module-setup.sh" ] && continue; \
-                [ "$${i##*/}" = "caps.sh" ] && continue; \
+                read line < "$$i"; [ "$${line#*bash*}" != "$$line" ] && continue; \
 		dash -n "$$i" ; ret=$$(($$ret+$$?)); \
 	done;exit $$ret
-	@ret=0;for i in *.sh mkinitrd-dracut.sh modules.d/02caps/caps.sh \
+	@ret=0;for i in *.sh mkinitrd-dracut.sh modules.d/*/*.sh \
 	                modules.d/*/module-setup.sh; do \
 		bash -n "$$i" ; ret=$$(($$ret+$$?)); \
 	done;exit $$ret

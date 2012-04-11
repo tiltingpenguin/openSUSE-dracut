@@ -53,9 +53,10 @@ add_url_handler() {
 
 export CURL_HOME="/run/initramfs/url-lib"
 mkdir -p $CURL_HOME
-curl_args="--location --retry 3 --fail --show-error"
+curl_args="--location --retry 3 --fail --show-error --progress-bar"
 curl_fetch_url() {
     local url="$1" outloc="$2"
+    echo "$url" > /proc/self/fd/0
     if [ -n "$outloc" ]; then
         curl $curl_args --output "$outloc" "$url" || return $?
     else
@@ -64,7 +65,7 @@ curl_fetch_url() {
         outloc="$outdir/$(ls -A $outdir)"
     fi
     [ -f "$outloc" ] || return 253
-    echo "$outloc"
+    if [ -z "$2" ]; then echo "$outloc" ; fi
 }
 add_url_handler curl_fetch_url http https ftp
 
@@ -74,7 +75,7 @@ set_http_header() {
 
 ### NFS ##############################################################
 
-. /lib/nfs-lib.sh
+[ -e /lib/nfs-lib.sh ] && . /lib/nfs-lib.sh
 
 nfs_already_mounted() {
     local server="$1" path="$2" localdir="" s="" p=""
@@ -99,7 +100,7 @@ nfs_fetch_url() {
     mntdir=$(nfs_already_mounted $server $path)
     if [ -z "$mntdir" ]; then
         local mntdir="$(mkuniqdir /run nfs_mnt)"
-        mount_nfs $nfs:$server:$path${options:+:$options} $mntdir
+        mount_nfs $nfs:$server:$filepath${options:+:$options} $mntdir
         # lazy unmount during pre-pivot hook
         inst_hook --hook pre-pivot --name 99url-lib-umount-nfs umount -l $mntdir
     fi
@@ -110,6 +111,6 @@ nfs_fetch_url() {
         cp -f "$mntdir/$filename" "$outloc" || return $?
     fi
     [ -f "$outloc" ] || return 253
-    echo "$outloc"
+    if [ -z "$2" ]; then echo "$outloc" ; fi
 }
-add_url_handler nfs_fetch_url nfs nfs4
+command -v nfs_to_var >/dev/null && add_url_handler nfs_fetch_url nfs nfs4

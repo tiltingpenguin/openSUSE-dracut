@@ -92,16 +92,23 @@ install() {
     install_all_kbd() {
         local rel f
 
-        for f in $(eval find ${kbddir}/{${KBDSUBDIRS}} -type f -print)
-        do
+        find $(eval echo ${kbddir}/{${KBDSUBDIRS}}) -type f -print | \
+            while read f; do
             inst_simple $f
         done
 
         # remove unnecessary files
         rm -f "${initdir}${kbddir}/consoletrans/utflist"
         find "${initdir}${kbddir}/" -name README\* -delete
+        find "${initdir}${kbddir}/" -name '*.gz' -print -quit \
+            | while read line; do
+            dracut_install gzip
+            done
 
-        dracut_install gzip bzip2
+        find "${initdir}${kbddir}/" -name '*.bz2' -print -quit \
+            | while read line; do
+            dracut_install bzip2
+            done
     }
 
     install_local_i18n() {

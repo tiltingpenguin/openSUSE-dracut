@@ -80,12 +80,15 @@ Creates initial ramdisk images for preloading modules
                          Default: /etc/dracut.conf
   --confdir [DIR]       Specify configuration directory to use *.conf files
                          from. Default: /etc/dracut.conf.d
+  --tmpdir [DIR]        Temporary directory to be used instead of default
+                         /var/tmp.
   -l, --local           Local mode. Use modules from the current working
                          directory instead of the system-wide installed in
                          /usr/lib/dracut/modules.d.
                          Useful when running dracut from a git checkout.
   -H, --hostonly        Host-Only mode: Install only what is needed for
                          booting the local host instead of a generic host.
+  --no-hostonly         Disables Host-Only mode
   --fstab               Use /etc/fstab to determine the root device.
   --add-fstab [FILE]    Add file to the initramfs fstab
   --mount "[DEV] [MP] [FSTYPE] [FSOPTS]"
@@ -121,7 +124,6 @@ Creates initial ramdisk images for preloading modules
                          build.
   --keep                Keep the temporary initramfs for debugging purposes
   --sshkey [SSHKEY]     Add ssh key to initramfs (use with ssh-client module)
-  --ctty                Add control tty for emergency shells
 
 If [LIST] has multiple arguments, then you have to put these in quotes.
 For example:
@@ -226,6 +228,7 @@ while (($# > 0)); do
         -k|--kmoddir)  read_arg drivers_dir_l        "$@" || shift;;
         -c|--conf)     read_arg conffile             "$@" || shift;;
         --confdir)     read_arg confdir              "$@" || shift;;
+        --tmpdir)      read_arg tmpdir_l             "$@" || shift;;
         -L|--stdlog)   read_arg stdloglvl_l          "$@" || shift;;
         --compress)    read_arg compress_l           "$@" || shift;;
         --prefix)      read_arg prefix_l             "$@" || shift;;
@@ -241,12 +244,12 @@ while (($# > 0)); do
         --nolvmconf)   lvmconf_l="no";;
         --debug)       debug="yes";;
         --profile)     profile="yes";;
-        --ctty)        cttyhack="yes";;
         --sshkey)      read_arg sshkey   "$@" || shift;;
         -v|--verbose)  ((verbosity_mod_l++));;
         -q|--quiet)    ((verbosity_mod_l--));;
         -l|--local)    allowlocal="yes" ;;
         -H|--hostonly) hostonly_l="yes" ;;
+        --no-hostonly) hostonly_l="no" ;;
         --fstab)       use_fstab_l="yes" ;;
         -h|--help)     usage; exit 1 ;;
         -i|--include)  push include_src "$2"
@@ -413,6 +416,8 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 [[ $lvmconf_l ]] && lvmconf=$lvmconf_l
 [[ $dracutbasedir ]] || dracutbasedir=/usr/lib/dracut
 [[ $fw_dir ]] || fw_dir="/lib/firmware/updates /lib/firmware"
+[[ $tmpdir_l ]] && tmpdir="$tmpdir_l"
+[[ $tmpdir ]] || tmpdir=/var/tmp
 [[ $do_strip ]] || do_strip=no
 [[ $compress_l ]] && compress=$compress_l
 [[ $show_modules_l ]] && show_modules=$show_modules_l
@@ -546,8 +551,8 @@ elif [[ -f "$outfile" && ! -w "$outfile" ]]; then
     exit 1
 fi
 
-readonly TMPDIR=/var/tmp
-readonly initdir=$(mktemp --tmpdir=/var/tmp/ -d -t initramfs.XXXXXX)
+readonly TMPDIR="$tmpdir"
+readonly initdir=$(mktemp --tmpdir="$TMPDIR/" -d -t initramfs.XXXXXX)
 [ -d "$initdir" ] || {
     dfatal "mktemp failed."
     exit 1
@@ -598,11 +603,11 @@ fi
 _get_fs_type() (
     [[ $1 ]] || return
     if [[ -b $1 ]] && get_fs_env $1; then
-        echo "$1|$ID_FS_TYPE"
+        echo "$(readlink -f $1)|$ID_FS_TYPE"
         return 1
     fi
     if [[ -b /dev/block/$1 ]] && get_fs_env /dev/block/$1; then
-        echo "/dev/block/$1|$ID_FS_TYPE"
+        echo "$(readlink -f /dev/block/$1)|$ID_FS_TYPE"
         return 1
     fi
     if fstype=$(find_dev_fstype $1); then
@@ -625,9 +630,9 @@ done
 export initdir dracutbasedir dracutmodules drivers \
     fw_dir drivers_dir debug no_kernel kernel_only \
     add_drivers omit_drivers mdadmconf lvmconf filesystems \
-    use_fstab fstab_lines libdir usrlibdir fscks nofscks cttyhack \
+    use_fstab fstab_lines libdir usrlibdir fscks nofscks \
     stdloglvl sysloglvl fileloglvl kmsgloglvl logfile \
-    debug host_fs_types host_devs sshkey
+    debug host_fs_types host_devs sshkey add_fstab
 
 # Create some directory structure first
 [[ $prefix ]] && mkdir -m 0755 -p "${initdir}${prefix}"
@@ -674,7 +679,12 @@ fi
 
 if [[ $kernel_only != yes ]]; then
     mkdir -p "${initdir}/etc/cmdline.d"
+    for _d in $hookdirs; do
+        mkdir -m 0755 -p ${initdir}/lib/dracut/hooks/$_d
+    done
 fi
+
+mkdir -p "$initdir/.kernelmodseen"
 
 mods_to_load=""
 # check all our modules to see if they should be sourced.
@@ -765,6 +775,9 @@ if [[ $kernel_only != yes ]]; then
         fi
     fi
 fi
+
+rm -fr "$initdir/.kernelmodseen"
+
 
 if (($maxloglvl >= 5)); then
     ddebug "Listing sizes of included files:"

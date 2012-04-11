@@ -10,82 +10,16 @@
 
 export -p > /tmp/export.orig
 
-wait_for_loginit()
-{
-    set +x
-    [ "$RD_DEBUG" = "yes" ] || return
-    [ -e /run/initramfs/loginit.pipe ] || return
-    echo "DRACUT_LOG_END"
-    exec 0<>/dev/console 1<>/dev/console 2<>/dev/console
-        # wait for loginit
-    i=0
-    while [ $i -lt 10 ]; do
-        if [ ! -e /run/initramfs/loginit.pipe ]; then
-            j=$(jobs)
-            [ -z "$j" ] && break
-            [ -z "${j##*Running*}" ] || break
-        fi
-        sleep 0.1
-        i=$(($i+1))
-    done
-
-    if [ $i -eq 10 ]; then
-        kill %1 >/dev/null 2>&1
-        kill $(while read line;do echo $line;done</run/initramfs/loginit.pid)
-    fi
-
-    set -x
-    rm -f /run/initramfs/loginit.pipe /run/initramfs/loginit.pid
-}
-
-emergency_shell()
-{
-    local _ctty
-    set +e
-    if [ "$1" = "-n" ]; then
-        _rdshell_name=$2
-        shift 2
-    else
-        _rdshell_name=dracut
-    fi
-    echo ; echo
-    warn $@
-    source_hook emergency
-    echo
-    wait_for_loginit
-    [ -e /run/initramfs/.die ] && exit 1
-    if getargbool 1 rd.shell -y rdshell || getarg rd.break rdbreak; then
-        echo "Dropping to debug shell."
-        echo
-        export PS1="$_rdshell_name:\${PWD}# "
-        [ -e /.profile ] || >/.profile
-        _ctty=/dev/console
-        if [ -n "$(command -v setsid)" ]; then
-            _ctty="$(getarg rd.ctty=)" && _ctty="/dev/${_ctty##*/}"
-            [ -c "$_ctty" ] || _ctty=/dev/tty1
-            setsid sh -i -l 0<$_ctty 1>$_ctty 2>&1
-        elif [ -n "$(command -v openvt)" ] && ! getarg "console=" >/dev/null 2>&1 && getargbool 1 "rd.openvt" ; then
-            openvt -f -c 1 -w -s -l -- sh
-        else
-            sh -i -l 0<$_ctty 1>$_ctty 2>&1
-        fi
-    else
-        warn "Boot has failed. To debug this issue add \"rdshell\" to the kernel command line."
-        # cause a kernel panic
-        exit 1
-    fi
-}
-
 NEWROOT="/sysroot"
 [ -d $NEWROOT ] || mkdir -p -m 0755 $NEWROOT
 
-trap "emergency_shell Signal caught!" 0
 OLDPATH=$PATH
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 
 RD_DEBUG=""
 . /lib/dracut-lib.sh
+trap "emergency_shell Signal caught!" 0
 
 [ -c /dev/null ] || mknod -m 0666 /dev/null c 1 3
 
@@ -134,7 +68,7 @@ fi
 if ! ismounted /run; then
     mkdir -m 0755 /newrun
     mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /newrun >/dev/null 
-    cp -a /run/* /newrun
+    cp -a /run/* /newrun >/dev/null 2>&1
     mount --move /newrun /run
     rm -fr /newrun
 fi
@@ -169,15 +103,7 @@ source_hook cmdline
 [ -z "$root" ] && die "No or empty root= argument"
 [ -z "$rootok" ] && die "Don't know how to handle 'root=$root'"
 
-# Network root scripts may need updated root= options,
-# so deposit them where they can see them (udev purges the env)
-{
-    echo "root='$root'"
-    echo "rflags='$rflags'"
-    echo "fstype='$fstype'"
-    echo "netroot='$netroot'"
-    echo "NEWROOT='$NEWROOT'"
-} > /tmp/root.info
+export root rflags fstype netroot NEWROOT
 
 # pre-udev scripts run before udev starts, and are run only once.
 getarg 'rd.break=pre-udev' 'rdbreak=pre-udev' && emergency_shell -n pre-udev "Break before pre-udev"
@@ -245,20 +171,6 @@ while :; do
     # no more udev jobs and queues empty.
     sleep 0.5
 
-    if [ ! -e /sys/module/block/parameters/events_dfl_poll_msecs ]; then
-        # if the kernel does not support autopolling
-        # then we have to do a
-        # dirty hack for some cdrom drives,
-        # which report no medium for quiet
-        # some time.
-        for cdrom in /sys/block/sr*; do
-            [ -e "$cdrom" ] || continue
-            # skip, if cdrom medium was already found
-            strstr "$(udevadm info --query=env --path=${cdrom##/sys})" \
-                ID_CDROM_MEDIA && continue
-            echo change > "$cdrom/uevent"
-        done
-    fi
 
     if [ $main_loop -gt $(($RDRETRY/2)) ]; then
         for job in $hookdir/initqueue/timeout/*.sh; do
@@ -351,6 +263,14 @@ else
     udevadm info --cleanup-db
 fi
 
+# Retain the values of these variables but ensure that they are unexported
+# This is a POSIX-compliant equivalent of bash's "export -n"
+for var in root rflags fstype netroot NEWROOT; do
+    eval tmp=\$$var
+    unset $var
+    [ -n "$tmp" ] && eval $var=\"$tmp\"
+done
+
 export RD_TIMESTAMP
 set +x # Turn off debugging for this section
 # Clean up the environment
@@ -399,20 +319,10 @@ else
 fi
 [ "$RD_DEBUG" = "yes" ] && set -x
 
-if [ -d "$NEWROOT"/run ]; then
-    NEWRUN="${NEWROOT}/run"
-    mount --bind /run "$NEWRUN"
-    NEWINITRAMFSROOT="$NEWRUN/initramfs"
-
-    if [ "$NEWINITRAMFSROOT/lib" -ef "/lib" ]; then
-        for d in bin etc lib lib64 sbin tmp usr var; do
-            [ -h /$d ] && ln -fsn $NEWINITRAMFSROOT/$d /$d
-        done
-    fi
-else
+if ! [ -d "$NEWROOT"/run ]; then
     NEWRUN=/dev/.initramfs
     mkdir -m 0755 "$NEWRUN"
-    mount --bind /run/initramfs "$NEWRUN"
+    mount --rbind /run/initramfs "$NEWRUN"
 fi
 
 wait_for_loginit
