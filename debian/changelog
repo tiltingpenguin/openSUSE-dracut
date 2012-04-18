@@ -1,3 +1,12 @@
+dracut (018-1) unstable; urgency=low
+
+  * new upstream version
+  * control: dracut now uses asciidoc, add conflicts on initramfs-tools
+  * postinst.d/dracut: new file name for initrd
+  * add 80cms modules to dracut-network
+
+ -- Thomas Lange <lange@debian.org>  Wed, 18 Apr 2012 13:30:05 +0200
+
 dracut (017-1) unstable; urgency=low
 
   * new upstream version
