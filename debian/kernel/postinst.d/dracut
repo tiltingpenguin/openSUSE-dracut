@@ -28,5 +28,5 @@ if [ -z "$bootdir" ]; then
 fi
 
 # we're good - create initramfs
-echo "dracut: Generating $bootdir/initramfs-${version}.img"
-dracut -q --force $bootdir/initramfs-${version}.img "${version}" >&2
+echo "dracut: Generating $bootdir/initrd.img-${version}"
+dracut -q --force $bootdir/initrd.img-${version} "${version}" >&2
