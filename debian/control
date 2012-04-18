@@ -14,6 +14,7 @@ Recommends: cryptsetup, dmsetup, dmraid, lvm2, mdadm
 Suggests: dracut-network
 Depends: cpio, module-init-tools, udev, kpartx, util-linux (>= 2.20), ${misc:Depends}
 Provides: linux-initramfs-tool
+Conflicts: initramfs-tools
 Description: A new initramfs infrastructure
  Unlike existing initramfs's, this is an attempt at having as little as
  possible hard-coded into the initramfs as possible.  The initramfs has
