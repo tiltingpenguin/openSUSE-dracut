@@ -3,6 +3,8 @@
 version="$1"
 bootopt=""
 
+[ -x /usr/bin/dracut ] || exit 0
+
 # passing the kernel version is required
 [ -z "${version}" ] && exit 0
 
