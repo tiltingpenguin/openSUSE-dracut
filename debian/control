@@ -12,7 +12,7 @@ Package: dracut
 Architecture: all
 Recommends: cryptsetup, dmsetup, dmraid, lvm2, mdadm
 Suggests: dracut-network
-Depends: cpio, module-init-tools, udev, kpartx, ${misc:Depends}
+Depends: cpio, module-init-tools, udev, kpartx, kbd, ${misc:Depends}
 Provides: linux-initramfs-tool
 Conflicts: initramfs-tools
 Description: A new initramfs infrastructure
