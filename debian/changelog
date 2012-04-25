@@ -1,3 +1,10 @@
+dracut (018-3) unstable; urgency=low
+
+  * dracut.postinst: do not use uname -r for kernel version
+  * control: add depends on kbd
+
+ -- Thomas Lange <lange@debian.org>  Tue, 24 Apr 2012 18:07:41 +0200
+
 dracut (018-2) unstable; urgency=low
 
   * postinst.d/dracut: only execute if dracut command is available
