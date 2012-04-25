@@ -1,3 +1,16 @@
+dracut (013-6) unstable; urgency=low
+
+  * replace uname -r with list of all installed kernel
+  * update to 3.9.3
+  * add depends on kdb and bzip2
+  * build --with quilt
+  * add quilt to Build-depends
+  * Use same file name for initrd as initramfs-tools
+  * only execute script when dracut is available
+  * add patches: no-unimaps-directory, missing-rpc-user
+
+ -- Thomas Lange <lange@debian.org>  Wed, 25 Apr 2012 16:40:04 +0200
+
 dracut (013-5) unstable; urgency=high
 
   * do not call dracut if no kernel was found Closes: #657754
