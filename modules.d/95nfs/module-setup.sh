@@ -54,15 +54,11 @@ install() {
     _nsslibs=${_nsslibs#|}
     _nsslibs=${_nsslibs%|}
 
-    for _i in {/usr,}$libdir/libnss*.so; do
-        [[ -e $_i ]] || continue
-        [[ "$_i" =~ $_nsslibs ]] || continue
-        dracut_install "$_i"
-    done
+    inst_libdir_file -n "$_nsslibs" "libnss*.so"
 
     inst_hook cmdline 90 "$moddir/parse-nfsroot.sh"
     inst_hook pre-udev 99 "$moddir/nfs-start-rpc.sh"
-    inst_hook pre-pivot 99 "$moddir/nfsroot-cleanup.sh"
+    inst_hook cleanup 99 "$moddir/nfsroot-cleanup.sh"
     inst "$moddir/nfsroot.sh" "/sbin/nfsroot"
     inst "$moddir/nfs-lib.sh" "/lib/nfs-lib.sh"
     mkdir -m 0755 -p "$initdir/var/lib/nfs/rpc_pipefs"

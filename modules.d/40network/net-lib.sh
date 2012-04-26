@@ -59,17 +59,15 @@ ifdown() {
     ip link set $netif down
     ip addr flush dev $netif
     echo "#empty" > /etc/resolv.conf
+    rm -f /tmp/net.$netif.did-setup
     # TODO: send "offline" uevent?
 }
 
 setup_net() {
     local netif="$1" f="" gw_ip="" netroot_ip="" iface="" IFACES=""
-    [ -e /tmp/net.$netif.up ] || return 1
+    [ -e /tmp/net.$netif.did-setup ] && return
     [ -e "/tmp/net.ifaces" ] && read IFACES < /tmp/net.ifaces
     [ -z "$IFACES" ] && IFACES="$netif"
-    for iface in $IFACES ; do
-        . /tmp/net.$iface.up
-    done
     # run the scripts written by ifup
     [ -e /tmp/net.$netif.gw ]            && . /tmp/net.$netif.gw
     [ -e /tmp/net.$netif.hostname ]      && . /tmp/net.$netif.hostname
@@ -100,6 +98,23 @@ setup_net() {
     if [ -n "$dest" ] && ! arping -q -f -w 60 -I $netif $dest ; then
         info "Resolving $dest via ARP on $netif failed"
     fi
+    > /tmp/net.$netif.did-setup
+}
+
+save_netinfo() {
+    local netif="$1" IFACES="" f="" i=""
+    [ -e /tmp/net.ifaces ] && read IFACES < /tmp/net.ifaces
+    # Add $netif to the front of IFACES (if it's not there already).
+    set -- "$netif"
+    for i in $IFACES; do [ "$i" != "$netif" ] && set -- "$@" "$i"; done
+    IFACES="$*"
+    for i in $IFACES; do
+        for f in /tmp/dhclient.$i.*; do
+            [ -f $f ] && cp -f $f /tmp/net.${f#/tmp/dhclient.}
+        done
+    done
+    echo $IFACES > /tmp/.net.ifaces.new
+    mv /tmp/.net.ifaces.new /tmp/net.ifaces
 }
 
 set_ifname() {

@@ -13,23 +13,12 @@ command -v setup_net >/dev/null || . /lib/net-lib.sh
 # instead of real netroot; If It's called without $2, then there's
 # no sense in doing something if no (net)root info is available
 # or root is already there
-if [ -z "$2" ]; then
-    [ -d $NEWROOT/proc ] && exit 0
-    [ -z "$netroot" ] && exit 1
-fi
-
-# Let's see if we have to wait for other interfaces
-# Note: exit works just fine, since the last interface to be
-#       online'd should see all files
-all_ifaces_up || exit 1
+[ -d $NEWROOT/proc ] && exit 0
+[ -z "$netroot" ] && exit 1
 
 # Set or override primary interface
 netif=$1
 [ -e "/tmp/net.bootdev" ] && read netif < /tmp/net.bootdev
-
-if [ -e /tmp/net.$netif.manualup ]; then
-    rm -f /tmp/net.$netif.manualup
-fi
 
 # Figure out the handler for root=dhcp by recalling all netroot cmdline
 # handlers when this is not called from manually network bringing up.
@@ -72,29 +61,13 @@ if [ -z "$2" ]; then
     fi
 fi
 
-# We're here, so we can assume that upping interfaces is now ok
-setup_net $netif
-
-# exit in case manually bring up network
-[ -n "$2" ] && exit 0
-
 # Source netroot hooks before we start the handler
-source_hook netroot
+source_hook netroot $netif
 
 # Run the handler; don't store the root, it may change from device to device
 # XXX other variables to export?
 if $handler $netif $netroot $NEWROOT; then
-    # Network rootfs mount successful
-    for iface in $IFACES ; do
-        [ -f /tmp/dhclient.$iface.lease ] &&    cp /tmp/dhclient.$iface.lease    /tmp/net.$iface.lease
-        [ -f /tmp/dhclient.$iface.dhcpopts ] && cp /tmp/dhclient.$iface.dhcpopts /tmp/net.$iface.dhcpopts
-    done
-
-    # Save used netif for later use
-    [ ! -f /tmp/net.ifaces ] && echo $netif > /tmp/net.ifaces
-else
-    warn "Mounting root via '$netif' failed"
-    # If we're trying with multiple interfaces, put that one down.
-    [ -z "$BOOTDEV" ] && ifdown $netif
+    # Network rootfs mount successful - save interface info for ifcfg etc.
+    save_netinfo $netif
 fi
 exit 0

@@ -61,6 +61,7 @@ installkernel() {
     { find_kernel_modules_by_path drivers/net; find_kernel_modules_by_path drivers/s390/net; } \
         | net_module_filter | instmods
 
+    instmods =drivers/net/phy
     instmods ecb arc4
     # bridge modules
     instmods bridge stp llc
@@ -85,16 +86,11 @@ install() {
     inst_hook cmdline 97 "$moddir/parse-bridge.sh"
     inst_hook cmdline 98 "$moddir/parse-ip-opts.sh"
     inst_hook cmdline 99 "$moddir/parse-ifname.sh"
-    inst_hook pre-pivot 10 "$moddir/kill-dhclient.sh"
+    inst_hook cleanup 10 "$moddir/kill-dhclient.sh"
 
     _arch=$(uname -m)
 
-    for _dir in "$usrlibdir/tls/$_arch" "$usrlibdir/tls" "$usrlibdir/$_arch" \
-        "$usrlibdir" "$libdir"; do
-        for _i in "$_dir"/libnss_dns.so.* "$_dir"/libnss_mdns4_minimal.so.*; do
-            [ -e "$_i" ] && dracut_install "$_i"
-        done
-    done
-
+    inst_libdir_file {"tls/$_arch/",tls/,"$_arch/",}"libnss_dns.so.*"
+    inst_libdir_file {"tls/$_arch/",tls/,"$_arch/",}"libnss_mdns4_minimal.so.*"
 }
 

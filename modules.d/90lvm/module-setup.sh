@@ -49,6 +49,7 @@ install() {
             # FIXME: near-term hack to establish read-only locking;
             # use command-line lvm.conf editor once it is available
             sed -i -e 's/\(^[[:space:]]*\)locking_type[[:space:]]*=[[:space:]]*[[:digit:]]/\1locking_type = 4/' ${initdir}/etc/lvm/lvm.conf
+            sed -i -e 's/\(^[[:space:]]*\)use_lvmetad[[:space:]]*=[[:space:]]*[[:digit:]]/\1use_lvmetad = 0/' ${initdir}/etc/lvm/lvm.conf
         fi
     fi
 
@@ -60,8 +61,6 @@ install() {
     inst "$moddir/lvm_scan.sh" /sbin/lvm_scan
     inst_hook cmdline 30 "$moddir/parse-lvm.sh"
 
-    for _i in {"$libdir","$usrlibdir"}/libdevmapper-event-lvm*.so; do
-        [ -e "$_i" ] && dracut_install "$_i"
-    done
+    inst_libdir_file "libdevmapper-event-lvm*.so"
 }
 

@@ -43,6 +43,7 @@ add_url_handler() {
     local schemes="$@" scheme=""
     set --
     for scheme in $schemes; do
+        [ "$(get_url_handler $scheme)" = "$handler" ] && continue
         set -- "$@" "$scheme:$handler"
     done
     set -- $@ $url_handler_map # add new items to *front* of list
@@ -53,7 +54,12 @@ add_url_handler() {
 
 export CURL_HOME="/run/initramfs/url-lib"
 mkdir -p $CURL_HOME
-curl_args="--location --retry 3 --fail --show-error --progress-bar"
+curl_args="--location --retry 3 --fail --show-error"
+
+# technically "dumb" can handle the progress bar, but the only thing I've ever
+# seen using TERM=dumb is s390 CMS, and it's too dumb for --progress-bar
+[ "$TERM" != "dumb" ] && curl_args="$curl_args --progress-bar"
+
 curl_fetch_url() {
     local url="$1" outloc="$2"
     echo "$url" > /proc/self/fd/0

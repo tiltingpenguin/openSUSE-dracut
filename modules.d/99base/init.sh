@@ -46,7 +46,7 @@ if [ "$RD_DEBUG" = "yes" ]; then
 fi
 
 if ! ismounted /dev; then
-    mount -t devtmpfs -o mode=0755,nosuid devtmpfs /dev >/dev/null 
+    mount -t devtmpfs -o mode=0755,nosuid,strictatime devtmpfs /dev >/dev/null 
 fi
 
 # prepare the /dev directory
@@ -62,12 +62,12 @@ fi
 
 if ! ismounted /dev/shm; then
     mkdir -m 0755 /dev/shm
-    mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /dev/shm >/dev/null 
+    mount -t tmpfs -o mode=1777,nosuid,nodev,strictatime tmpfs /dev/shm >/dev/null 
 fi
 
 if ! ismounted /run; then
     mkdir -m 0755 /newrun
-    mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /newrun >/dev/null 
+    mount -t tmpfs -o mode=0755,nosuid,nodev,strictatime tmpfs /newrun >/dev/null 
     cp -a /run/* /newrun >/dev/null 2>&1
     mount --move /newrun /run
     rm -fr /newrun
@@ -110,7 +110,7 @@ getarg 'rd.break=pre-udev' 'rdbreak=pre-udev' && emergency_shell -n pre-udev "Br
 source_hook pre-udev
 
 # start up udev and trigger cold plugs
-udevd --daemon --resolve-names=never
+/lib/systemd/systemd-udevd --daemon --resolve-names=never
 
 UDEV_LOG_PRIO_ARG=--log-priority
 UDEV_QUEUE_EMPTY="udevadm settle --timeout=0"
@@ -224,9 +224,14 @@ done
     while read dev mp rest; do [ "$mp" = "$NEWROOT" ] && echo $dev; done < /proc/mounts
 } | vinfo
 
-# pre pivot scripts are sourced just before we switch over to the new root.
+# pre pivot scripts are sourced just before we doing cleanup and switch over
+# to the new root.
 getarg 'rd.break=pre-pivot' 'rdbreak=pre-pivot' && emergency_shell -n pre-pivot "Break pre-pivot"
 source_hook pre-pivot
+
+# pre pivot cleanup scripts are sourced just before we switch over to the new root.
+getarg 'rd.break=cleanup' 'rdbreak=cleanup' && emergency_shell -n cleanup "Break cleanup"
+source_hook cleanup
 
 # By the time we get here, the root filesystem should be mounted.
 # Try to find init. 
@@ -246,7 +251,6 @@ done
     emergency_shell
 }
 
-
 if [ $UDEVVERSION -lt 168 ]; then
     # stop udev queue before killing it
     udevadm control --stop-exec-queue
@@ -263,16 +267,12 @@ else
     udevadm info --cleanup-db
 fi
 
-# Retain the values of these variables but ensure that they are unexported
-# This is a POSIX-compliant equivalent of bash's "export -n"
-for var in root rflags fstype netroot NEWROOT; do
-    eval tmp=\$$var
-    unset $var
-    [ -n "$tmp" ] && eval $var=\"$tmp\"
-done
+debug_off # Turn off debugging for this section
+
+# unexport some vars
+export_n root rflags fstype netroot NEWROOT
 
 export RD_TIMESTAMP
-set +x # Turn off debugging for this section
 # Clean up the environment
 for i in $(export -p); do
     i=${i#declare -x}
@@ -293,7 +293,6 @@ rm -f /tmp/export.orig
 initargs=""
 read CLINE </proc/cmdline
 if getarg init= >/dev/null ; then
-    set +x # Turn off debugging for this section
     ignoreargs="console BOOT_IMAGE"
     # only pass arguments after init= to the init
     CLINE=${CLINE#*init=}
@@ -307,7 +306,7 @@ if getarg init= >/dev/null ; then
     done
     unset CLINE
 else
-    set +x # Turn off debugging for this section
+    debug_off # Turn off debugging for this section
     set -- $CLINE
     for x in "$@"; do
         case "$x" in
@@ -317,7 +316,7 @@ else
         esac
     done
 fi
-[ "$RD_DEBUG" = "yes" ] && set -x
+debug_on
 
 if ! [ -d "$NEWROOT"/run ]; then
     NEWRUN=/dev/.initramfs
@@ -333,7 +332,6 @@ wait_for_loginit
 getarg rd.break rdbreak && emergency_shell -n switch_root "Break before switch_root"
 info "Switching root"
 
-source_hook cleanup
 
 unset PS4
 

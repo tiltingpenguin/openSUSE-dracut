@@ -8,20 +8,25 @@ install() {
     # ultimately, /lib/initramfs/rules.d or somesuch which includes links/copies
     # of the rules we want so that we just copy those in would be best
     dracut_install udevadm
-    [ -x /sbin/udevd ] && dracut_install udevd
+    if [ -x /sbin/udevd ]; then
+        dracut_install udevd
+        mkdir -p ${initdir}/lib/systemd
+        ln -s /sbin/udevd ${initdir}/lib/systemd/systemd-udevd
+    elif [ -x /lib/systemd/systemd-udevd ]; then
+        inst /lib/systemd/systemd-udevd
+    fi
 
     for i in /etc/udev/udev.conf /etc/group; do
         inst_simple $i
     done
+
     dracut_install basename
+
     inst_rules 50-udev-default.rules 60-persistent-storage.rules \
         61-persistent-storage-edd.rules 80-drivers.rules 95-udev-late.rules \
         60-pcmcia.rules
     #Some debian udev rules are named differently
     inst_rules 50-udev.rules 95-late.rules
-
-    # ignore some devices in the initrd
-    inst_rules "$moddir/01-ignore.rules"
 
     # for firmware loading
     inst_rules 50-firmware.rules
@@ -74,8 +79,6 @@ install() {
     [ -f /etc/arch-release ] && \
         inst "$moddir/load-modules.sh" /lib/udev/load-modules.sh
 
-    for _i in {"$libdir","$usrlibdir"}/libnss_files*; do
-        [ -e "$_i" ] && dracut_install "$_i"
-    done
+    inst_libdir_file "libnss_files*"
 }
 
