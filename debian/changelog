@@ -1,9 +1,11 @@
-dracut (018-3) unstable; urgency=low
+dracut (018+32+geb6e141-1) unstable; urgency=low
 
+  * add Debian multiarch support
   * dracut.postinst: do not use uname -r for kernel version
   * control: add depends on kbd
+  * postinst.d/dracut: use --libdirs for multiarch support
 
- -- Thomas Lange <lange@debian.org>  Tue, 24 Apr 2012 18:07:41 +0200
+ -- Thomas Lange <lange@debian.org>  Thu, 26 Apr 2012 17:46:53 +0200
 
 dracut (018-2) unstable; urgency=low
 
