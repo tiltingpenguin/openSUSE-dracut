@@ -29,6 +29,9 @@ if [ -z "$bootdir" ]; then
     bootdir=/boot
 fi
 
+# determine the multicarch lib pathes, they all have -gnu in their name
+multiarchlibs=`find /lib /usr/lib -maxdepth 1 -type d|grep -- -gnu | tr '\n' ' '`
+
 # we're good - create initramfs
 echo "dracut: Generating $bootdir/initrd.img-${version}"
-dracut -q --force $bootdir/initrd.img-${version} "${version}" >&2
+dracut -q --libdirs="$multiarchlibs" --force $bootdir/initrd.img-${version} "${version}" >&2
