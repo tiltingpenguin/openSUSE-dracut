@@ -48,6 +48,7 @@ _getcmdline() {
     local _i
     unset _line
     if [ -z "$CMDLINE" ]; then
+        unset CMDLINE_ETC CMDLINE_ETC_D
         if [ -e /etc/cmdline ]; then
             while read -r _line; do
                 CMDLINE_ETC="$CMDLINE_ETC $_line";
@@ -315,6 +316,9 @@ check_quiet() {
         getargbool 0 rd.info -y rdinfo && DRACUT_QUIET="no"
         getargbool 0 rd.debug -y rdinitdebug && DRACUT_QUIET="no"
         getarg quiet || DRACUT_QUIET="yes"
+        a=$(getarg loglevel=)
+        [ -n "$a" ] && [ $a -ge 28 ] && DRACUT_QUIET="yes"
+        export DRACUT_QUIET
     fi
 }
 
@@ -379,7 +383,7 @@ incol2() {
 }
 
 udevsettle() {
-    [ -z "$UDEVVERSION" ] && UDEVVERSION=$(udevadm --version)
+    [ -z "$UDEVVERSION" ] && export UDEVVERSION=$(udevadm --version)
 
     if [ $UDEVVERSION -ge 143 ]; then
         udevadm settle --exit-if-exists=$hookdir/initqueue/work $settle_exit_if_exists
@@ -389,7 +393,7 @@ udevsettle() {
 }
 
 udevproperty() {
-    [ -z "$UDEVVERSION" ] && UDEVVERSION=$(udevadm --version)
+    [ -z "$UDEVVERSION" ] && export UDEVVERSION=$(udevadm --version)
 
     if [ $UDEVVERSION -ge 143 ]; then
         for i in "$@"; do udevadm control --property=$i; done

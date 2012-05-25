@@ -19,6 +19,5 @@ cp -a -t /root /source/*
 mkdir -p /root/run
 umount /root
 echo "dracut-root-block-created" >/dev/sda1
-sync
 poweroff -f
 

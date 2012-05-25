@@ -27,9 +27,17 @@
 dracut_args="$@"
 
 usage() {
+    [[ $dracutbasedir ]] || dracutbasedir=/usr/lib/dracut
+    if [[ -f $dracutbasedir/dracut-version.sh ]]; then
+        . $dracutbasedir/dracut-version.sh
+    fi
+
 #                                                       80x25 linebreak here ^
     cat << EOF
 Usage: $0 [OPTION]... <initramfs> <kernel-version>
+
+Version: $DRACUT_VERSION
+
 Creates initial ramdisk images for preloading modules
 
   -f, --force           Overwrite existing initramfs file.
@@ -123,6 +131,7 @@ Creates initial ramdisk images for preloading modules
   -M, --show-modules    Print included module's name to standard output during
                          build.
   --keep                Keep the temporary initramfs for debugging purposes
+  --printsize           Print out the module install size
   --sshkey [SSHKEY]     Add ssh key to initramfs (use with ssh-client module)
 
 If [LIST] has multiple arguments, then you have to put these in quotes.
@@ -248,7 +257,11 @@ while (($# > 0)); do
         --sshkey)      read_arg sshkey   "$@" || shift;;
         -v|--verbose)  ((verbosity_mod_l++));;
         -q|--quiet)    ((verbosity_mod_l--));;
-        -l|--local)    allowlocal="yes" ;;
+        -l|--local)
+                       allowlocal="yes"
+                       [[ -f "$(readlink -f ${0%/*})/dracut-functions.sh" ]] \
+                           && dracutbasedir="$(readlink -f ${0%/*})"
+                       ;;
         -H|--hostonly) hostonly_l="yes" ;;
         --no-hostonly) hostonly_l="no" ;;
         --fstab)       use_fstab_l="yes" ;;
@@ -268,6 +281,7 @@ while (($# > 0)); do
                        show_modules_l="yes"
                        ;;
         --keep)        keep="yes";;
+        --printsize)   printsize="yes";;
         -*) printf "\nUnknown option: %s\n\n" "$1" >&2; usage; exit 1;;
         *)
             if ! [[ ${outfile+x} ]]; then
@@ -310,9 +324,6 @@ unset GREP_OPTIONS
 }
 
 [[ $dracutbasedir ]] || dracutbasedir=/usr/lib/dracut
-
-[[ $allowlocal && -f "$(readlink -f ${0%/*})/dracut-functions.sh" ]] && \
-    dracutbasedir="$(readlink -f ${0%/*})"
 
 # if we were not passed a config file, try the default one
 if [[ ! -f $conffile ]]; then
@@ -456,6 +467,10 @@ else
     echo "Are you running from a git checkout?" >&2
     echo "Try passing -l as an argument to $0" >&2
     exit 1
+fi
+
+if [[ -f $dracutbasedir/dracut-version.sh ]]; then
+    . $dracutbasedir/dracut-version.sh
 fi
 
 # Verify bash version, curret minimum is 3.1
@@ -640,7 +655,8 @@ export initdir dracutbasedir dracutmodules drivers \
     add_drivers omit_drivers mdadmconf lvmconf filesystems \
     use_fstab fstab_lines libdir usrlibdir fscks nofscks \
     stdloglvl sysloglvl fileloglvl kmsgloglvl logfile \
-    debug host_fs_types host_devs sshkey add_fstab
+    debug host_fs_types host_devs sshkey add_fstab \
+    DRACUT_VERSION
 
 # Create some directory structure first
 [[ $prefix ]] && mkdir -m 0755 -p "${initdir}${prefix}"
@@ -655,7 +671,7 @@ if [[ $prefix ]]; then
 fi
 
 if [[ $kernel_only != yes ]]; then
-    for d in usr/bin usr/sbin bin etc lib "$libdir" sbin tmp usr var var/log; do
+    for d in usr/bin usr/sbin bin etc lib "$libdir" sbin tmp usr var var/log var/run var/lock; do
         [[ -e "${initdir}${prefix}/$d" ]] && continue
         if [ -L "/$d" ]; then
             inst_symlink "/$d" "${prefix}/$d"
@@ -700,6 +716,7 @@ mods_to_load=""
 for_each_module_dir check_module
 for_each_module_dir check_mount
 
+_isize=0 #initramfs size
 modules_loaded=" "
 # source our modules.
 for moddir in "$dracutbasedir/modules.d"/[0-9][0-9]*; do
@@ -708,15 +725,29 @@ for moddir in "$dracutbasedir/modules.d"/[0-9][0-9]*; do
         [[ $show_modules = yes ]] && echo "$_d_mod" || \
             dinfo "*** Including module: $_d_mod ***"
         if [[ $kernel_only = yes ]]; then
-            module_installkernel $_d_mod
+            module_installkernel $_d_mod || {
+                dfatal "installkernel failed in module $_d_mod"
+                exit 1
+            }
         else
             module_install $_d_mod
             if [[ $no_kernel != yes ]]; then
-                module_installkernel $_d_mod
+                module_installkernel $_d_mod || {
+                    dfatal "installkernel failed in module $_d_mod"
+                    exit 1
+                }
             fi
         fi
         mods_to_load=${mods_to_load// $_d_mod /}
         modules_loaded+="$_d_mod "
+
+        #print the module install size
+        if [ -n "$printsize" ]; then
+            _isize_new=$(du -sk ${initdir}|cut -f1)
+            _isize_delta=$(($_isize_new - $_isize))
+            echo "$_d_mod install size: ${_isize_delta}k"
+            _isize=$_isize_new
+        fi
     fi
 done
 unset moddir
@@ -764,7 +795,7 @@ done
 
 if [[ $kernel_only != yes ]]; then
     for item in $install_items; do
-        dracut_install -o "$item"
+        dracut_install "$item"
     done
     unset item
 

@@ -20,6 +20,70 @@ fi
 mkdir -m 0755 -p /tmp/ifcfg/
 mkdir -m 0755 -p /tmp/ifcfg-leases/
 
+get_config_line_by_subchannel()
+{
+    local CHANNEL
+    local line
+
+    CHANNELS="$1"
+    while read line; do
+        if strstr "$line" "$CHANNELS"; then
+            echo $line
+            return 0
+        fi
+    done < /etc/ccw.conf
+    return 1
+}
+
+print_s390() {
+    local _netif
+    local SUBCHANNELS
+    local OPTIONS
+    local NETTYPE
+    local CONFIG_LINE
+    local i
+    local channel
+    local OLD_IFS
+
+    _netif="$1"
+    # if we find ccw channel, then use those, instead of
+    # of the MAC
+    SUBCHANNELS=$({
+        for i in /sys/class/net/$_netif/device/cdev[0-9]*; do
+            [ -e $i ] || continue
+            channel=$(readlink -f $i)
+            echo -n "${channel##*/},"
+        done
+    })
+    [ -n "$SUBCHANNELS" ] || return 1
+
+    SUBCHANNELS=${SUBCHANNELS%,}
+    echo "SUBCHANNELS=\"${SUBCHANNELS}\""
+    CONFIG_LINE=$(get_config_line_by_subchannel $SUBCHANNELS)
+
+    [ $? -ne 0 -o -z "$CONFIG_LINE" ] && return
+
+    OLD_IFS=$IFS
+    IFS=","
+    set -- $CONFIG_LINE
+    IFS=$OLD_IFS
+    NETTYPE=$1
+    shift
+    SUBCHANNELS="$1"
+    OPTIONS=""
+    shift
+    while [ $# -gt 0 ]; do
+        case $1 in
+            *=*) OPTIONS="$OPTIONS $1";;
+        esac
+        shift
+    done
+    OPTIONS=${OPTIONS## }
+    echo "NETTYPE=\"${NETTYPE}\""
+    echo "OPTIONS=\"${OPTIONS}\""
+}
+
+
 for netif in $IFACES ; do
     # bridge?
     unset bridge
@@ -38,7 +102,6 @@ for netif in $IFACES ; do
         echo "ONBOOT=yes"
         echo "NETBOOT=yes"
         echo "UUID=$uuid"
-        [ -n "$macaddr" ] && echo "MACADDR=$macaddr"
         [ -n "$mtu" ] && echo "MTU=$mtu"
         if [ -f /tmp/net.$netif.lease ]; then
             strstr "$ip" '*:*:*' &&
@@ -50,7 +113,11 @@ for netif in $IFACES ; do
         # If we've booted with static ip= lines, the override file is there
             [ -e /tmp/net.$netif.override ] && . /tmp/net.$netif.override
             echo "IPADDR=$ip"
-            echo "NETMASK=$mask"
+            if strstr "$mask" "."; then
+                echo "NETMASK=$mask"
+            else
+                echo "PREFIX=$mask"
+            fi
             [ -n "$gw" ] && echo "GATEWAY=$gw"
         fi
     } > /tmp/ifcfg/ifcfg-$netif
@@ -59,7 +126,12 @@ for netif in $IFACES ; do
     if [ -z "$bridge" ] && [ -z "$bond" ]; then
         # standard interface
         {
-            echo "HWADDR=$(cat /sys/class/net/$netif/address)"
+            if [ -n "$macaddr" ]; then
+                echo "MACADDR=$macaddr"
+            else
+                echo "HWADDR=\"$(cat /sys/class/net/$netif/address)\""
+            fi
+            print_s390 $netif
             echo "TYPE=Ethernet"
             echo "NAME=\"Boot Disk\""
             [ -n "$mtu" ] && echo "MTU=$mtu"
@@ -152,7 +224,7 @@ echo "files /etc/sysconfig/network-scripts" >> /run/initramfs/rwtab
 echo "files /var/lib/dhclient" >> /run/initramfs/rwtab
 {
     cp /tmp/net.* /run/initramfs/
-    cp /tmp/net.$netif.resolv.conf /run/initramfs/state/etc/
+    cp /tmp/net.$netif.resolv.conf /run/initramfs/state/etc/resolv.conf
     cp -a -t /run/initramfs/state/etc/sysconfig/network-scripts/ /tmp/ifcfg/*
     cp /tmp/ifcfg-leases/* /run/initramfs/state/var/lib/dhclient
 } > /dev/null 2>&1

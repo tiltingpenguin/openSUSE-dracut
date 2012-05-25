@@ -13,7 +13,7 @@ manpages = dracut.8 dracut.cmdline.7 dracut.conf.5 dracut-catimages.8
 
 .PHONY: install clean archive rpm testimage test all check AUTHORS doc
 
-all: syncheck
+all: syncheck dracut-version.sh
 
 doc: $(manpages) dracut.html
 
@@ -32,7 +32,7 @@ dracut.html: dracut.asc $(manpages)
 		http://docbook.sourceforge.net/release/xsl/current/xhtml/docbook.xsl dracut.xml
 	rm dracut.xml
 
-install: doc
+install: doc dracut-version.sh
 	mkdir -p $(DESTDIR)$(pkglibdir)
 	mkdir -p $(DESTDIR)$(bindir)
 	mkdir -p $(DESTDIR)$(sysconfdir)
@@ -45,6 +45,7 @@ install: doc
 	install -m 0644 dracut.conf $(DESTDIR)$(sysconfdir)/dracut.conf
 	mkdir -p $(DESTDIR)$(sysconfdir)/dracut.conf.d
 	install -m 0755 dracut-functions.sh $(DESTDIR)$(pkglibdir)/dracut-functions.sh
+	install -m 0755 dracut-version.sh $(DESTDIR)$(pkglibdir)/dracut-version.sh
 	ln -s dracut-functions.sh $(DESTDIR)$(pkglibdir)/dracut-functions
 	install -m 0755 dracut-logger.sh $(DESTDIR)$(pkglibdir)/dracut-logger.sh
 	install -m 0755 dracut-initramfs-restore.sh $(DESTDIR)$(pkglibdir)/dracut-initramfs-restore
@@ -56,11 +57,23 @@ install: doc
 	ln -s dracut.cmdline.7 $(DESTDIR)$(mandir)/man7/dracut.kernel.7
 	if [ -n "$(systemdsystemunitdir)" ]; then \
 		mkdir -p $(DESTDIR)$(systemdsystemunitdir); \
-		install -m 0644 dracut-shutdown.service $(DESTDIR)$(systemdsystemunitdir); \
+		for i in \
+			modules.d/98systemd/dracut-initqueue.service \
+			modules.d/98systemd/dracut-pre-pivot.service \
+			modules.d/98systemd/dracut-pre-trigger.service \
+			modules.d/98systemd/dracut-pre-udev.service \
+			modules.d/98systemd/initrd-switch-root.service \
+			modules.d/98systemd/initrd-switch-root.target \
+			dracut-shutdown.service; do \
+				install -m 0644 $$i $(DESTDIR)$(systemdsystemunitdir); \
+		done; \
 		mkdir -p $(DESTDIR)$(systemdsystemunitdir)/shutdown.target.wants; \
 		ln -s ../dracut-shutdown.service \
 		$(DESTDIR)$(systemdsystemunitdir)/shutdown.target.wants/dracut-shutdown.service; \
 	fi
+
+dracut-version.sh:
+	@echo "DRACUT_VERSION=$(VERSION)-$(GITVERSION)" > dracut-version.sh
 
 clean:
 	$(RM) *~
@@ -87,7 +100,7 @@ dracut-$(VERSION).tar.bz2: doc
 rpm: dracut-$(VERSION).tar.bz2
 	rpmbuild=$$(mktemp -d -t rpmbuild-dracut.XXXXXX); src=$$(pwd); \
 	cp dracut-$(VERSION).tar.bz2 "$$rpmbuild"; \
-	$$src/git2spec.pl $(VERSION) "$$rpmbuild" < dracut.spec > $$rpmbuild/dracut.spec; \
+	LANG=C $$src/git2spec.pl $(VERSION) "$$rpmbuild" < dracut.spec > $$rpmbuild/dracut.spec; \
 	(cd "$$rpmbuild"; rpmbuild --define "_topdir $$PWD" --define "_sourcedir $$PWD" \
 	        --define "_specdir $$PWD" --define "_srcrpmdir $$PWD" \
 		--define "_rpmdir $$PWD" -ba dracut.spec; ) && \

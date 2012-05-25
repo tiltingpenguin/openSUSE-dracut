@@ -4,14 +4,13 @@ TEST_DESCRIPTION="root filesystem on a ext3 filesystem"
 KVERSION=${KVERSION-$(uname -r)}
 
 # Uncomment this to debug failures
-#DEBUGFAIL="rd.shell rd.break"
-
+#DEBUGFAIL="rd.shell"
 test_run() {
     $testdir/run-qemu \
 	-hda $TESTDIR/root.ext3 \
 	-m 256M -nographic \
 	-net none -kernel /boot/vmlinuz-$KVERSION \
-	-append "root=LABEL=dracut rw quiet rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug $DEBUGFAIL" \
+	-append "root=LABEL=dracut rw loglevel=77 systemd.log_level=debug systemd.log_target=console rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug init=/sbin/init $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
     grep -m 1 -q dracut-root-block-success $TESTDIR/root.ext3 || return 1
 }
@@ -48,7 +47,7 @@ test_setup() {
     (
 	initdir=$TESTDIR/overlay
 	. $basedir/dracut-functions.sh
-	dracut_install sfdisk mkfs.ext3 poweroff cp umount sync
+	dracut_install sfdisk mkfs.ext3 poweroff cp umount
 	inst_hook initqueue 01 ./create-root.sh
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
@@ -81,7 +80,8 @@ test_setup() {
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-a "debug" \
+	-a "debug systemd" \
+	-o "network" \
 	-d "piix ide-gd_mod ata_piix ext3 sd_mod" \
 	-f $TESTDIR/initramfs.testing $KVERSION || return 1
 

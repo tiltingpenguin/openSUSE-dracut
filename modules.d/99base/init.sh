@@ -19,6 +19,7 @@ export PATH
 
 RD_DEBUG=""
 . /lib/dracut-lib.sh
+
 trap "emergency_shell Signal caught!" 0
 
 [ -c /dev/null ] || mknod -m 0666 /dev/null c 1 3
@@ -38,12 +39,6 @@ else
 fi
 
 setdebug
-
-if [ "$RD_DEBUG" = "yes" ]; then
-    getarg quiet && DRACUT_QUIET="yes"
-    a=$(getarg loglevel=)
-    [ -n "$a" ] && [ $a -ge 8 ] && unset DRACUT_QUIET
-fi
 
 if ! ismounted /dev; then
     mount -t devtmpfs -o mode=0755,nosuid,strictatime devtmpfs /dev >/dev/null 
@@ -93,6 +88,9 @@ if [ "$RD_DEBUG" = "yes" ]; then
 else
     exec 0<>/dev/console 1<>/dev/console 2<>/dev/console
 fi
+
+[ -f /etc/initrd-release ] && . /etc/initrd-release
+[ -n "$VERSION" ] && vinfo "dracut-$VERSION"
 
 source_conf /etc/conf.d
 

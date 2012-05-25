@@ -19,12 +19,12 @@ if [ -x /bin/plymouthd ]; then
 
         info "Starting plymouth daemon"
         mkdir -m 0755 /run/plymouth
-        consoledev=$(getarg console= | sed -e 's/,.*//')
+        read consoledev rest < /sys/class/tty/console/active
         consoledev=${consoledev:-tty0}
-        [ -x /lib/udev/console_init ] && /lib/udev/console_init "/dev/$consoledev"
+        [ -x /lib/udev/console_init -a -e "/dev/$consoledev" ] && /lib/udev/console_init "/dev/$consoledev"
         [ -x /bin/plymouthd ] && /bin/plymouthd --attach-to-session --pid-file /run/plymouth/pid
         /bin/plymouth --show-splash 2>&1 | vinfo
         # reset tty after plymouth messed with it
-        [ -x /lib/udev/console_init ] && /lib/udev/console_init /dev/tty0
+        [ -x /lib/udev/console_init -a -e "/dev/$consoledev" ] && /lib/udev/console_init "/dev/$consoledev"
     fi
 fi

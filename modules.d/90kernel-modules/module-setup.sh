@@ -35,8 +35,11 @@ installkernel() {
         hostonly='' instmods pcmcia firewire-ohci
         hostonly='' instmods usb_storage sdhci sdhci-pci
 
+        # arm specific modules
+        hostonly='' instmods sdhci_esdhc_imx mmci sdhci_tegra mvsdio omap sdhci_dove ahci_platform pata_imx sata_mv
+
         # install keyboard support
-        hostonly='' instmods atkbd i8042 usbhid hid-apple hid-sunplus hid-cherry hid-logitech hid-logitech-dj hid-microsoft ehci-hcd ohci-hcd uhci-hcd
+        hostonly='' instmods atkbd i8042 usbhid hid-apple hid-sunplus hid-cherry hid-logitech hid-logitech-dj hid-microsoft ehci-hcd ohci-hcd uhci-hcd xhci-hcd
         # install unix socket support
         hostonly='' instmods unix
         instmods "=drivers/pcmcia" =ide "=drivers/usb/storage"
@@ -58,8 +61,12 @@ installkernel() {
         hostonly='' instmods $drivers
     fi
 
-    [[ $add_drivers ]] && hostonly='' instmods $add_drivers
-    [[ $filesystems ]] && hostonly='' instmods $filesystems
+    if [[ $add_drivers ]]; then
+        hostonly='' instmods -c $add_drivers || return 1
+    fi
+    if [[ $filesystems ]]; then
+        hostonly='' instmods -c $filesystems || return 1
+    fi
 
     # force install of scsi_wait_scan
     hostonly='' instmods scsi_wait_scan
