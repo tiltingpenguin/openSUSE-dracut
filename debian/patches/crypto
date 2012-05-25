@@ -1,0 +1,13 @@
+Index: dracut/modules.d/90crypt/module-setup.sh
+===================================================================
+--- dracut.orig/modules.d/90crypt/module-setup.sh	2012-05-25 21:16:58.083039437 +0200
++++ dracut/modules.d/90crypt/module-setup.sh	2012-05-25 21:17:03.948039203 +0200
+@@ -34,7 +34,7 @@
+ }
+ 
+ depends() {
+-    echo dm rootfs-block
++    echo dm rootfs-block xts
+     return 0
+ }
+ 
