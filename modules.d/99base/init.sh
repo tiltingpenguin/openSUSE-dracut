@@ -90,7 +90,7 @@ else
 fi
 
 [ -f /etc/initrd-release ] && . /etc/initrd-release
-[ -n "$VERSION" ] && vinfo "dracut-$VERSION"
+[ -n "$VERSION" ] && info "dracut-$VERSION"
 
 source_conf /etc/conf.d
 
@@ -237,7 +237,7 @@ for i in "$(getarg real_init=)" "$(getarg init=)" $(getargs rd.distroinit=) /sbi
     [ -n "$i" ] || continue
 
     __p=$(readlink -f "${NEWROOT}/${i}")
-    if [ -x "$__p" ]; then
+    if [ -x "$__p" -o -x "${NEWROOT}/${__p}" ]; then
         INIT="$i"
         break
     fi

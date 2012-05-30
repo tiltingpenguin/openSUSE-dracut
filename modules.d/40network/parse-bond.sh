@@ -15,10 +15,7 @@
 
 # Check if bond parameter is valid
 if getarg bond= >/dev/null ; then
-    if [ -z "$netroot" ] ; then
-        die "No netboot configured, bond is invalid"
-    fi
-    command -v ifenslave >/dev/null 2>&1 || die "No 'ifenslave' installed"
+    :
 fi
 
 # We translate list of slaves to space-separated here to mwke it easier to loop over them in ifup

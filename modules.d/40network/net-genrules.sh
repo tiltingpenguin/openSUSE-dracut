@@ -14,7 +14,7 @@ fix_bootif() {
 }
 
 # Don't continue if we don't need network
-[ -z "$netroot" ] && ! getargbool 0 rd.neednet && return;
+[ -z "$netroot" ] && ! [ -e "/tmp/net.ifaces" ] && return;
 
 # Write udev rules
 {
@@ -29,6 +29,11 @@ fix_bootif() {
         . /tmp/bond.info
         # It is enough to fire up only one
         IFACES=${bondslaves%% *}
+    fi
+
+    if [ -e /tmp/vlan.info ]; then
+        . /tmp/vlan.info
+        IFACES=$phydevice
     fi
 
     ifup='/sbin/ifup $env{INTERFACE}'
