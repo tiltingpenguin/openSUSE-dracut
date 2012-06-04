@@ -2,3 +2,4 @@ dev-shm-mount
 no-unimaps-directory
 missing-rpc-user
 aufs
+error-message
