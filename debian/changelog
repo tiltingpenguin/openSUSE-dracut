@@ -1,9 +1,11 @@
-dracut (018+76+g982d59a) unstable; urgency=medium
+dracut (019-1) unstable; urgency=medium
 
-  * sync upstream
+  * new upstream
   * add build-depends Closes: #674326
+  * do not mount /dev/shm, Closes: #637286
+  * fix error message in dracut.sh
 
- -- Thomas Lange <lange@debian.org>  Sat, 26 May 2012 19:45:09 +0200
+ -- Thomas Lange <lange@debian.org>  Mon, 04 Jun 2012 15:13:25 +0200
 
 dracut (018+32+geb6e141-1) unstable; urgency=low
 
