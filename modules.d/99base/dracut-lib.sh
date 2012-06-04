@@ -307,6 +307,7 @@ die() {
     } >> $hookdir/emergency/01-die.sh
 
     > /run/initramfs/.die
+    emergency_shell
     exit 1
 }
 
@@ -530,6 +531,17 @@ mkuniqdir() {
     done
 
     echo "${retdir}"
+}
+
+# Copy the contents of SRC into DEST, merging the contents of existing
+# directories (kinda like rsync, or cpio -p).
+# Creates DEST if it doesn't exist. Overwrites files with the same names.
+#
+# copytree SRC DEST
+copytree() {
+    local src="$1" dest="$2"
+    mkdir -p "$dest"; dest=$(readlink -e -q "$dest")
+    ( cd "$src"; cp -af . -t "$dest" )
 }
 
 # Evaluates command for UUIDs either given as arguments for this function or all
@@ -803,8 +815,6 @@ emergency_shell()
     warn $@
     source_hook "$hook"
     echo
-    wait_for_loginit
-    [ -e /run/initramfs/.die ] && exit 1
     if getargbool 1 rd.shell -y rdshell || getarg rd.break rdbreak; then
         echo "Dropping to debug shell."
         echo
@@ -828,6 +838,7 @@ emergency_shell()
         # cause a kernel panic
         exit 1
     fi
+    [ -e /run/initramfs/.die ] && exit 1
 }
 
 # Retain the values of these variables but ensure that they are unexported
