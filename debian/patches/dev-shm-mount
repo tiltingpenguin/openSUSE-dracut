@@ -1,7 +1,7 @@
 Index: dracut/modules.d/99base/init.sh
 ===================================================================
---- dracut.orig/modules.d/99base/init.sh	2012-06-04 14:51:53.076039300 +0200
-+++ dracut/modules.d/99base/init.sh	2012-06-04 14:51:58.008038801 +0200
+--- dracut.orig/modules.d/99base/init.sh	2012-06-03 23:05:34.963039132 +0200
++++ dracut/modules.d/99base/init.sh	2012-06-03 23:05:40.852039264 +0200
 @@ -55,11 +55,6 @@
      mount -t devpts -o gid=5,mode=620,noexec,nosuid devpts /dev/pts >/dev/null 
  fi
