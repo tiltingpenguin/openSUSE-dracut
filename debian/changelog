@@ -1,3 +1,10 @@
+dracut (019+9+g521c57a) unstable; urgency=high
+
+  * import some upstream patches which fixes the "pkg-config command not
+    found" errors
+
+ -- Thomas Lange <lange@debian.org>  Tue, 12 Jun 2012 11:51:10 +0200
+
 dracut (019+1+gd77540c-1) unstable; urgency=medium
 
   * new upstream
