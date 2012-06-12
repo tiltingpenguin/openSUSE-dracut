@@ -16,36 +16,20 @@ depends() {
 }
 
 install() {
-    local systemdutildir systemdsystemunitdir
-
-    systemdutildir=$(pkg-config systemd --variable=systemdutildir)
-    systemdsystemunitdir=$(pkg-config systemd --variable=systemdsystemunitdir)
-
-    if ! [[ -d "$systemdutildir" ]]; then
-        [[ -d /lib/systemd ]] && systemdutildir=/lib/systemd
-        [[ -d /usr/lib/systemd ]] && systemdutildir=/usr/lib/systemd
-    fi
-    [[ -d "$systemdsystemunitdir" ]] || systemdsystemunitdir=${systemdutildir}/system
-
     dracut_install -o "$i" \
         $systemdutildir/systemd \
         $systemdutildir/systemd-cgroups-agent \
         $systemdutildir/systemd-initctl \
-        $systemdutildir/systemd-shutdownd \
         $systemdutildir/systemd-shutdown \
         $systemdutildir/systemd-modules-load \
         $systemdutildir/systemd-remount-fs \
         $systemdutildir/systemd-reply-password \
         $systemdutildir/systemd-fsck \
-        $systemdutildir/systemd-timestamp \
-        $systemdutildir/systemd-ac-power \
         $systemdutildir/systemd-sysctl \
         $systemdutildir/systemd-udevd \
         $systemdutildir/systemd-journald \
-        $systemdutildir/systemd-coredump \
         $systemdutildir/systemd-vconsole-setup \
         $systemdutildir/systemd-cryptsetup \
-        $systemdutildir/systemd-localed \
         $systemdsystemunitdir/emergency.target \
         $systemdsystemunitdir/sysinit.target \
         $systemdsystemunitdir/basic.target \
