@@ -1,9 +1,10 @@
-dracut (019+9+g521c57a) unstable; urgency=high
+dracut (019+9+g521c57a-1) unstable; urgency=high
 
   * import some upstream patches which fixes the "pkg-config command not
     found" errors
+  * postinst.d/dracut: create modules.dep if it not already exists
 
- -- Thomas Lange <lange@debian.org>  Tue, 12 Jun 2012 11:51:10 +0200
+ -- Thomas Lange <lange@debian.org>  Tue, 12 Jun 2012 16:59:41 +0200
 
 dracut (019+1+gd77540c-1) unstable; urgency=medium
 
