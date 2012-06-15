@@ -699,16 +699,16 @@ dracut_install() {
 
 # inst_libdir_file [-n <pattern>] <file> [<file>...]
 # Install a <file> located on a lib directory to the initramfs image
-# -n <pattern> install non-matching files
+# -n <pattern> install matching files
 inst_libdir_file() {
     if [[ "$1" == "-n" ]]; then
-        local _pattern=$1
+        local _pattern=$2
         shift 2
         for _dir in $libdirs; do
             for _i in "$@"; do
                 for _f in "$_dir"/$_i; do
-                    [[ "$_i" =~ $_pattern ]] || continue
-                    [[ -e "$_i" ]] && dracut_install "$_i"
+                    [[ "$_f" =~ $_pattern ]] || continue
+                    [[ -e "$_f" ]] && dracut_install "$_f"
                 done
             done
         done
