@@ -35,8 +35,10 @@ if [ ! -f $bootdir/../lib/modules/$version/modules.dep ]; then
     depmod -a -F $bootdir/System.map-$version $version
 fi
 
-# determine the multicarch lib pathes, they all have -gnu in their name
-multiarchlibs=`find /lib /usr/lib -maxdepth 1 -type d|grep -- -gnu | tr '\n' ' '`
+multiarchlibs="/lib /usr/lib"
+
+# add multicarch lib pathes
+multiarchlibs="$multiarchlibs $(sed 's/#.*//' /etc/ld.so.conf.d/*-linux-gnu.conf 2>/dev/null| tr '\n' ' ')"
 
 # we're good - create initramfs
 echo "dracut: Generating $bootdir/initrd.img-${version}"
