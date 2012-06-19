@@ -26,6 +26,8 @@
 # store for logging
 dracut_args="$@"
 
+set -o pipefail
+
 usage() {
     [[ $dracutbasedir ]] || dracutbasedir=/usr/lib/dracut
     if [[ -f $dracutbasedir/dracut-version.sh ]]; then
@@ -217,6 +219,8 @@ push_arg() {
 }
 
 verbosity_mod_l=0
+unset kernel
+unset outfile
 
 while (($# > 0)); do
     case ${1%%=*} in
@@ -289,6 +293,7 @@ while (($# > 0)); do
             elif ! [[ ${kernel+x} ]]; then
                 kernel=$1
             else
+                echo "Unknown argument: $1"
                 usage; exit 1;
             fi
             ;;
@@ -526,34 +531,12 @@ ddebug "Executing $0 $dracut_args"
     exit 0
 }
 
-# Detect lib paths
-if ! [[ $libdirs ]] ; then
-    if strstr "$(ldd /bin/sh)" "/lib64/" &>/dev/null \
-        && [[ -d /lib64 ]]; then
-        libdirs+=" /lib64"
-        [[ -d /usr/lib64 ]] && libdirs+=" /usr/lib64"
-    else
-        libdirs+=" /lib"
-        [[ -d /usr/lib ]] && libdirs+=" /usr/lib"
-    fi
-fi
-
 # This is kinda legacy -- eventually it should go away.
 case $dracutmodules in
     ""|auto) dracutmodules="all" ;;
 esac
 
 abs_outfile=$(readlink -f "$outfile") && outfile="$abs_outfile"
-
-srcmods="/lib/modules/$kernel/"
-[[ $drivers_dir ]] && {
-    if vercmp $(modprobe --version | cut -d' ' -f3) lt 3.7; then
-        dfatal 'To use --kmoddir option module-init-tools >= 3.7 is required.'
-        exit 1
-    fi
-    srcmods="$drivers_dir"
-}
-export srcmods
 
 [[ -f $srcmods/modules.dep ]] || {
     dfatal "$srcmods/modules.dep is missing. Did you run depmod?"

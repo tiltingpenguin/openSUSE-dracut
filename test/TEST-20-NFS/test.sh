@@ -18,6 +18,7 @@ run_server() {
 	-net nic,macaddr=52:54:00:12:34:56,model=e1000 \
 	-net socket,listen=127.0.0.1:12320 \
 	-serial $SERIAL \
+        -watchdog ib700 -watchdog-action poweroff \
 	-kernel /boot/vmlinuz-$KVERSION \
 	-append "root=/dev/sda rw quiet console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.server \
@@ -53,6 +54,7 @@ client_test() {
   	-net nic,macaddr=$mac,model=e1000 \
 	-net socket,connect=127.0.0.1:12320 \
   	-kernel /boot/vmlinuz-$KVERSION \
+        -watchdog ib700 -watchdog-action poweroff \
   	-append "$cmdline $DEBUGFAIL rd.debug rd.retry=10 rd.info quiet  ro console=ttyS0,115200n81 selinux=0" \
   	-initrd $TESTDIR/initramfs.testing
 
@@ -209,10 +211,37 @@ test_setup() {
     mkdir $TESTDIR/mnt
     sudo mount -o loop $TESTDIR/server.ext3 $TESTDIR/mnt
 
-    kernel=$KVERSION
-    (
+
+    export kernel=$KVERSION
+    export srcmods="/lib/modules/$kernel/"
+    # Detect lib paths
+
+    . $basedir/dracut-functions.sh
+    if ! [[ $libdirs ]] ; then
+	if strstr "$(ldd /bin/sh)" "/lib64/" &>/dev/null \
+            && [[ -d /lib64 ]]; then
+            libdirs+=" /lib64"
+            [[ -d /usr/lib64 ]] && libdirs+=" /usr/lib64"
+	else
+            libdirs+=" /lib"
+            [[ -d /usr/lib ]] && libdirs+=" /usr/lib"
+	fi
+    fi
+
+   (
     	initdir=$TESTDIR/mnt
-	. $basedir/dracut-functions.sh
+
+	for _f in modules.builtin.bin modules.builtin; do
+	    [[ $srcmods/$_f ]] && break
+	done || {
+	    dfatal "No modules.builtin.bin and modules.builtin found!"
+	    return 1
+	}
+
+        for _f in modules.builtin.bin modules.builtin modules.order; do
+	    [[ $srcmods/$_f ]] && inst_simple "$srcmods/$_f" "/lib/modules/$kernel/$_f"
+	done
+
 	dracut_install sh ls shutdown poweroff stty cat ps ln ip \
 	    dmesg mkdir cp ping exportfs \
 	    modprobe rpc.nfsd rpc.mountd showmount tcpdump \
@@ -233,26 +262,28 @@ test_setup() {
 	inst ./dhcpd.conf /etc/dhcpd.conf
 	dracut_install /etc/nsswitch.conf /etc/rpc /etc/protocols
 	dracut_install rpc.idmapd /etc/idmapd.conf
-	if ldd $(type -P rpc.idmapd) |grep -q lib64; then
-	    LIBDIR="/lib64"
-	else
-	    LIBDIR="/lib"
-	fi
 
-	dracut_install $(ls {/usr,}$LIBDIR/libnfsidmap*.so* 2>/dev/null )
-	dracut_install $(ls {/usr,}$LIBDIR/libnss*.so 2>/dev/null)
+	inst_libdir_file 'libnfsidmap_nsswitch.so*'
+	inst_libdir_file 'libnfsidmap/*.so*'
+	inst_libdir_file 'libnfsidmap*.so*'
+
+        _nsslibs=$(sed -e '/^#/d' -e 's/^.*://' -e 's/\[NOTFOUND=return\]//' /etc/nsswitch.conf \
+	    |  tr -s '[:space:]' '\n' | sort -u | tr -s '[:space:]' '|')
+        _nsslibs=${_nsslibs#|}
+        _nsslibs=${_nsslibs%|}
+
+	inst_libdir_file -n "$_nsslibs" 'libnss*.so*'
+
 	(
 	    cd "$initdir";
-	    mkdir -p dev sys proc etc var/run tmp var/lib/{dhcpd,rpcbind}
+	    mkdir -p dev sys proc run etc var/run tmp var/lib/{dhcpd,rpcbind}
 	    mkdir -p var/lib/nfs/{v4recovery,rpc_pipefs}
 	    chmod 777 var/lib/rpcbind var/lib/nfs
 	)
 	inst /etc/nsswitch.conf /etc/nsswitch.conf
+
 	inst /etc/passwd /etc/passwd
 	inst /etc/group /etc/group
-	for i in /lib*/libnss_files**;do
-	    inst_library $i
-	done
 
 	/sbin/depmod -a -b "$initdir" $kernel
 	cp -a /etc/ld.so.conf* $initdir/etc
@@ -264,7 +295,6 @@ test_setup() {
     mkdir -p $initdir
 
     (
-	. $basedir/dracut-functions.sh
 	dracut_install sh shutdown poweroff stty cat ps ln ip \
             mount dmesg mkdir cp ping grep
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
@@ -274,15 +304,23 @@ test_setup() {
 	inst ./client-init.sh /sbin/init
 	(
 	    cd "$initdir"
-	    mkdir -p dev sys proc etc
+	    mkdir -p dev sys proc etc run
 	    mkdir -p var/lib/nfs/rpc_pipefs
 	)
 	inst /etc/nsswitch.conf /etc/nsswitch.conf
 	inst /etc/passwd /etc/passwd
 	inst /etc/group /etc/group
-	for i in /lib*/libnss_files*;do
-	    inst_library $i
-	done
+
+	inst_libdir_file 'libnfsidmap_nsswitch.so*'
+	inst_libdir_file 'libnfsidmap/*.so*'
+	inst_libdir_file 'libnfsidmap*.so*'
+
+        _nsslibs=$(sed -e '/^#/d' -e 's/^.*://' -e 's/\[NOTFOUND=return\]//' /etc/nsswitch.conf \
+	    |  tr -s '[:space:]' '\n' | sort -u | tr -s '[:space:]' '|')
+        _nsslibs=${_nsslibs#|}
+        _nsslibs=${_nsslibs%|}
+
+	inst_libdir_file -n "$_nsslibs" 'libnss*.so*'
 
 	cp -a /etc/ld.so.conf* $initdir/etc
 	sudo ldconfig -r "$initdir"
@@ -299,7 +337,6 @@ test_setup() {
     (
 	initdir=$TESTDIR/overlay
 	mkdir $TESTDIR/overlay
-	. $basedir/dracut-functions.sh
 	dracut_install poweroff shutdown
 	inst_hook emergency 000 ./hard-off.sh
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
@@ -307,15 +344,15 @@ test_setup() {
 
     # Make server's dracut image
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-m "dash udev-rules base rootfs-block debug kernel-modules" \
-	-d "piix ide-gd_mod ata_piix ext3 sd_mod e1000" \
+	-m "dash udev-rules base rootfs-block debug kernel-modules watchdog" \
+	-d "piix ide-gd_mod ata_piix ext3 sd_mod e1000 ib700wdt" \
 	-f $TESTDIR/initramfs.server $KVERSION || return 1
 
     # Make client's dracut image
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
 	-o "plymouth" \
-	-a "debug" \
-	-d "piix ide-gd_mod ata_piix sd_mod e1000 nfs sunrpc" \
+	-a "debug watchdog" \
+	-d "piix ide-gd_mod ata_piix sd_mod e1000 nfs sunrpc ib700wdt" \
 	-f $TESTDIR/initramfs.testing $KVERSION || return 1
 }
 
