@@ -1,3 +1,12 @@
+dracut (019+21+g7828692-1) unstable; urgency=high
+
+  * sync to upstream, get important fix for missing libraries needed for
+    nfs module
+  * add nogroup to /etc/group inside the initrd
+  * use /etc/ld.so.conf.d/ for creating list of library pathes
+
+ -- Thomas Lange <lange@debian.org>  Fri, 15 Jun 2012 23:24:25 +0200
+
 dracut (019+9+g521c57a-1) unstable; urgency=high
 
   * import some upstream patches which fixes the "pkg-config command not
