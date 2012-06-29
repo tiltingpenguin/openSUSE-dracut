@@ -7,8 +7,6 @@ check() {
     # if cryptsetup is not installed, then we cannot support encrypted devices.
     type -P cryptsetup >/dev/null || return 1
 
-    . $dracutfunctions
-
     check_crypt() {
         local dev=$1 fs=$2
         [[ $fs = "crypto_LUKS" ]] || return 1
@@ -44,12 +42,12 @@ installkernel() {
 
 install() {
     dracut_install cryptsetup rmdir readlink umount
-    inst "$moddir"/cryptroot-ask.sh /sbin/cryptroot-ask
-    inst "$moddir"/probe-keydev.sh /sbin/probe-keydev
+    inst_script "$moddir"/cryptroot-ask.sh /sbin/cryptroot-ask
+    inst_script "$moddir"/probe-keydev.sh /sbin/probe-keydev
     inst_hook cmdline 10 "$moddir/parse-keydev.sh"
     inst_hook cmdline 30 "$moddir/parse-crypt.sh"
     inst_hook cleanup 30 "$moddir/crypt-cleanup.sh"
     inst_simple /etc/crypttab
-    inst "$moddir/crypt-lib.sh" "/lib/dracut-crypt-lib.sh"
+    inst_simple "$moddir/crypt-lib.sh" "/lib/dracut-crypt-lib.sh"
 }
 

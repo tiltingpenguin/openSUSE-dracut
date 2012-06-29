@@ -7,9 +7,6 @@ check() {
     # No point trying to support lvm if the binaries are missing
     type -P lvm >/dev/null || return 1
 
-    . $dracutfunctions
-    [[ $debug ]] && set -x
-
     check_lvm() {
         local DM_VG_NAME DM_LV_NAME DM_UDEV_DISABLE_DISK_RULES_FLAG
         eval $(udevadm info --query=property --name=$1|egrep '(DM_VG_NAME|DM_LV_NAME|DM_UDEV_DISABLE_DISK_RULES_FLAG)=')
@@ -58,7 +55,7 @@ install() {
     # files, but provides the one below:
     inst_rules 64-device-mapper.rules
 
-    inst "$moddir/lvm_scan.sh" /sbin/lvm_scan
+    inst_script "$moddir/lvm_scan.sh" /sbin/lvm_scan
     inst_hook cmdline 30 "$moddir/parse-lvm.sh"
 
     inst_libdir_file "libdevmapper-event-lvm*.so"

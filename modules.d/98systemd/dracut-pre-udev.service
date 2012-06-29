@@ -8,18 +8,21 @@
 # See systemd.special(7) for details
 
 [Unit]
-Description=Dracut pre-trigger hook
+Description=Dracut pre-udev hook
 DefaultDependencies=no
-Before=systemd-udev.service
+Before=systemd-udev.service dracut-pre-trigger.service
+After=dracut-cmdline.service
+Wants=dracut-cmdline.service
+ConditionPathExists=/etc/initrd-release
 
 [Service]
 Environment=HOME=/
 WorkingDirectory=/
 ExecStart=-/bin/dracut-pre-udev
 Type=oneshot
-StandardInput=tty-force
-StandardOutput=inherit
-StandardError=inherit
+StandardInput=null
+StandardOutput=syslog
+StandardError=syslog+console
 KillMode=process
 
 # Bash ignores SIGTERM, so we send SIGHUP instead, to ensure that bash

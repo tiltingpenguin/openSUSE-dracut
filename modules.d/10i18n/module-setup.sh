@@ -31,7 +31,7 @@ install() {
             *) cmd=grep ;;
         esac
 
-        for INCL in $($cmd "^include " $MAP | cut -d' ' -f2 | tr -d '"'); do
+        for INCL in $($cmd "^include " $MAP | while read a a b; do echo ${a/\"/}; done); do
             for FN in $(find ${kbddir}/keymaps -type f -name $INCL\*); do
                 findkeymap $FN
             done
@@ -92,9 +92,9 @@ install() {
     install_all_kbd() {
         local rel f
 
-        find $(eval echo ${kbddir}/{${KBDSUBDIRS}}) -type f -print | \
-            while read f; do
-            inst_simple $f
+        for _src in $(eval echo ${kbddir}/{${KBDSUBDIRS}}); do
+            inst_dir "$_src"
+            cp --reflink=auto --sparse=auto -prfL -t "${initdir}/${_src%/*}" "$_src"
         done
 
         # remove unnecessary files

@@ -16,6 +16,7 @@ installkernel() {
                     *.ko.xz) [[ $(xz -dc   <$_f) =~ $_blockfuncs ]] && echo "$_f" ;;
                     esac
                 done
+                return 0
             }
             function rotor() {
                 local _f1 _f2
@@ -25,12 +26,15 @@ installkernel() {
                         echo "$_f2" 1>&${_side2}
                     fi
                 done | bmf1 1>&${_merge}
+                return 0
             }
             # Use two parallel streams to filter alternating modules.
             set +x
             eval "( ( rotor ) ${_side2}>&1 | bmf1 ) ${_merge}>&1"
             [[ $debug ]] && set -x
+            return 0
         }
+
         hostonly='' instmods sr_mod sd_mod scsi_dh scsi_dh_rdac scsi_dh_emc ata_piix
         hostonly='' instmods pcmcia firewire-ohci
         hostonly='' instmods usb_storage sdhci sdhci-pci
@@ -68,25 +72,12 @@ installkernel() {
         hostonly='' instmods -c $filesystems || return 1
     fi
 
-    for _f in modules.builtin.bin modules.builtin; do
-        [[ $srcmods/$_f ]] && break
-    done || {
-        dfatal "No modules.builtin.bin and modules.builtin found!"
-        return 1
-    }
-
-    for _f in modules.builtin.bin modules.builtin modules.order; do
-        [[ $srcmods/$_f ]] && inst_simple "$srcmods/$_f" "/lib/modules/$kernel/$_f"
-    done
-
 }
 
 install() {
     local _f i
     [ -f /etc/modprobe.conf ] && dracut_install /etc/modprobe.conf
-    for i in $(find -L /etc/modprobe.d/ -maxdepth 1 -type f -name '*.conf'); do
-        inst_simple "$i"
-    done
+    dracut_install $(find -L /etc/modprobe.d/ -maxdepth 1 -type f -name '*.conf')
     inst_hook cmdline 01 "$moddir/parse-kernel.sh"
     inst_simple "$moddir/insmodpost.sh" /sbin/insmodpost.sh
 }

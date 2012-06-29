@@ -2,7 +2,6 @@
 # -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
-exec </dev/console >/dev/console 2>&1
 if [ -f /dracut-state.sh ]; then
     . /dracut-state.sh || :
 fi
@@ -19,7 +18,7 @@ getarg 'rd.break=cleanup' 'rdbreak=cleanup' && emergency_shell -n cleanup "Break
 source_hook cleanup
 
 # By the time we get here, the root filesystem should be mounted.
-# Try to find init. 
+# Try to find init.
 
 for i in "$(getarg real_init=)" "$(getarg init=)"; do
     [ -n "$i" ] || continue
@@ -35,13 +34,18 @@ done
 echo "NEWROOT=\"$NEWROOT\"" >> /run/initramfs/switch-root.conf
 
 udevadm control --stop-exec-queue
-systemctl stop systemd-udev.service
+
+for i in systemd-udev.service udev.service; do
+    systemctl is-active $i >/dev/null 2>&1 && systemctl stop $i
+done
+
 udevadm info --cleanup-db
 
 # remove helper symlink
 [ -h /dev/root ] && rm -f /dev/root
 
 getarg rd.break rdbreak && emergency_shell -n switch_root "Break before switch_root"
-info "Switching root"
+
+cp -avr /lib/systemd/system/dracut*.service /run/systemd/system/
 
 export -p > /dracut-state.sh

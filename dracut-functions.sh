@@ -20,8 +20,10 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+[[ -d "$initdir/.kernelmodseen" ]] || mkdir -p "$initdir/.kernelmodseen"
+
 # Generic substring function.  If $2 is in $1, return 0.
-strstr() { [ "${1#*$2*}" != "$1" ]; }
+strstr() { [[ $1 = *$2* ]]; }
 
 if ! [[ $dracutbasedir ]]; then
     dracutbasedir=${BASH_SOURCE[0]%/*}
@@ -74,7 +76,7 @@ fi
 
 # Create all subdirectories for given path without creating the last element.
 # $1 = path
-mksubdirs() { mkdir -m 0755 -p ${1%/*}; }
+mksubdirs() { [[ -e ${1%/*} ]] || mkdir -m 0755 -p ${1%/*}; }
 
 # Version comparision function.  Assumes Linux style version scheme.
 # $1 = version a
@@ -187,6 +189,19 @@ convert_abs_rel() {
 
     echo "$__newpath"
 }
+
+if strstr "$(ln --help)" "--relative"; then
+    ln_r() {
+        ln -sfnr "${initdir}/$1" "${initdir}/$2"
+    }
+else
+    ln_r() {
+        local _source=$1
+        local _dest=$2
+        [[ -d "${_dest%/*}" ]] && _dest=$(readlink -f "${_dest%/*}")/${_dest##*/}
+        ln -sfn $(convert_abs_rel "${_dest}" "${_source}") "${initdir}/${_dest}"
+    }
+fi
 
 # get_fs_env <device>
 # Get and set the ID_FS_TYPE and ID_FS_UUID variable from udev for a device.
@@ -376,54 +391,253 @@ check_vol_slaves() {
     return 1
 }
 
-# Install a directory, keeping symlinks as on the original system.
-# Example: if /lib points to /lib64 on the host, "inst_dir /lib/file"
-# will create ${initdir}/lib64, ${initdir}/lib64/file,
-# and a symlink ${initdir}/lib -> lib64.
-inst_dir() {
-    [[ -e ${initdir}/"$1" ]] && return 0  # already there
+if [[ -x /usr/bin/dracut-install ]]; then
+    [[ $DRACUT_RESOLVE_LAZY ]] || export DRACUT_RESOLVE_DEPS=1
+    inst_dir() {
+        [[ -e ${initdir}/"$1" ]] && return 0  # already there
+        dracut-install ${initdir+-D "$initdir"} -d "$@"
+        (($? != 0)) && derror dracut-install ${initdir+-D "$initdir"} -d "$@" || :
+    }
 
-    local _dir="$1" _part="${1%/*}" _file
-    while [[ "$_part" != "${_part%/*}" ]] && ! [[ -e "${initdir}/${_part}" ]]; do
-        _dir="$_part $_dir"
-        _part=${_part%/*}
-    done
+    inst() {
+        [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
+        #dinfo "dracut-install -l $@"
+        dracut-install ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l} ${DRACUT_FIPS_MODE+-H} "$@"
+        (($? != 0)) && derror dracut-install ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l} ${DRACUT_FIPS_MODE+-H} "$@" || :
+    }
 
-    # iterate over parent directories
-    for _file in $_dir; do
-        [[ -e "${initdir}/$_file" ]] && continue
-        if [[ -L $_file ]]; then
-            inst_symlink "$_file"
-        else
+    inst_simple() {
+        [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
+        [[ -e $1 ]] || return 1  # no source
+        dracut-install ${initdir+-D "$initdir"} "$@"
+        (($? != 0)) && derror dracut-install ${initdir+-D "$initdir"} "$@" || :
+    }
+
+    inst_symlink() {
+        [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
+        [[ -L $1 ]] || return 1
+        dracut-install ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
+        (($? != 0)) && derror dracut-install ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
+    }
+
+    dracut_install() {
+        #dinfo "initdir=$initdir dracut-install -l $@"
+        dracut-install ${initdir+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
+        (($? != 0)) && derror dracut-install ${initdir+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
+    }
+
+    inst_library() {
+        [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
+        [[ -e $1 ]] || return 1  # no source
+        dracut-install ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
+        (($? != 0)) && derror dracut-install ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
+    }
+
+    inst_binary() {
+        dracut-install ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
+        (($? != 0)) && derror dracut-install ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
+    }
+
+    inst_script() {
+        dracut-install ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
+        (($? != 0)) && derror dracut-install ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
+    }
+
+else
+
+    # Install a directory, keeping symlinks as on the original system.
+    # Example: if /lib points to /lib64 on the host, "inst_dir /lib/file"
+    # will create ${initdir}/lib64, ${initdir}/lib64/file,
+    # and a symlink ${initdir}/lib -> lib64.
+    inst_dir() {
+        [[ -e ${initdir}/"$1" ]] && return 0  # already there
+
+        local _dir="$1" _part="${1%/*}" _file
+        while [[ "$_part" != "${_part%/*}" ]] && ! [[ -e "${initdir}/${_part}" ]]; do
+            _dir="$_part $_dir"
+            _part=${_part%/*}
+        done
+
+        # iterate over parent directories
+        for _file in $_dir; do
+            [[ -e "${initdir}/$_file" ]] && continue
+            if [[ -L $_file ]]; then
+                inst_symlink "$_file"
+            else
             # create directory
-            mkdir -m 0755 -p "${initdir}/$_file" || return 1
-            [[ -e "$_file" ]] && chmod --reference="$_file" "${initdir}/$_file"
-            chmod u+w "${initdir}/$_file"
+                mkdir -m 0755 -p "${initdir}/$_file" || return 1
+                [[ -e "$_file" ]] && chmod --reference="$_file" "${initdir}/$_file"
+                chmod u+w "${initdir}/$_file"
+            fi
+        done
+    }
+
+    # $1 = file to copy to ramdisk
+    # $2 (optional) Name for the file on the ramdisk
+    # Location of the image dir is assumed to be $initdir
+    # We never overwrite the target if it exists.
+    inst_simple() {
+        [[ -f "$1" ]] || return 1
+        strstr "$1" "/" || return 1
+        local _src=$1 _target="${2:-$1}"
+
+        [[ -L $_src ]] && { inst_symlink $_src $_target; return $?; }
+
+        if ! [[ -d ${initdir}/$_target ]]; then
+            [[ -e ${initdir}/$_target ]] && return 0
+            [[ -L ${initdir}/$_target ]] && return 0
+            [[ -d "${initdir}/${_target%/*}" ]] || inst_dir "${_target%/*}"
         fi
-    done
-}
+        if [[ $DRACUT_FIPS_MODE ]]; then
+            # install checksum files also
+            if [[ -e "${_src%/*}/.${_src##*/}.hmac" ]]; then
+                inst "${_src%/*}/.${_src##*/}.hmac" "${_target%/*}/.${_target##*/}.hmac"
+            fi
+        fi
+        ddebug "Installing $_src"
+        cp --reflink=auto --sparse=auto -pfL "$_src" "${initdir}/$_target"
+    }
 
-# $1 = file to copy to ramdisk
-# $2 (optional) Name for the file on the ramdisk
-# Location of the image dir is assumed to be $initdir
-# We never overwrite the target if it exists.
-inst_simple() {
-    [[ -f "$1" ]] || return 1
-    strstr "$1" "/" || return 1
+    # same as above, but specialized for symlinks
+    inst_symlink() {
+        local _src=$1 _target=${2:-$1} _realsrc
+        strstr "$1" "/" || return 1
+        [[ -L $1 ]] || return 1
+        [[ -L $initdir/$_target ]] && return 0
+        _realsrc=$(readlink -f "$_src")
+        if ! [[ -e $initdir/$_realsrc ]]; then
+            if [[ -d $_realsrc ]]; then
+                inst_dir "$_realsrc"
+            else
+                inst "$_realsrc"
+            fi
+        fi
+        [[ ! -e $initdir/${_target%/*} ]] && inst_dir "${_target%/*}"
 
-    local _src=$1 target="${2:-$1}"
-    if ! [[ -d ${initdir}/$target ]]; then
-        [[ -e ${initdir}/$target ]] && return 0
-        [[ -L ${initdir}/$target ]] && return 0
-        [[ -d "${initdir}/${target%/*}" ]] || inst_dir "${target%/*}"
-    fi
-    # install checksum files also
-    if [[ -e "${_src%/*}/.${_src##*/}.hmac" ]]; then
-        inst "${_src%/*}/.${_src##*/}.hmac" "${target%/*}/.${target##*/}.hmac"
-    fi
-    ddebug "Installing $_src"
-    cp --sparse=always -pfL "$_src" "${initdir}/$target"
-}
+        ln_r "${_realsrc}" "${_target}"
+    }
+
+    # Same as above, but specialized to handle dynamic libraries.
+    # It handles making symlinks according to how the original library
+    # is referenced.
+    inst_library() {
+        local _src="$1" _dest=${2:-$1} _lib _reallib _symlink
+        strstr "$1" "/" || return 1
+        [[ -e $initdir/$_dest ]] && return 0
+        if [[ -L $_src ]]; then
+            if [[ $DRACUT_FIPS_MODE ]]; then
+                # install checksum files also
+                if [[ -e "${_src%/*}/.${_src##*/}.hmac" ]]; then
+                    inst "${_src%/*}/.${_src##*/}.hmac" "${_dest%/*}/.${_dest##*/}.hmac"
+                fi
+            fi
+            _reallib=$(readlink -f "$_src")
+            inst_simple "$_reallib" "$_reallib"
+            inst_dir "${_dest%/*}"
+            ln_r "${_reallib}" "${_dest}"
+        else
+            inst_simple "$_src" "$_dest"
+        fi
+
+        # Create additional symlinks.  See rev_symlinks description.
+        for _symlink in $(rev_lib_symlinks $_src) $(rev_lib_symlinks $_reallib); do
+            [[ ! -e $initdir/$_symlink ]] && {
+                ddebug "Creating extra symlink: $_symlink"
+                inst_symlink $_symlink
+            }
+        done
+    }
+
+    # Same as above, but specialized to install binary executables.
+    # Install binary executable, and all shared library dependencies, if any.
+    inst_binary() {
+        local _bin _target
+        _bin=$(find_binary "$1") || return 1
+        _target=${2:-$_bin}
+        [[ -e $initdir/$_target ]] && return 0
+        local _file _line
+        local _so_regex='([^ ]*/lib[^/]*/[^ ]*\.so[^ ]*)'
+        # I love bash!
+        LC_ALL=C ldd "$_bin" 2>/dev/null | while read _line; do
+            [[ $_line = 'not a dynamic executable' ]] && break
+
+            if [[ $_line =~ $_so_regex ]]; then
+                _file=${BASH_REMATCH[1]}
+                [[ -e ${initdir}/$_file ]] && continue
+                inst_library "$_file"
+                continue
+            fi
+
+            if [[ $_line =~ not\ found ]]; then
+                dfatal "Missing a shared library required by $_bin."
+                dfatal "Run \"ldd $_bin\" to find out what it is."
+                dfatal "$_line"
+                dfatal "dracut cannot create an initrd."
+                exit 1
+            fi
+        done
+        inst_simple "$_bin" "$_target"
+    }
+
+    # same as above, except for shell scripts.
+    # If your shell script does not start with shebang, it is not a shell script.
+    inst_script() {
+        local _bin
+        _bin=$(find_binary "$1") || return 1
+        shift
+        local _line _shebang_regex
+        read -r -n 80 _line <"$_bin"
+        # If debug is set, clean unprintable chars to prevent messing up the term
+        [[ $debug ]] && _line=$(echo -n "$_line" | tr -c -d '[:print:][:space:]')
+        _shebang_regex='(#! *)(/[^ ]+).*'
+        [[ $_line =~ $_shebang_regex ]] || return 1
+        inst "${BASH_REMATCH[2]}" && inst_simple "$_bin" "$@"
+    }
+
+    # general purpose installation function
+    # Same args as above.
+    inst() {
+        local _x
+
+        case $# in
+            1) ;;
+            2) [[ ! $initdir && -d $2 ]] && export initdir=$2
+                [[ $initdir = $2 ]] && set $1;;
+            3) [[ -z $initdir ]] && export initdir=$2
+                set $1 $3;;
+            *) dfatal "inst only takes 1 or 2 or 3 arguments"
+                exit 1;;
+        esac
+        for _x in inst_symlink inst_script inst_binary inst_simple; do
+            $_x "$@" && return 0
+        done
+        return 1
+    }
+
+    # dracut_install [-o ] <file> [<file> ... ]
+    # Install <file> to the initramfs image
+    # -o optionally install the <file> and don't fail, if it is not there
+    dracut_install() {
+        local _optional=no
+        if [[ $1 = '-o' ]]; then
+            _optional=yes
+            shift
+        fi
+        while (($# > 0)); do
+            if ! inst "$1" ; then
+                if [[ $_optional = yes ]]; then
+                    dinfo "Skipping program $1 as it cannot be found and is" \
+                        "flagged to be optional"
+                else
+                    dfatal "Failed to install $1"
+                    exit 1
+                fi
+            fi
+            shift
+        done
+    }
+
+fi
 
 # find symlinks linked to given library file
 # $1 = library file
@@ -450,36 +664,6 @@ rev_lib_symlinks() {
     echo "${links}"
 }
 
-# Same as above, but specialized to handle dynamic libraries.
-# It handles making symlinks according to how the original library
-# is referenced.
-inst_library() {
-    local _src="$1" _dest=${2:-$1} _lib _reallib _symlink
-    strstr "$1" "/" || return 1
-    [[ -e $initdir/$_dest ]] && return 0
-    if [[ -L $_src ]]; then
-        # install checksum files also
-        if [[ -e "${_src%/*}/.${_src##*/}.hmac" ]]; then
-            inst "${_src%/*}/.${_src##*/}.hmac" "${_dest%/*}/.${_dest##*/}.hmac"
-        fi
-        _reallib=$(readlink -f "$_src")
-        inst_simple "$_reallib" "$_reallib"
-        inst_dir "${_dest%/*}"
-        [[ -d "${_dest%/*}" ]] && _dest=$(readlink -f "${_dest%/*}")/${_dest##*/}
-        ln -sfn $(convert_abs_rel "${_dest}" "${_reallib}") "${initdir}/${_dest}"
-    else
-        inst_simple "$_src" "$_dest"
-    fi
-
-    # Create additional symlinks.  See rev_symlinks description.
-    for _symlink in $(rev_lib_symlinks $_src) $(rev_lib_symlinks $_reallib); do
-        [[ ! -e $initdir/$_symlink ]] && {
-            ddebug "Creating extra symlink: $_symlink"
-            inst_symlink $_symlink
-        }
-    done
-}
-
 # find a binary.  If we were not passed the full path directly,
 # search in the usual places to find the binary.
 find_binary() {
@@ -491,72 +675,6 @@ find_binary() {
     fi
 
     type -P $1
-}
-
-# Same as above, but specialized to install binary executables.
-# Install binary executable, and all shared library dependencies, if any.
-inst_binary() {
-    local _bin _target
-    _bin=$(find_binary "$1") || return 1
-    _target=${2:-$_bin}
-    [[ -e $initdir/$_target ]] && return 0
-    [[ -L $_bin ]] && inst_symlink $_bin $_target && return 0
-    local _file _line
-    local _so_regex='([^ ]*/lib[^/]*/[^ ]*\.so[^ ]*)'
-    # I love bash!
-    LC_ALL=C ldd "$_bin" 2>/dev/null | while read _line; do
-        [[ $_line = 'not a dynamic executable' ]] && break
-
-        if [[ $_line =~ $_so_regex ]]; then
-            _file=${BASH_REMATCH[1]}
-            [[ -e ${initdir}/$_file ]] && continue
-            inst_library "$_file"
-            continue
-        fi
-
-        if [[ $_line =~ not\ found ]]; then
-            dfatal "Missing a shared library required by $_bin."
-            dfatal "Run \"ldd $_bin\" to find out what it is."
-            dfatal "$_line"
-            dfatal "dracut cannot create an initrd."
-            exit 1
-        fi
-    done
-    inst_simple "$_bin" "$_target"
-}
-
-# same as above, except for shell scripts.
-# If your shell script does not start with shebang, it is not a shell script.
-inst_script() {
-    local _bin
-    _bin=$(find_binary "$1") || return 1
-    shift
-    local _line _shebang_regex
-    read -r -n 80 _line <"$_bin"
-    # If debug is set, clean unprintable chars to prevent messing up the term
-    [[ $debug ]] && _line=$(echo -n "$_line" | tr -c -d '[:print:][:space:]')
-    _shebang_regex='(#! *)(/[^ ]+).*'
-    [[ $_line =~ $_shebang_regex ]] || return 1
-    inst "${BASH_REMATCH[2]}" && inst_simple "$_bin" "$@"
-}
-
-# same as above, but specialized for symlinks
-inst_symlink() {
-    local _src=$1 _target=${2:-$1} _realsrc
-    strstr "$1" "/" || return 1
-    [[ -L $1 ]] || return 1
-    [[ -L $initdir/$_target ]] && return 0
-    _realsrc=$(readlink -f "$_src")
-    if ! [[ -e $initdir/$_realsrc ]]; then
-        if [[ -d $_realsrc ]]; then
-            inst_dir "$_realsrc"
-        else
-            inst "$_realsrc"
-        fi
-    fi
-    [[ ! -e $initdir/${_target%/*} ]] && inst_dir "${_target%/*}"
-    [[ -d ${_target%/*} ]] && _target=$(readlink -f ${_target%/*})/${_target##*/}
-    ln -sfn $(convert_abs_rel "${_target}" "${_realsrc}") "$initdir/$_target"
 }
 
 # attempt to install any programs specified in a udev rule
@@ -638,26 +756,6 @@ inst_rules() {
     done
 }
 
-# general purpose installation function
-# Same args as above.
-inst() {
-    local _x
-
-    case $# in
-        1) ;;
-        2) [[ ! $initdir && -d $2 ]] && export initdir=$2
-            [[ $initdir = $2 ]] && set $1;;
-        3) [[ -z $initdir ]] && export initdir=$2
-            set $1 $3;;
-        *) dfatal "inst only takes 1 or 2 or 3 arguments"
-            exit 1;;
-    esac
-    for _x in inst_symlink inst_script inst_binary inst_simple; do
-        $_x "$@" && return 0
-    done
-    return 1
-}
-
 # install function specialized for hooks
 # $1 = type of hook, $2 = hook priority (lower runs first), $3 = hook
 # All hooks should be POSIX/SuS compliant, they will be sourced by init.
@@ -701,34 +799,12 @@ inst_any() {
     return 1
 }
 
-# dracut_install [-o ] <file> [<file> ... ]
-# Install <file> to the initramfs image
-# -o optionally install the <file> and don't fail, if it is not there
-dracut_install() {
-    local _optional=no
-    if [[ $1 = '-o' ]]; then
-        _optional=yes
-        shift
-    fi
-    while (($# > 0)); do
-        if ! inst "$1" ; then
-            if [[ $_optional = yes ]]; then
-                dinfo "Skipping program $1 as it cannot be found and is" \
-                    "flagged to be optional"
-            else
-                dfatal "Failed to install $1"
-                exit 1
-            fi
-        fi
-        shift
-    done
-}
-
 
 # inst_libdir_file [-n <pattern>] <file> [<file>...]
 # Install a <file> located on a lib directory to the initramfs image
 # -n <pattern> install matching files
 inst_libdir_file() {
+    local _files
     if [[ "$1" == "-n" ]]; then
         local _pattern=$2
         shift 2
@@ -736,7 +812,7 @@ inst_libdir_file() {
             for _i in "$@"; do
                 for _f in "$_dir"/$_i; do
                     [[ "$_f" =~ $_pattern ]] || continue
-                    [[ -e "$_f" ]] && dracut_install "$_f"
+                    [[ -e "$_f" ]] && _files+="$_f "
                 done
             done
         done
@@ -744,11 +820,12 @@ inst_libdir_file() {
         for _dir in $libdirs; do
             for _i in "$@"; do
                 for _f in "$_dir"/$_i; do
-                    [[ -e "$_f" ]] && dracut_install "$_f"
+                    [[ -e "$_f" ]] && _files+="$_f "
                 done
             done
         done
     fi
+    [[ $_files ]] && dracut_install $_files
 }
 
 
@@ -758,7 +835,7 @@ inst_libdir_file() {
 # Function install targets in the same paths inside overlay but decompressed
 # and without extensions (.gz, .bz2).
 inst_decompress() {
-    local _src _dst _realsrc _realdst _cmd
+    local _src _cmd
 
     for _src in $@
     do
@@ -767,20 +844,7 @@ inst_decompress() {
             *.bz2) _cmd='bzip2 -d' ;;
             *) return 1 ;;
         esac
-
-        if [[ -L ${_src} ]]
-        then
-            _realsrc="$(readlink -f ${_src})" # symlink target with extension
-            _dst="${_src%.*}" # symlink without extension
-            _realdst="${_realsrc%.*}" # symlink target without extension
-            mksubdirs "${initdir}/${_src}"
-            # Create symlink without extension to target without extension.
-            ln -sfn "${_realdst}" "${initdir}/${_dst}"
-        fi
-
-        # If the source is symlink we operate on its target.
-        [[ ${_realsrc} ]] && _src=${_realsrc}
-        inst ${_src}
+        inst_simple ${_src}
         # Decompress with chosen tool.  We assume that tool changes name e.g.
         # from 'name.gz' to 'name'.
         ${_cmd} "${initdir}${_src}"
@@ -1036,7 +1100,7 @@ for_each_module_dir() {
     for _mod in $_modcheck; do
         strstr "$mods_to_load" "$_mod" && continue
         strstr "$omit_dracutmodules" "$_mod" && continue
-        derror "Dracut module \"$_mod\" cannot be found."
+        derror "Dracut module \"$_mod\" cannot be found or installed."
     done
 }
 
@@ -1048,7 +1112,10 @@ install_kmod_with_fw() {
     [[ -e "${initdir}/lib/modules/$kernel/${1##*/lib/modules/$kernel/}" ]] \
         && return 0
 
-    [[ -e "$initdir/.kernelmodseen/${1##*/}" ]] && return 0
+    if [[ -e "$initdir/.kernelmodseen/${1##*/}" ]]; then
+        read ret < "$initdir/.kernelmodseen/${1##*/}"
+        return $ret
+    fi
 
     if [[ $omit_drivers ]]; then
         local _kmod=${1##*/}
@@ -1064,11 +1131,11 @@ install_kmod_with_fw() {
         fi
     fi
 
+    inst_simple "$1" "/lib/modules/$kernel/${1##*/lib/modules/$kernel/}"
+    ret=$?
     [ -d "$initdir/.kernelmodseen" ] && \
-        > "$initdir/.kernelmodseen/${1##*/}"
-
-    inst_simple "$1" "/lib/modules/$kernel/${1##*/lib/modules/$kernel/}" \
-        || return $?
+        echo $ret > "$initdir/.kernelmodseen/${1##*/}"
+    (($ret != 0)) && return $ret
 
     local _modname=${1##*/} _fwdir _found _fw
     _modname=${_modname%.ko*}
@@ -1111,19 +1178,89 @@ for_each_kmod_dep() {
     )
 }
 
+dracut_kernel_post() {
+    local _moddirname=${srcmods%%/lib/modules/*}
+
+    if [[ -f "$initdir/.kernelmodseen/lazylist" ]]; then
+        xargs modprobe -a ${_moddirname+-d ${_moddirname}/} --ignore-install --show-depends \
+            < "$initdir/.kernelmodseen/lazylist" 2>/dev/null \
+            | sort -u \
+            | while read _cmd _modpath _options; do
+            [[ $_cmd = insmod ]] || continue
+            echo "$_modpath"
+        done > "$initdir/.kernelmodseen/lazylist.dep"
+
+        (
+            if [[ -x /usr/bin/dracut-install ]] && [[ -z $_moddirname ]]; then
+                xargs dracut-install ${initdir+-D "$initdir"} -a < "$initdir/.kernelmodseen/lazylist.dep"
+            else
+                while read _modpath; do
+                    local _destpath=$_modpath
+                    [[ $_moddirname ]] && _destpath=${_destpath##$_moddirname/}
+                    _destpath=${_destpath##*/lib/modules/$kernel/}
+                    inst_simple "$_modpath" "/lib/modules/$kernel/${_destpath}" || exit $?
+                done < "$initdir/.kernelmodseen/lazylist.dep"
+            fi
+        ) &
+
+
+        if [[ -x /usr/bin/dracut-install ]]; then
+            xargs modinfo -k $kernel -F firmware < "$initdir/.kernelmodseen/lazylist.dep" \
+                | while read line; do
+                for _fwdir in $fw_dir; do
+                    echo $_fwdir/$line;
+                done;
+            done |xargs dracut-install ${initdir+-D "$initdir"} -a -o
+        else
+            for _fw in $(xargs modinfo -k $kernel -F firmware < "$initdir/.kernelmodseen/lazylist.dep"); do
+                for _fwdir in $fw_dir; do
+                    if [[ -d $_fwdir && -f $_fwdir/$_fw ]]; then
+                        inst_simple "$_fwdir/$_fw" "/lib/firmware/$_fw"
+                        break
+                    fi
+                done
+            done
+        fi
+
+        wait
+    fi
+
+    for _f in modules.builtin.bin modules.builtin; do
+        [[ $srcmods/$_f ]] && break
+    done || {
+        dfatal "No modules.builtin.bin and modules.builtin found!"
+        return 1
+    }
+
+    for _f in modules.builtin.bin modules.builtin modules.order; do
+        [[ $srcmods/$_f ]] && inst_simple "$srcmods/$_f" "/lib/modules/$kernel/$_f"
+    done
+
+    # generate module dependencies for the initrd
+    if [[ -d $initdir/lib/modules/$kernel ]] && \
+        ! depmod -a -b "$initdir" $kernel; then
+        dfatal "\"depmod -a $kernel\" failed."
+        exit 1
+    fi
+
+    rm -fr "$initdir/.kernelmodseen"
+}
 
 find_kernel_modules_by_path () (
+    local _OLDIFS
     if ! [[ $hostonly ]]; then
+        _OLDIFS=$IFS
+        IFS=:
         while read a rest; do
-            if [[ "${a##kernel}" != "$a" ]]; then
-                [[ "${a##kernel/$1}" != "$a" ]] || continue
-            fi
-            echo $srcmods/${a%:}
+            [[ $a = kernel*/$1/* ]] || continue
+            echo $srcmods/$a
         done < $srcmods/modules.dep
+        IFS=$_OLDIFS
     else
         ( cd /sys/module; echo *; ) \
         | xargs modinfo -F filename -k $kernel 2>/dev/null
     fi
+    return 0
 )
 
 find_kernel_modules () {
@@ -1148,17 +1285,10 @@ instmods() {
         local _ret=0 _mod="$1"
         case $_mod in
             =*)
-                if [ -f $srcmods/modules.${_mod#=} ]; then
-                    ( [[ "$_mpargs" ]] && echo $_mpargs
-                      cat "${srcmods}/modules.${_mod#=}" ) \
-                    | instmods
-                    ((_ret+=$?))
-                else
-                    ( [[ "$_mpargs" ]] && echo $_mpargs
-                      find "$srcmods" -type f -path "*/${_mod#=}/*" -printf '%f\n' ) \
-                    | instmods
-                    ((_ret+=$?))
-                fi
+                ( [[ "$_mpargs" ]] && echo $_mpargs
+                    find_kernel_modules_by_path "${_mod#=}" ) \
+                        | instmods
+                ((_ret+=$?))
                 ;;
             --*) _mpargs+=" $_mod" ;;
             i2o_scsi) return 0;; # Do not load this diagnostic-only module
@@ -1166,7 +1296,10 @@ instmods() {
                 _mod=${_mod##*/}
                 # if we are already installed, skip this module and go on
                 # to the next one.
-                [[ -f "$initdir/.kernelmodseen/${_mod%.ko}.ko" ]] && return
+                if [[ -f "$initdir/.kernelmodseen/${_mod%.ko}.ko" ]]; then
+                    read _ret <"$initdir/.kernelmodseen/${_mod%.ko}.ko"
+                    return $_ret
+                fi
 
                 if [[ $omit_drivers ]] && [[ "$1" =~ $omit_drivers ]]; then
                     dinfo "Omitting driver ${_mod##$srcmods}"
@@ -1179,17 +1312,21 @@ instmods() {
                     && ! [[ "$add_drivers" =~ " ${_mod} " ]] \
                     && return 0
 
-                # We use '-d' option in modprobe only if modules prefix path
-                # differs from default '/'.  This allows us to use Dracut with
-                # old version of modprobe which doesn't have '-d' option.
-                local _moddirname=${srcmods%%/lib/modules/*}
-                [[ -n ${_moddirname} ]] && _moddirname="-d ${_moddirname}/"
+                if [[ "$_check" = "yes" ]] || ! [[ $DRACUT_KERNEL_LAZY ]]; then
+                    # We use '-d' option in modprobe only if modules prefix path
+                    # differs from default '/'.  This allows us to use Dracut with
+                    # old version of modprobe which doesn't have '-d' option.
+                    local _moddirname=${srcmods%%/lib/modules/*}
+                    [[ -n ${_moddirname} ]] && _moddirname="-d ${_moddirname}/"
 
-                # ok, load the module, all its dependencies, and any firmware
-                # it may require
-                for_each_kmod_dep install_kmod_with_fw $_mod \
-                    --set-version $kernel ${_moddirname} $_mpargs
-                ((_ret+=$?))
+                    # ok, load the module, all its dependencies, and any firmware
+                    # it may require
+                    for_each_kmod_dep install_kmod_with_fw $_mod \
+                        --set-version $kernel ${_moddirname} $_mpargs
+                    ((_ret+=$?))
+                else
+                    echo $_mod >> "$initdir/.kernelmodseen/lazylist"
+                fi
                 ;;
         esac
         return $_ret

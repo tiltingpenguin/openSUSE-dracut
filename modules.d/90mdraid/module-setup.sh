@@ -7,9 +7,6 @@ check() {
     # No mdadm?  No mdraid support.
     type -P mdadm >/dev/null || return 1
 
-    . $dracutfunctions
-    [[ $debug ]] && set -x
-
     check_mdraid() {
         local dev=$1 fs=$2 holder DEVPATH MD_UUID
         [[ "$fs" = "${fs%%_raid_member}" ]] && return 1
@@ -47,7 +44,7 @@ installkernel() {
 
 install() {
     dracut_install mdadm partx cat
-
+    dracut_install -o mdmon
 
      # XXX: mdmon really needs to run as non-root?
      #      If so, write only the user it needs in the initrd's /etc/passwd (and maybe /etc/group)
@@ -82,16 +79,11 @@ install() {
         fi
     fi
 
-    if [ -x  /sbin/mdmon ] ; then
-        dracut_install mdmon
-    fi
     inst_hook pre-udev 30 "$moddir/mdmon-pre-udev.sh"
-
-    inst "$moddir/mdraid_start.sh" /sbin/mdraid_start
-    inst "$moddir/mdadm_auto.sh" /sbin/mdadm_auto
     inst_hook pre-trigger 30 "$moddir/parse-md.sh"
     inst_hook pre-mount 10 "$moddir/mdraid-waitclean.sh"
-    inst "$moddir/mdraid-cleanup.sh" /sbin/mdraid-cleanup
     inst_hook shutdown 30 "$moddir/md-shutdown.sh"
+    inst_script "$moddir/mdraid-cleanup.sh" /sbin/mdraid-cleanup
+    inst_script "$moddir/mdraid_start.sh" /sbin/mdraid_start
 }
 

@@ -1,7 +1,6 @@
 #!/bin/sh
 # -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
 # ex: ts=8 sw=4 sts=4 et filetype=sh
-exec </dev/console >/dev/console 2>&1
 
 if [ -f /dracut-state.sh ]; then
     . /dracut-state.sh || :
@@ -60,8 +59,7 @@ while :; do
     fi
 
     main_loop=$(($main_loop+1))
-    [ $main_loop -gt $RDRETRY ] \
-        && { flock -s 9 ; emergency_shell "Could not boot."; } 9>/.console_lock
+    [ $main_loop -gt $RDRETRY ] && emergency_shell "Could not boot."
 done
 
 unset job
@@ -96,8 +94,7 @@ while :; do
     done
 
     i=$(($i+1))
-    [ $i -gt 20 ] \
-        && { flock -s 9 ; emergency_shell "Can't mount root filesystem"; } 9>/.console_lock
+    [ $i -gt 20 ] && emergency_shell "Can't mount root filesystem"
 done
 
 {

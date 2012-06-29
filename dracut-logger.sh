@@ -116,7 +116,7 @@ dlog_init() {
 
     if [ -z "$fileloglvl" ]; then
         [ -w "$logfile" ] && fileloglvl=4 || fileloglvl=0
-    elif [ $fileloglvl -gt 0 ]; then
+    elif (( $fileloglvl >= 0 )); then
         __oldumask=$(umask)
         umask 0377
         ! [ -e "$logfile" ] && >"$logfile"
@@ -138,7 +138,7 @@ dlog_init() {
         fi
     fi
 
-    if [ $sysloglvl -gt 0 ]; then
+    if (( $sysloglvl >= 0 )); then
         if ! [ -S /dev/log -a -w /dev/log ] || ! command -v logger >/dev/null
         then
             # We cannot log to syslog, so turn this facility off.
@@ -148,7 +148,7 @@ dlog_init() {
         fi
     fi
 
-    if [ $sysloglvl -gt 0 -o $kmsgloglvl -gt 0 ]; then
+    if (($sysloglvl >= 0)) || (($kmsgloglvl >= 0 )); then
         if [ -n "$dracutbasedir" ]; then
             readonly syslogfacility=user
         else
@@ -159,10 +159,43 @@ dlog_init() {
 
     local lvl; local maxloglvl_l=0
     for lvl in $stdloglvl $sysloglvl $fileloglvl $kmsgloglvl; do
-        [ $lvl -gt $maxloglvl_l ] && maxloglvl_l=$lvl
+        (( $lvl > $maxloglvl_l )) && maxloglvl_l=$lvl
     done
     readonly maxloglvl=$maxloglvl_l
     export maxloglvl
+
+
+    if (($stdloglvl < 6)) && (($kmsgloglvl < 6)) && (($fileloglvl < 6)); then
+        unset dtrace
+        dtrace() { :; };
+    fi
+
+    if (($stdloglvl < 5)) && (($kmsgloglvl < 5)) && (($fileloglvl < 5)); then
+        unset ddebug
+        ddebug() { :; };
+    fi
+
+    if (($stdloglvl < 4)) && (($kmsgloglvl < 4)) && (($fileloglvl < 4)); then
+        unset dinfo
+        dinfo() { :; };
+    fi
+
+    if (($stdloglvl < 3)) && (($kmsgloglvl < 3)) && (($fileloglvl < 3)); then
+        unset dwarn
+        dwarn() { :; };
+        unset dwarning
+        dwarning() { :; };
+    fi
+
+    if (($stdloglvl < 2)) && (($kmsgloglvl < 2)) && (($fileloglvl < 2)); then
+        unset derror
+        derror() { :; };
+    fi
+
+    if (($stdloglvl < 1)) && (($kmsgloglvl < 1)) && (($fileloglvl < 1)); then
+        unset dfatal
+        dfatal() { :; };
+    fi
 
     [ -n "$errmsg" ] && derror "$errmsg"
 
@@ -275,14 +308,14 @@ _do_dlog() {
     local lvlc=$(_lvl2char "$lvl") || return 0
     local msg="$lvlc: $*"
 
-    [ $lvl -le $stdloglvl ] && echo "$msg" >&2
-    if [ $lvl -le $sysloglvl ]; then
+    (( $lvl <= $stdloglvl )) && echo "$msg" >&2
+    if (( $lvl <= $sysloglvl )); then
         logger -t "dracut[$$]" -p $(_lvl2syspri $lvl) "$msg"
     fi
-    if [ $lvl -le $fileloglvl -a -w "$logfile" -a -f "$logfile" ]; then
+    if (( $lvl <= $fileloglvl )) && [[ -w "$logfile" ]] && [[ -f "$logfile" ]]; then
         echo "$msg" >>"$logfile"
     fi
-    [ $lvl -le $kmsgloglvl ] && \
+    (( $lvl <= $kmsgloglvl )) && \
         echo "<$(_dlvl2syslvl $lvl)>dracut[$$] $msg" >/dev/kmsg
 }
 
@@ -304,9 +337,9 @@ _do_dlog() {
 # echo "This is a warning" | dwarn
 dlog() {
     [ -z "$maxloglvl" ] && return 0
-    [ $1 -le $maxloglvl ] || return 0
+    (( $1 <= $maxloglvl )) || return 0
 
-    if [ $# -gt 1 ]; then
+    if (( $# > 1 )); then
         _do_dlog "$@"
     else
         while read line; do

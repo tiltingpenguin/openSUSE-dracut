@@ -8,6 +8,10 @@ check() {
     # knowing we are booting from FCoE
     [[ $hostonly ]] || [[ $mount_needs ]] && return 1
 
+    for i in dcbtool fipvlan lldpad ip readlink; do
+        type -P $i >/dev/null || return 1
+    done
+
     return 0
 }
 
@@ -21,11 +25,7 @@ installkernel() {
 }
 
 install() {
-    dracut_install ip
-    inst dcbtool
-    inst fipvlan
-    inst lldpad
-    inst readlink
+    dracut_install ip dcbtool fipvlan lldpad readlink
 
     mkdir -m 0755 -p "$initdir/var/lib/lldpad"
 

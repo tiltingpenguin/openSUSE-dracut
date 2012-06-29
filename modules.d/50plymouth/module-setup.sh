@@ -45,9 +45,8 @@ installkernel() {
         # Use two parallel streams to filter alternating modules.
         set +x
         eval "( ( rotor ) ${_side2}>&1 | nmf1 ) ${_merge}>&1"
-        _ret=$?
         [[ $debug ]] && set -x
-        return $_ret
+        return 0
     }
 
     for _modname in $(find_kernel_modules_by_path drivers/gpu/drm \
@@ -77,6 +76,6 @@ install() {
     inst_hook pre-pivot 90 "$moddir"/plymouth-newroot.sh
     inst_hook pre-trigger 10 "$moddir"/plymouth-pretrigger.sh
     inst_hook emergency 50 "$moddir"/plymouth-emergency.sh
-    inst readlink
+    dracut_install readlink
 }
 

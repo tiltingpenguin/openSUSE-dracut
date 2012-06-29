@@ -11,15 +11,17 @@
 Description=Dracut initqueue hook
 DefaultDependencies=no
 After=systemd-udev-trigger.service
+Wants=systemd-udev-trigger.service
+ConditionPathExists=/etc/initrd-release
 
 [Service]
 Environment=HOME=/
 WorkingDirectory=/
 ExecStart=-/bin/dracut-initqueue
 Type=simple
-StandardInput=tty-force
-StandardOutput=inherit
-StandardError=inherit
+StandardInput=null
+StandardOutput=syslog
+StandardError=syslog+console
 KillMode=process
 
 # Bash ignores SIGTERM, so we send SIGHUP instead, to ensure that bash

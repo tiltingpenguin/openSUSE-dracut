@@ -8,9 +8,6 @@ check() {
     # no point in trying to support it in the initramfs.
     type -P btrfs >/dev/null || return 1
 
-    . $dracutfunctions
-    [[ $debug ]] && set -x
-
     [[ $hostonly ]] || [[ $mount_needs ]] && {
         local _found
         for fs in ${host_fs_types[@]}; do
@@ -34,8 +31,8 @@ installkernel() {
 
 install() {
     inst_rules "$moddir/80-btrfs.rules"
-    inst "$moddir/btrfs_finished.sh" /sbin/btrfs_finished
-    inst "$moddir/btrfs_timeout.sh" /sbin/btrfs_timeout
+    inst_script "$moddir/btrfs_finished.sh" /sbin/btrfs_finished
+    inst_script "$moddir/btrfs_timeout.sh" /sbin/btrfs_timeout
     dracut_install btrfs btrfsck
 }
 

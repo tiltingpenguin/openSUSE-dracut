@@ -25,7 +25,6 @@ URL: https://dracut.wiki.kernel.org/
 # http://git.kernel.org/?p=boot/dracut/dracut.git;a=snapshot;h=%{version};sf=tgz
 Source0: http://www.kernel.org/pub/linux/utils/boot/dracut/dracut-%{version}.tar.bz2
 
-BuildArch: noarch
 BuildRequires: dash bash git
 
 %if 0%{?fedora} || 0%{?rhel}
@@ -80,6 +79,7 @@ Requires: file
 Requires: udev > 166
 %if 0%{?fedora} || 0%{?rhel} > 6
 Requires: util-linux >= 2.21
+Requires: systemd >= 44-15
 %else
 Requires: util-linux-ng >= 2.21
 %endif
@@ -235,6 +235,7 @@ rm -rf $RPM_BUILD_ROOT
 %if 0%{?fedora} > 12 || 0%{?rhel} >= 6 || 0%{?suse_version} > 9999
 %{_bindir}/mkinitrd
 %{_bindir}/lsinitrd
+%{_bindir}/dracut-install
 %endif
 %dir %{dracutlibdir}
 %dir %{dracutlibdir}/modules.d
@@ -270,6 +271,7 @@ rm -rf $RPM_BUILD_ROOT
 %{dracutlibdir}/modules.d/90lvm
 %{dracutlibdir}/modules.d/90mdraid
 %{dracutlibdir}/modules.d/90multipath
+%{dracutlibdir}/modules.d/90qemu
 %{dracutlibdir}/modules.d/91crypt-gpg
 %{dracutlibdir}/modules.d/95debug
 %{dracutlibdir}/modules.d/95resume
@@ -312,6 +314,7 @@ rm -rf $RPM_BUILD_ROOT
 %{dracutlibdir}/modules.d/95fcoe
 %{dracutlibdir}/modules.d/95iscsi
 %{dracutlibdir}/modules.d/90livenet
+%{dracutlibdir}/modules.d/90qemu-net
 %{dracutlibdir}/modules.d/95nbd
 %{dracutlibdir}/modules.d/95nfs
 %{dracutlibdir}/modules.d/95ssh-client

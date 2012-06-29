@@ -297,12 +297,12 @@ source_conf() {
 
 die() {
     {
-        echo "<24>dracut: FATAL: $@";
+        echo "<24>dracut: FATAL: $*";
         echo "<24>dracut: Refusing to continue";
     } > /dev/kmsg
 
     {
-        echo "warn dracut: FATAL: \"$@\"";
+        echo "warn dracut: FATAL: \"$*\"";
         echo "warn dracut: Refusing to continue";
     } >> $hookdir/emergency/01-die.sh
 
@@ -323,18 +323,32 @@ check_quiet() {
     fi
 }
 
-warn() {
-    check_quiet
-    echo "<28>dracut Warning: $@" > /dev/kmsg
-    echo "dracut Warning: $@" >&2
-}
+if [ ! -x /lib/systemd/systemd ]; then
 
-info() {
-    check_quiet
-    echo "<30>dracut: $@" > /dev/kmsg
-    [ "$DRACUT_QUIET" != "yes" ] && \
-        echo "dracut: $@"
-}
+    warn() {
+        check_quiet
+        echo "<28>dracut Warning: $*" > /dev/kmsg
+        echo "dracut Warning: $*" >&2
+    }
+
+    info() {
+        check_quiet
+        echo "<30>dracut: $*" > /dev/kmsg
+        [ "$DRACUT_QUIET" != "yes" ] && \
+            echo "dracut: $*"
+    }
+
+else
+
+    warn() {
+        echo "Warning: $*" >&2
+    }
+
+    info() {
+        echo "$*"
+    }
+
+fi
 
 vwarn() {
     while read line; do
@@ -811,30 +825,39 @@ emergency_shell()
         _rdshell_name=$2; action="Shutdown"; hook="shutdown-emergency"
         shift 2
     fi
+
     echo ; echo
-    warn $@
+    warn "$*"
     source_hook "$hook"
     echo
-    if getargbool 1 rd.shell -y rdshell || getarg rd.break rdbreak; then
-        echo "Dropping to debug shell."
-        echo
-        export PS1="$_rdshell_name:\${PWD}# "
-        [ -e /.profile ] || >/.profile
 
-        _ctty="$(getarg rd.ctty=)" && _ctty="/dev/${_ctty##*/}"
-        if [ -z "$_ctty" ]; then
-            _ctty=console
-            while [ -f /sys/class/tty/$_ctty/active ]; do
-                _ctty=$(cat /sys/class/tty/$_ctty/active)
-                _ctty=${_ctty##* } # last one in the list
-            done
-            _ctty=/dev/$_ctty
+    if getargbool 1 rd.shell -y rdshell || getarg rd.break rdbreak; then
+        if [ -x /lib/systemd/systemd ]; then
+            > /.console_lock
+            echo "PS1=\"$_rdshell_name:\${PWD}# \"" >/etc/profile
+            systemctl start emergency.service
+            debug_off
+            while [ -e /.console_lock ]; do sleep 1; done
+            debug_on
+        else
+            echo "Dropping to debug shell."
+            echo
+            export PS1="$_rdshell_name:\${PWD}# "
+            [ -e /.profile ] || >/.profile
+
+            _ctty="$(getarg rd.ctty=)" && _ctty="/dev/${_ctty##*/}"
+            if [ -z "$_ctty" ]; then
+                _ctty=console
+                while [ -f /sys/class/tty/$_ctty/active ]; do
+                    _ctty=$(cat /sys/class/tty/$_ctty/active)
+                    _ctty=${_ctty##* } # last one in the list
+                done
+                _ctty=/dev/$_ctty
+            fi
+            [ -c "$_ctty" ] || _ctty=/dev/tty1
+            strstr "$(setsid --help 2>/dev/null)" "ctty" && CTTY="-c"
+            setsid $CTTY /bin/sh -i -l 0<$_ctty 1>$_ctty 2>&1
         fi
-        [ -c "$_ctty" ] || _ctty=/dev/tty1
-        strstr "$(setsid --help 2>/dev/null)" "ctty" && CTTY="-c"
-        # stop watchdog
-        echo 'V' > /dev/watchdog
-        setsid $CTTY /bin/sh -i -l 0<$_ctty 1>$_ctty 2>&1
     else
         warn "$action has failed. To debug this issue add \"rd.shell\" to the kernel command line."
         # cause a kernel panic
