@@ -1,0 +1,709 @@
+'\" t
+.\"     Title: dracut
+.\"    Author: [see the "AUTHORS" section]
+.\" Generator: DocBook XSL Stylesheets v1.77.1 <http://docbook.sf.net/>
+.\"      Date: 06/29/2012
+.\"    Manual: dracut
+.\"    Source: dracut
+.\"  Language: English
+.\"
+.TH "DRACUT" "8" "06/29/2012" "dracut" "dracut"
+.\" -----------------------------------------------------------------
+.\" * Define some portability stuff
+.\" -----------------------------------------------------------------
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.\" http://bugs.debian.org/507673
+.\" http://lists.gnu.org/archive/html/groff/2009-02/msg00013.html
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.\" -----------------------------------------------------------------
+.\" * set default formatting
+.\" -----------------------------------------------------------------
+.\" disable hyphenation
+.nh
+.\" disable justification (adjust text to left margin only)
+.ad l
+.\" -----------------------------------------------------------------
+.\" * MAIN CONTENT STARTS HERE *
+.\" -----------------------------------------------------------------
+.SH "NAME"
+dracut \- low\-level tool for generating an initramfs image
+.SH "SYNOPSIS"
+.sp
+\fBdracut\fR [\fIOPTION\&...\fR] [<image> [\fI<kernel version>\fR]]
+.SH "DESCRIPTION"
+.sp
+dracut creates an initial image used by the kernel for preloading the block device modules (such as IDE, SCSI or RAID) which are needed to access the root filesystem, mounting the root filesystem and booting into the real system\&.
+.sp
+At boot time, the kernel unpacks that archive into RAM disk, mounts and uses it as initial root file system\&. All finding of the root device happens in this early userspace\&.
+.sp
+For a complete list of kernel command line options see \fBdracut\&.cmdline\fR(7)
+.SH "OPTIONS"
+.PP
+\fB\-f, \-\-force\fR
+.RS 4
+overwrite existing initramfs file\&.
+.RE
+.PP
+\fB\-m, \-\-modules\fR \fI<list of dracut modules>\fR
+.RS 4
+specify a space\-separated list of dracut modules to call when building the initramfs\&. Modules are located in
+\fI/usr/lib/dracut/modules\&.d\fR\&. This parameter can be specified multiple times\&.
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBNote\fR
+.ps -1
+.br
+If [LIST] has multiple arguments, then you have to put these in quotes\&. For example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+# dracut \-\-modules "module1 module2"  \&.\&.\&.
+.fi
+.if n \{\
+.RE
+.\}
+.sp .5v
+.RE
+.RE
+.PP
+\fB\-o, \-\-omit\fR\ \&\fI<list of dracut modules>\fR
+.RS 4
+omit a space\-separated list of dracut modules\&. This parameter can be specified multiple times\&.
+.RE
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBNote\fR
+.ps -1
+.br
+.sp
+If [LIST] has multiple arguments, then you have to put these in quotes\&. For example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+# dracut \-\-omit "module1 module2"  \&.\&.\&.
+.fi
+.if n \{\
+.RE
+.\}
+.sp .5v
+.RE
+.PP
+\fB\-a, \-\-add\fR\ \&\fI<list of dracut modules>\fR
+.RS 4
+add a space\-separated list of dracut modules to the default set of modules\&. This parameter can be specified multiple times\&.
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBNote\fR
+.ps -1
+.br
+If [LIST] has multiple arguments, then you have to put these in quotes\&. For example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+# dracut \-\-add "module1 module2"  \&.\&.\&.
+.fi
+.if n \{\
+.RE
+.\}
+.sp .5v
+.RE
+.RE
+.PP
+\fB\-\-force\-add\fR\ \&\fI<list of dracut modules>\fR
+.RS 4
+force to add a space\-separated list of dracut modules to the default set of modules, when \-H is specified\&. This parameter can be specified multiple times\&.
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBNote\fR
+.ps -1
+.br
+If [LIST] has multiple arguments, then you have to put these in quotes\&. For example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+# dracut \-\-force\-add "module1 module2"  \&.\&.\&.
+.fi
+.if n \{\
+.RE
+.\}
+.sp .5v
+.RE
+.RE
+.PP
+\fB\-d, \-\-drivers\fR\ \&\fI<list of kernel modules>\fR
+.RS 4
+specify a space\-separated list of kernel modules to exclusively include in the initramfs\&. The kernel modules have to be specified without the "\&.ko" suffix\&. This parameter can be specified multiple times\&.
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBNote\fR
+.ps -1
+.br
+If [LIST] has multiple arguments, then you have to put these in quotes\&. For example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+# dracut \-\-drivers "kmodule1 kmodule2"  \&.\&.\&.
+.fi
+.if n \{\
+.RE
+.\}
+.sp .5v
+.RE
+.RE
+.PP
+\fB\-\-add\-drivers\fR\ \&\fI<list of kernel modules>\fR
+.RS 4
+specify a space\-separated list of kernel modules to add to the initramfs\&. The kernel modules have to be specified without the "\&.ko" suffix\&. This parameter can be specified multiple times\&.
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBNote\fR
+.ps -1
+.br
+If [LIST] has multiple arguments, then you have to put these in quotes\&. For example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+# dracut \-\-add\-drivers "kmodule1 kmodule2"  \&.\&.\&.
+.fi
+.if n \{\
+.RE
+.\}
+.sp .5v
+.RE
+.RE
+.PP
+\fB\-\-omit\-drivers\fR\ \&\fI<list of kernel modules>\fR
+.RS 4
+specify a space\-separated list of kernel modules not to add to the initramfs\&. The kernel modules have to be specified without the "\&.ko" suffix\&. This parameter can be specified multiple times\&.
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBNote\fR
+.ps -1
+.br
+If [LIST] has multiple arguments, then you have to put these in quotes\&. For example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+# dracut \-\-omit\-drivers "kmodule1 kmodule2"  \&.\&.\&.
+.fi
+.if n \{\
+.RE
+.\}
+.sp .5v
+.RE
+.RE
+.PP
+\fB\-\-filesystems\fR\ \&\fI<list of filesystems>\fR
+.RS 4
+specify a space\-separated list of kernel filesystem modules to exclusively include in the generic initramfs\&. This parameter can be specified multiple times\&.
+.RE
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBNote\fR
+.ps -1
+.br
+.sp
+If [LIST] has multiple arguments, then you have to put these in quotes\&. For example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+# dracut \-\-filesystems "filesystem1 filesystem2"  \&.\&.\&.
+.fi
+.if n \{\
+.RE
+.\}
+.sp .5v
+.RE
+.PP
+\fB\-k, \-\-kmoddir\fR\ \&\fI<kernel directory>\fR
+.RS 4
+specify the directory, where to look for kernel modules
+.RE
+.PP
+\fB\-\-fwdir\fR\ \&\fI<dir>[:<dir>\&...]++\fR
+.RS 4
+specify additional directories, where to look for firmwares\&. This parameter can be specified multiple times\&.
+.RE
+.PP
+\fB\-\-kernel\-only\fR
+.RS 4
+only install kernel drivers and firmware files
+.RE
+.PP
+\fB\-\-no\-kernel\fR
+.RS 4
+do not install kernel drivers and firmware files
+.RE
+.PP
+\fB\-\-mdadmconf\fR
+.RS 4
+include local
+\fI/etc/mdadm\&.conf\fR
+.RE
+.PP
+\fB\-\-nomdadmconf\fR
+.RS 4
+do not include local
+\fI/etc/mdadm\&.conf\fR
+.RE
+.PP
+\fB\-\-lvmconf\fR
+.RS 4
+include local
+\fI/etc/lvm/lvm\&.conf\fR
+.RE
+.PP
+\fB\-\-nolvmconf\fR
+.RS 4
+do not include local
+\fI/etc/lvm/lvm\&.conf\fR
+.RE
+.PP
+\fB\-\-fscks\fR [LIST]
+.RS 4
+add a space\-separated list of fsck tools, in addition to
+\fIdracut\&.conf\fR\*(Aqs specification; the installation is opportunistic (non\-existing tools are ignored)
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBNote\fR
+.ps -1
+.br
+If [LIST] has multiple arguments, then you have to put these in quotes\&. For example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+# dracut \-\-fscks "fsck\&.foo barfsck"  \&.\&.\&.
+.fi
+.if n \{\
+.RE
+.\}
+.sp .5v
+.RE
+.RE
+.PP
+\fB\-\-nofscks\fR
+.RS 4
+inhibit installation of any fsck tools
+.RE
+.PP
+\fB\-\-strip\fR
+.RS 4
+strip binaries in the initramfs (default)
+.RE
+.PP
+\fB\-\-nostrip\fR
+.RS 4
+do not strip binaries in the initramfs
+.RE
+.PP
+\fB\-\-prefix\fR\ \&\fI<dir>\fR
+.RS 4
+prefix initramfs files with the specified directory
+.RE
+.PP
+\fB\-\-noprefix\fR
+.RS 4
+do not prefix initramfs files (default)
+.RE
+.PP
+\fB\-h, \-\-help\fR
+.RS 4
+display help text and exit\&.
+.RE
+.PP
+\fB\-\-debug\fR
+.RS 4
+output debug information of the build process
+.RE
+.PP
+\fB\-v, \-\-verbose\fR
+.RS 4
+increase verbosity level (default is info(4))
+.RE
+.PP
+\fB\-q, \-\-quiet\fR
+.RS 4
+decrease verbosity level (default is info(4))
+.RE
+.PP
+\fB\-c, \-\-conf\fR\ \&\fI<dracut configuration file>\fR
+.RS 4
+specify configuration file to use\&.
+.sp
+Default:
+\fI/etc/dracut\&.conf\fR
+.RE
+.PP
+\fB\-\-confdir\fR\ \&\fI<configuration directory>\fR
+.RS 4
+specify configuration directory to use\&.
+.sp
+Default:
+\fI/etc/dracut\&.conf\&.d\fR
+.RE
+.PP
+\fB\-\-tmpdir\fR\ \&\fI<temporary directory>\fR
+.RS 4
+specify temporary directory to use\&.
+.sp
+Default:
+\fI/var/tmp\fR
+.RE
+.PP
+\fB\-\-sshkey\fR\ \&\fI<sshkey file>\fR
+.RS 4
+ssh key file used with ssh\-client module\&.
+.RE
+.PP
+\fB\-l, \-\-local\fR
+.RS 4
+activates the local mode\&. dracut will use modules from the current working directory instead of the system\-wide installed modules in
+\fI/usr/lib/dracut/modules\&.d\fR\&. This is useful when running dracut from a git checkout\&.
+.RE
+.PP
+\fB\-H, \-\-hostonly\fR
+.RS 4
+Host\-Only mode: Install only what is needed for booting the local host instead of a generic host and generate host\-specific configuration\&.
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBWarning\fR
+.ps -1
+.br
+If chrooted to another root other than the real root device, use "\-\-fstab" and provide a valid
+\fI/etc/fstab\fR\&.
+.sp .5v
+.RE
+.RE
+.PP
+\fB\-\-no\-hostonly\fR
+.RS 4
+Disable Host\-Only mode
+.RE
+.PP
+\fB\-\-fstab\fR
+.RS 4
+Use
+\fI/etc/fstab\fR
+instead of
+\fI/proc/self/mountinfo\fR\&.
+.RE
+.PP
+\fB\-\-add\-fstab\fR\ \&_<filename>_\ \&
+.RS 4
+Add entries of
+\fI<filename>\fR
+to the initramfs /etc/fstab\&.
+.RE
+.PP
+\fB\-\-mount\fR\ \&"\fI<device>\fR \fI<mountpoint>\fR \fI<filesystem type>\fR \fI<filesystem options>\fR"
+.RS 4
+Mount
+\fI<device>\fR
+on
+\fI<mountpoint>\fR
+with
+\fI<filesystem type>\fR
+and
+\fI<filesystem options>\fR
+in the initramfs
+.RE
+.PP
+\fB\-i, \-\-include\fR\ \&\fI<SOURCE>_\ \&_<TARGET>\fR
+.RS 4
+include the files in the SOURCE directory into the TARGET directory in the final initramfs\&. If SOURCE is a file, it will be installed to TARGET in the final initramfs\&. This parameter can be specified multiple times\&.
+.RE
+.PP
+\fB\-I, \-\-install\fR\ \&\fI<file list>\fR
+.RS 4
+install the space separated list of files into the initramfs\&.
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBNote\fR
+.ps -1
+.br
+If [LIST] has multiple arguments, then you have to put these in quotes\&. For example:
+.sp
++
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+# dracut \-\-install "/bin/foo /sbin/bar"  \&.\&.\&.
+.fi
+.if n \{\
+.RE
+.\}
+.sp .5v
+.RE
+.RE
+.PP
+\fB\-\-gzip\fR
+.RS 4
+Compress the generated initramfs using gzip\&. This will be done by default, unless another compression option or \-\-no\-compress is passed\&. Equivalent to "\-\-compress=gzip \-9"
+.RE
+.PP
+\fB\-\-bzip2\fR
+.RS 4
+Compress the generated initramfs using bzip2\&.
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBWarning\fR
+.ps -1
+.br
+Make sure your kernel has bzip2 decompression support compiled in, otherwise you will not be able to boot\&. Equivalent to "\-\-compress=bzip2"
+.sp .5v
+.RE
+.RE
+.PP
+\fB\-\-lzma\fR
+.RS 4
+Compress the generated initramfs using lzma\&.
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBWarning\fR
+.ps -1
+.br
+Make sure your kernel has lzma decompression support compiled in, otherwise you will not be able to boot\&. Equivalent to "\-\-compress=lzma \-9"
+.sp .5v
+.RE
+.RE
+.PP
+\fB\-\-xz\fR
+.RS 4
+Compress the generated initramfs using xz\&.
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBWarning\fR
+.ps -1
+.br
+Make sure your kernel has xz decompression support compiled in, otherwise you will not be able to boot\&. Equivalent to "\-\-compress=xz \-\-check=crc32 \-\-lzma2=dict=1MiB"
+.sp .5v
+.RE
+.RE
+.PP
+\fB\-\-compress\fR\ \&\fI<compressor>\fR
+.RS 4
+Compress the generated initramfs using the passed compression program\&. If you pass it just the name of a compression program, it will call that program with known\-working arguments\&. If you pass a quoted string with arguments, it will be called with exactly those arguments\&. Depending on what you pass, this may result in an initramfs that the kernel cannot decompress\&.
+.RE
+.PP
+\fB\-\-no\-compress\fR
+.RS 4
+Do not compress the generated initramfs\&. This will override any other compression options\&.
+.RE
+.PP
+\fB\-\-list\-modules\fR
+.RS 4
+List all available dracut modules\&.
+.RE
+.PP
+\fB\-M, \-\-show\-modules\fR
+.RS 4
+Print included module\(cqs name to standard output during build\&.
+.RE
+.PP
+\fB\-\-keep\fR
+.RS 4
+Keep the initramfs temporary directory for debugging purposes\&.
+.RE
+.SH "FILES"
+.PP
+\fI/var/log/dracut\&.log\fR
+.RS 4
+logfile of initramfs image creation
+.RE
+.PP
+\fI/tmp/dracut\&.log\fR
+.RS 4
+logfile of initramfs image creation, if
+\fI/var/log/dracut\&.log\fR
+is not writable
+.RE
+.PP
+\fI/etc/dracut\&.conf\fR
+.RS 4
+see dracut\&.conf5
+.RE
+.PP
+\fI/etc/dracut\&.conf\&.d/*\&.conf\fR
+.RS 4
+see dracut\&.conf5
+.RE
+.SS "Configuration in the initramfs"
+.PP
+\fI/etc/conf\&.d/\fR
+.RS 4
+Any files found in
+\fI/etc/conf\&.d/\fR
+will be sourced in the initramfs to set initial values\&. Command line options will override these values set in the configuration files\&.
+.RE
+.PP
+\fI/etc/cmdline\fR
+.RS 4
+Can contain additional command line options\&.
+.RE
+.SH "AVAILABILITY"
+.sp
+The dracut command is part of the dracut package and is available from \m[blue]\fBhttps://dracut\&.wiki\&.kernel\&.org\fR\m[]
+.SH "AUTHORS"
+.PP
+\fBHarald Hoyer\fR
+.RS 4
+Project Leader and Developer
+.RE
+.PP
+\fBVictor Lowther\fR
+.RS 4
+Developer
+.RE
+.PP
+\fBPhilippe Seewer\fR
+.RS 4
+Developer
+.RE
+.PP
+\fBWarren Togami\fR
+.RS 4
+Developer
+.RE
+.PP
+\fBAmadeusz Żołnowski\fR
+.RS 4
+Developer
+.RE
+.PP
+\fBJeremy Katz\fR
+.RS 4
+Developer
+.RE
+.PP
+\fBDavid Dillow\fR
+.RS 4
+Developer
+.RE
+.PP
+\fBWill Woods\fR
+.RS 4
+Developer
+.RE
+.SH "SEE ALSO"
+.sp
+\fBdracut\&.cmdline\fR(7) \fBdracut\&.conf\fR(5)
