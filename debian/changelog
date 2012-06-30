@@ -3,8 +3,9 @@ dracut (020-1) unstable; urgency=low
   * new upstream version
   * disable building of dracut-install executable, the package should
     remain architecture all for now
+  * add qemu modules
 
- -- Thomas Lange <lange@debian.org>  Sat, 30 Jun 2012 13:25:12 +0200
+ -- Thomas Lange <lange@debian.org>  Sat, 30 Jun 2012 17:24:54 +0200
 
 dracut (019+39+gf48f934-1) unstable; urgency=high
 
