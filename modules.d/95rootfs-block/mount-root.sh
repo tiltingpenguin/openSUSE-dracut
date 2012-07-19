@@ -15,7 +15,6 @@ filter_rootopts() {
     local v
     while [ $# -gt 0 ]; do
         case $1 in
-            rw|ro);;
             defaults);;
             *)
                 v="$v,${1}";;
@@ -30,7 +29,10 @@ mount_root() {
     local _ret
     # sanity - determine/fix fstype
     rootfs=$(det_fs "${root#block:}" "$fstype")
-    mount -t ${rootfs} -o "$rflags",ro "${root#block:}" "$NEWROOT"
+    while ! mount -t ${rootfs} -o "$rflags",ro "${root#block:}" "$NEWROOT"; do
+        warn "Failed to mount -t ${rootfs} -o $rflags,ro ${root#block:} $NEWROOT"
+        fsck_ask_err
+    done
 
     READONLY=
     fsckoptions=
@@ -54,20 +56,23 @@ mount_root() {
         fsckoptions=$(cat "$NEWROOT"/fsckoptions)
     fi
 
-    if [ -f "$NEWROOT"/forcefsck ] || getargbool 0 forcefsck ; then
-        fsckoptions="-f $fsckoptions"
-    elif [ -f "$NEWROOT"/.autofsck ]; then
-        [ -f "$NEWROOT"/etc/sysconfig/autofsck ] && . "$NEWROOT"/etc/sysconfig/autofsck
-        if [ "$AUTOFSCK_DEF_CHECK" = "yes" ]; then
-            AUTOFSCK_OPT="$AUTOFSCK_OPT -f"
+    if ! getargbool 0 rd.skipfsck; then
+        if [ -f "$NEWROOT"/forcefsck ] || getargbool 0 forcefsck ; then
+            fsckoptions="-f $fsckoptions"
+        elif [ -f "$NEWROOT"/.autofsck ]; then
+            [ -f "$NEWROOT"/etc/sysconfig/autofsck ] && \
+                . "$NEWROOT"/etc/sysconfig/autofsck
+            if [ "$AUTOFSCK_DEF_CHECK" = "yes" ]; then
+                AUTOFSCK_OPT="$AUTOFSCK_OPT -f"
+            fi
+            if [ -n "$AUTOFSCK_SINGLEUSER" ]; then
+                warn "*** Warning -- the system did not shut down cleanly. "
+                warn "*** Dropping you to a shell; the system will continue"
+                warn "*** when you leave the shell."
+                emergency_shell
+            fi
+            fsckoptions="$AUTOFSCK_OPT $fsckoptions"
         fi
-        if [ -n "$AUTOFSCK_SINGLEUSER" ]; then
-            warn "*** Warning -- the system did not shut down cleanly. "
-            warn "*** Dropping you to a shell; the system will continue"
-            warn "*** when you leave the shell."
-            emergency_shell
-        fi
-        fsckoptions="$AUTOFSCK_OPT $fsckoptions"
     fi
 
     rootopts=
@@ -79,7 +84,7 @@ mount_root() {
         # the root filesystem,
         # remount it with the proper options
         rootopts="defaults"
-        while read dev mp fs opts rest; do
+        while read dev mp fs opts dump fsck; do
             # skip comments
             [ "${dev%%#*}" != "$dev" ] && continue
 
@@ -87,6 +92,7 @@ mount_root() {
                 # sanity - determine/fix fstype
                 rootfs=$(det_fs "${root#block:}" "$fs")
                 rootopts=$opts
+                rootfsck=$fsck
                 break
             fi
         done < "$NEWROOT/etc/fstab"
@@ -96,14 +102,17 @@ mount_root() {
 
     # we want rootflags (rflags) to take precedence so prepend rootopts to
     # them; rflags is guaranteed to not be empty
-    rflags="${rootopts:+"${rootopts},"}${rflags}"
+    rflags="${rootopts:+${rootopts},}${rflags}"
 
     # backslashes are treated as escape character in fstab
     # esc_root=$(echo ${root#block:} | sed 's,\\,\\\\,g')
     # printf '%s %s %s %s 1 1 \n' "$esc_root" "$NEWROOT" "$rootfs" "$rflags" >/etc/fstab
 
     ran_fsck=0
-    if [ -z "$fastboot" -a "$READONLY" != "yes" ] && ! strstr "${rflags},${rootopts}" _netdev; then
+    if fsck_able "$rootfs" && \
+        [ "$rootfsck" != "0" -a -z "$fastboot" -a "$READONLY" != "yes" ] && \
+            ! strstr "${rflags}" _netdev && \
+            ! getargbool 0 rd.skipfsck; then
         umount "$NEWROOT"
         fsck_single "${root#block:}" "$rootfs" "$rflags" "$fsckoptions"
         _ret=$?
@@ -111,10 +120,14 @@ mount_root() {
         ran_fsck=1
     fi
 
-    if [ -n "$rootopts" -o "$ran_fsck" = "1" ]; then
+    echo "${root#block:} $NEWROOT $rootfs ${rflags:-defaults} 0 $rootfsck" >> /etc/fstab
+
+    if ! ismounted "$NEWROOT"; then
+        info "Mounting ${root#block:} with -o ${rflags}"
+        mount "$NEWROOT" 2>&1 | vinfo
+    else
         info "Remounting ${root#block:} with -o ${rflags}"
-        umount "$NEWROOT" &>/dev/null
-        mount -t "$rootfs" -o "$rflags" "${root#block:}" "$NEWROOT" 2>&1 | vinfo
+        mount -o remount "$NEWROOT" 2>&1 | vinfo
     fi
 
     [ -f "$NEWROOT"/forcefsck ] && rm -f "$NEWROOT"/forcefsck 2>/dev/null

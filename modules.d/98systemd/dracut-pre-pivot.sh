@@ -3,9 +3,10 @@
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
 if [ -f /dracut-state.sh ]; then
-    . /dracut-state.sh || :
+    . /dracut-state.sh 2>/dev/null
 fi
-. /lib/dracut-lib.sh
+type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
+
 source_conf /etc/conf.d
 
 # pre pivot scripts are sourced just before we doing cleanup and switch over
@@ -33,19 +34,9 @@ done
 
 echo "NEWROOT=\"$NEWROOT\"" >> /run/initramfs/switch-root.conf
 
-udevadm control --stop-exec-queue
-
-for i in systemd-udev.service udev.service; do
-    systemctl is-active $i >/dev/null 2>&1 && systemctl stop $i
-done
-
-udevadm info --cleanup-db
-
 # remove helper symlink
 [ -h /dev/root ] && rm -f /dev/root
 
 getarg rd.break rdbreak && emergency_shell -n switch_root "Break before switch_root"
 
-cp -avr /lib/systemd/system/dracut*.service /run/systemd/system/
-
-export -p > /dracut-state.sh
+exit 0

@@ -65,7 +65,6 @@ installkernel() {
 
 install() {
     if grep -q nash /usr/libexec/plymouth/plymouth-populate-initrd \
-        || ! grep -q PLYMOUTH_POPULATE_SOURCE_FUNCTIONS /usr/libexec/plymouth/plymouth-populate-initrd \
         || [ ! -x /usr/libexec/plymouth/plymouth-populate-initrd ]; then
         . "$moddir"/plymouth-populate-initrd.sh
     else
@@ -77,5 +76,9 @@ install() {
     inst_hook pre-trigger 10 "$moddir"/plymouth-pretrigger.sh
     inst_hook emergency 50 "$moddir"/plymouth-emergency.sh
     dracut_install readlink
+
+    if [[ -x $systemdutildir/systemd ]]; then
+        dracut_install -o $systemdsystemunitdir/plymouth-quit-wait.service
+    fi
 }
 

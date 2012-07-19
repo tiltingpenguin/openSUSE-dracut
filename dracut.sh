@@ -24,7 +24,7 @@
 #
 
 # store for logging
-dracut_args="$@"
+dracut_args=( "$@" )
 
 set -o pipefail
 
@@ -36,7 +36,32 @@ usage() {
 
 #                                                       80x25 linebreak here ^
     cat << EOF
-Usage: $0 [OPTION]... <initramfs> <kernel-version>
+Usage: $0 [OPTION]... [<initramfs> [<kernel-version>]]
+
+Version: $DRACUT_VERSION
+
+Creates initial ramdisk images for preloading modules
+
+  -h, --help  Display all options
+
+If a [LIST] has multiple arguments, then you have to put these in quotes.
+
+For example:
+
+    # dracut --add-drivers "module1 module2"  ...
+
+EOF
+}
+
+long_usage() {
+    [[ $dracutbasedir ]] || dracutbasedir=/usr/lib/dracut
+    if [[ -f $dracutbasedir/dracut-version.sh ]]; then
+        . $dracutbasedir/dracut-version.sh
+    fi
+
+#                                                       80x25 linebreak here ^
+    cat << EOF
+Usage: $0 [OPTION]... [<initramfs> [<kernel-version>]]
 
 Version: $DRACUT_VERSION
 
@@ -65,6 +90,8 @@ Creates initial ramdisk images for preloading modules
   --no-kernel           Do not install kernel drivers and firmware files
   --strip               Strip binaries in the initramfs
   --nostrip             Do not strip binaries in the initramfs (default)
+  --hardlink            Hardlink files in the initramfs (default)
+  --nohardlink          Do not hardlink files in the initramfs
   --prefix [DIR]        Prefix initramfs files with [DIR]
   --noprefix            Do not prefix initramfs files (default)
   --mdadmconf           Include local /etc/mdadm.conf
@@ -137,8 +164,11 @@ Creates initial ramdisk images for preloading modules
   --sshkey [SSHKEY]     Add ssh key to initramfs (use with ssh-client module)
 
 If [LIST] has multiple arguments, then you have to put these in quotes.
+
 For example:
-# dracut --add-drivers "module1 module2"  ...
+
+    # dracut --add-drivers "module1 module2"  ...
+
 EOF
 }
 
@@ -149,9 +179,10 @@ EOF
 # example:
 # push stack 1 2 "3 4"
 push() {
+    local _i
     local __stack=$1; shift
-    for i in "$@"; do
-        eval ${__stack}'[${#'${__stack}'[@]}]="$i"'
+    for _i in "$@"; do
+        eval ${__stack}'[${#'${__stack}'[@]}]="$_i"'
     done
 }
 
@@ -167,16 +198,16 @@ push() {
 pop() {
     local __stack=$1; shift
     local __resultvar=$1
-    local myresult;
+    local _value;
     # check for empty stack
     eval '[[ ${#'${__stack}'[@]} -eq 0 ]] && return 1'
 
-    eval myresult='${'${__stack}'[${#'${__stack}'[@]}-1]}'
+    eval _value='${'${__stack}'[${#'${__stack}'[@]}-1]}'
 
     if [[ "$__resultvar" ]]; then
-        eval $__resultvar="'$myresult'"
+        eval $__resultvar="'$_value'"
     else
-        echo "$myresult"
+        echo "$_value"
     fi
     eval unset ${__stack}'[${#'${__stack}'[@]}-1]'
     return 0
@@ -200,57 +231,112 @@ read_arg() {
     fi
 }
 
-# Little helper function for reading args from the commandline to a stack.
-# it automatically handles -a b and -a=b variants, and returns 1 if
-# we need to shift $3.
-push_arg() {
-    # $1 = arg name
-    # $2 = arg value
-    # $3 = arg parameter
-    local rematch='^[^=]*=(.*)$'
-    if [[ $2 =~ $rematch ]]; then
-        push "$1" "${BASH_REMATCH[1]}"
-    else
-        push "$1" "$3"
-        # There is no way to shift our callers args, so
-        # return 1 to indicate they should do it instead.
-        return 1
-    fi
-}
-
 verbosity_mod_l=0
 unset kernel
 unset outfile
 
-while (($# > 0)); do
-    case ${1%%=*} in
-        -a|--add)      push_arg add_dracutmodules_l  "$@" || shift;;
-        --force-add)   push_arg force_add_dracutmodules_l  "$@" || shift;;
-        --add-drivers) push_arg add_drivers_l        "$@" || shift;;
-        --omit-drivers) push_arg omit_drivers_l      "$@" || shift;;
-        -m|--modules)  push_arg dracutmodules_l      "$@" || shift;;
-        -o|--omit)     push_arg omit_dracutmodules_l "$@" || shift;;
-        -d|--drivers)  push_arg drivers_l            "$@" || shift;;
-        --filesystems) push_arg filesystems_l        "$@" || shift;;
-        -I|--install)  push_arg install_items_l      "$@" || shift;;
-        --fwdir)       push_arg fw_dir_l             "$@" || shift;;
-        --libdirs)     push_arg libdirs_l            "$@" || shift;;
-        --fscks)       push_arg fscks_l              "$@" || shift;;
-        --add-fstab)   push_arg add_fstab_l          "$@" || shift;;
-        --mount)       push_arg fstab_lines          "$@" || shift;;
+# Workaround -i, --include taking 2 arguments
+set -- "${@/--include/++include}"
+
+# This prevents any long argument ending with "-i"
+# -i, like --opt-i but I think we can just prevent that
+set -- "${@/%-i/++include}"
+
+TEMP=$(unset POSIXLY_CORRECT; getopt \
+    -o "a:m:o:d:I:k:c:L:fvqlHhM" \
+    --long add: \
+    --long force-add: \
+    --long add-drivers: \
+    --long omit-drivers: \
+    --long modules: \
+    --long omit: \
+    --long drivers: \
+    --long filesystems: \
+    --long install: \
+    --long fwdir: \
+    --long libdirs: \
+    --long fscks: \
+    --long add-fstab: \
+    --long mount: \
+    --long nofscks: \
+    --long kmoddir: \
+    --long conf: \
+    --long confdir: \
+    --long tmpdir: \
+    --long stdlog: \
+    --long compress: \
+    --long prefix: \
+    --long force \
+    --long kernel-only \
+    --long no-kernel \
+    --long strip \
+    --long nostrip \
+    --long hardlink \
+    --long nohardlink \
+    --long noprefix \
+    --long mdadmconf \
+    --long nomdadmconf \
+    --long lvmconf \
+    --long nolvmconf \
+    --long debug \
+    --long profile \
+    --long sshkey: \
+    --long verbose \
+    --long quiet \
+    --long local \
+    --long hostonly \
+    --long no-hostonly \
+    --long fstab \
+    --long help \
+    --long bzip2 \
+    --long lzma \
+    --long xz \
+    --long no-compress \
+    --long gzip \
+    --long list-modules \
+    --long show-modules \
+    --long keep \
+    --long printsize \
+    -- "$@")
+
+if (( $? != 0 )); then
+    usage
+    exit 1
+fi
+
+eval set -- "$TEMP"
+
+while :; do
+    case $1 in
+        -a|--add)      push add_dracutmodules_l  "$2"; shift;;
+        --force-add)   push force_add_dracutmodules_l  "$2"; shift;;
+        --add-drivers) push add_drivers_l        "$2"; shift;;
+        --omit-drivers) push omit_drivers_l      "$2"; shift;;
+        -m|--modules)  push dracutmodules_l      "$2"; shift;;
+        -o|--omit)     push omit_dracutmodules_l "$2"; shift;;
+        -d|--drivers)  push drivers_l            "$2"; shift;;
+        --filesystems) push filesystems_l        "$2"; shift;;
+        -I|--install)  push install_items_l      "$2"; shift;;
+        --fwdir)       push fw_dir_l             "$2"; shift;;
+        --libdirs)     push libdirs_l            "$2"; shift;;
+        --fscks)       push fscks_l              "$2"; shift;;
+        --add-fstab)   push add_fstab_l          "$2"; shift;;
+        --mount)       push fstab_lines          "$2"; shift;;
         --nofscks)     nofscks_l="yes";;
-        -k|--kmoddir)  read_arg drivers_dir_l        "$@" || shift;;
-        -c|--conf)     read_arg conffile             "$@" || shift;;
-        --confdir)     read_arg confdir              "$@" || shift;;
-        --tmpdir)      read_arg tmpdir_l             "$@" || shift;;
-        -L|--stdlog)   read_arg stdloglvl_l          "$@" || shift;;
-        --compress)    read_arg compress_l           "$@" || shift;;
-        --prefix)      read_arg prefix_l             "$@" || shift;;
+        -k|--kmoddir)  drivers_dir_l="$2"; shift;;
+        -c|--conf)     conffile="$2"; shift;;
+        --confdir)     confdir="$2"; shift;;
+        --tmpdir)      tmpdir_l="$2"; shift;;
+        -L|--stdlog)   stdloglvl_l="$2"; shift;;
+        --compress)    compress_l="$2"; shift;;
+        --prefix)      prefix_l="$2"; shift;;
         -f|--force)    force=yes;;
         --kernel-only) kernel_only="yes"; no_kernel="no";;
         --no-kernel)   kernel_only="no"; no_kernel="yes";;
         --strip)       do_strip_l="yes";;
         --nostrip)     do_strip_l="no";;
+        --hardlink)    do_hardlink_l="yes";;
+        --nohardlink)  do_hardlink_l="no";;
         --noprefix)    prefix_l="/";;
         --mdadmconf)   mdadmconf_l="yes";;
         --nomdadmconf) mdadmconf_l="no";;
@@ -258,7 +344,7 @@ while (($# > 0)); do
         --nolvmconf)   lvmconf_l="no";;
         --debug)       debug="yes";;
         --profile)     profile="yes";;
-        --sshkey)      read_arg sshkey   "$@" || shift;;
+        --sshkey)      sshkey="$2"; shift;;
         -v|--verbose)  ((verbosity_mod_l++));;
         -q|--quiet)    ((verbosity_mod_l--));;
         -l|--local)
@@ -269,48 +355,67 @@ while (($# > 0)); do
         -H|--hostonly) hostonly_l="yes" ;;
         --no-hostonly) hostonly_l="no" ;;
         --fstab)       use_fstab_l="yes" ;;
-        -h|--help)     usage; exit 1 ;;
+        -h|--help)     long_usage; exit 1 ;;
         -i|--include)  push include_src "$2"
-                       push include_target "$3"
-                       shift 2;;
+                       shift;;
         --bzip2)       compress_l="bzip2";;
         --lzma)        compress_l="lzma";;
         --xz)          compress_l="xz";;
         --no-compress) _no_compress_l="cat";;
         --gzip)        compress_l="gzip";;
-        --list-modules)
-            do_list="yes";
-            ;;
+        --list-modules) do_list="yes";;
         -M|--show-modules)
                        show_modules_l="yes"
                        ;;
         --keep)        keep="yes";;
         --printsize)   printsize="yes";;
-        -*) printf "\nUnknown option: %s\n\n" "$1" >&2; usage; exit 1;;
+
+        --) shift; break;;
+
+        *)  # should not even reach this point
+            printf "\n!Unknown option: '%s'\n\n" "$1" >&2; usage; exit 1;;
+    esac
+    shift
+done
+
+# getopt cannot handle multiple arguments, so just handle "-I,--include"
+# the old fashioned way
+
+while (($# > 0)); do
+    case ${1%%=*} in
+        ++include) push include_src "$2"
+                       push include_target "$3"
+                       shift 2;;
         *)
             if ! [[ ${outfile+x} ]]; then
                 outfile=$1
             elif ! [[ ${kernel+x} ]]; then
                 kernel=$1
             else
-                echo "Unknown argument: $1"
+                printf "\nUnknown arguments: %s\n\n" "$*" >&2
                 usage; exit 1;
             fi
             ;;
     esac
     shift
 done
+
 if ! [[ $kernel ]]; then
     kernel=$(uname -r)
 fi
-[[ $outfile ]] || outfile="/boot/initramfs-$kernel.img"
+
+if ! [[ $outfile ]]; then
+    outfile="/boot/initramfs-$kernel.img"
+fi
 
 for i in /usr/sbin /sbin /usr/bin /bin; do
     rl=$i
     if [ -L "$i" ]; then
         rl=$(readlink -f $i)
     fi
-    NPATH+=":$rl"
+    if [[ "$NPATH" != "*:$rl*" ]] ; then
+        NPATH+=":$rl"
+    fi
 done
 export PATH="${NPATH#:}"
 unset NPATH
@@ -434,6 +539,9 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 
 [[ $drivers_dir_l ]] && drivers_dir=$drivers_dir_l
 [[ $do_strip_l ]] && do_strip=$do_strip_l
+[[ $do_strip ]] || do_strip=no
+[[ $do_hardlink_l ]] && do_hardlink=$do_hardlink_l
+[[ $do_hardlink ]] || do_hardlink=yes
 [[ $prefix_l ]] && prefix=$prefix_l
 [[ $prefix = "/" ]] && unset prefix
 [[ $hostonly_l ]] && hostonly=$hostonly_l
@@ -444,7 +552,6 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 [[ $fw_dir ]] || fw_dir="/lib/firmware/updates /lib/firmware"
 [[ $tmpdir_l ]] && tmpdir="$tmpdir_l"
 [[ $tmpdir ]] || tmpdir=/var/tmp
-[[ $do_strip ]] || do_strip=no
 [[ $compress_l ]] && compress=$compress_l
 [[ $show_modules_l ]] && show_modules=$show_modules_l
 [[ $nofscks_l ]] && nofscks="yes"
@@ -470,7 +577,7 @@ fi
 readonly TMPDIR="$tmpdir"
 readonly initdir=$(mktemp --tmpdir="$TMPDIR/" -d -t initramfs.XXXXXX)
 [ -d "$initdir" ] || {
-    echo "dracut: mktemp --tmpdir=\"$TMPDIR/\" -d -t initramfs.XXXXXXfailed." >&2
+    echo "dracut: mktemp --tmpdir=\"$TMPDIR/\" -d -t initramfs.XXXXXX failed." >&2
     exit 1
 }
 
@@ -530,8 +637,13 @@ done
 omit_drivers="${omit_drivers_corrected%|}"
 unset omit_drivers_corrected
 
-
-ddebug "Executing $0 $dracut_args"
+# prepare args for logging
+for ((i=0; i < ${#dracut_args[@]}; i++)); do
+    strstr "${dracut_args[$i]}" " " && \
+        dracut_args[$i]="\"${dracut_args[$i]}\""
+        #" keep vim happy
+done
+ddebug "Executing: $0 ${dracut_args[@]}"
 
 [[ $do_list = yes ]] && {
     for mod in $dracutbasedir/modules.d/*; do
@@ -567,7 +679,7 @@ if [[ ! -d "$outdir" ]]; then
     dfatal "Can't write $outfile: Directory $outdir does not exist."
     exit 1
 elif [[ ! -w "$outdir" ]]; then
-    dfatal "No permission to write $outdir."
+    dfatal "No permission to write to $outdir."
     exit 1
 elif [[ -f "$outfile" && ! -w "$outfile" ]]; then
     dfatal "No permission to write $outfile."
@@ -667,7 +779,8 @@ export initdir dracutbasedir dracutmodules drivers \
     use_fstab fstab_lines libdirs fscks nofscks \
     stdloglvl sysloglvl fileloglvl kmsgloglvl logfile \
     debug host_fs_types host_devs sshkey add_fstab \
-    DRACUT_VERSION udevdir systemdutildir systemdsystemunitdir
+    DRACUT_VERSION udevdir systemdutildir systemdsystemunitdir \
+    prefix
 
 # Create some directory structure first
 [[ $prefix ]] && mkdir -m 0755 -p "${initdir}${prefix}"
@@ -783,6 +896,27 @@ if [[ $no_kernel != yes ]]; then
     dinfo "*** Installing kernel module dependencies and firmware done ***"
 fi
 
+if [[ $kernel_only != yes ]]; then
+    (( ${#install_items[@]} > 0 )) && dracut_install  ${install_items[@]}
+
+    while pop fstab_lines line; do
+        echo "$line 0 0" >> "${initdir}/etc/fstab"
+    done
+
+    for f in $add_fstab; do
+        cat $f >> "${initdir}/etc/fstab"
+    done
+
+    if [[ $DRACUT_RESOLVE_LAZY ]] && [[ $DRACUT_INSTALL ]]; then
+        dinfo "*** Resolving executable dependencies ***"
+        find "$initdir" -type f \
+            '(' -perm -0100 -or -perm -0010 -or -perm -0001 ')' \
+            -not -path '*.ko' -print0 \
+        | xargs -r -0 $DRACUT_INSTALL ${initdir+-D "$initdir"} -R ${DRACUT_FIPS_MODE+-H}
+        dinfo "*** Resolving executable dependencies done***"
+    fi
+fi
+
 while pop include_src src && pop include_target tgt; do
     if [[ $src && $tgt ]]; then
         if [[ -f $src ]]; then
@@ -800,9 +934,9 @@ while pop include_src src && pop include_target tgt; do
                         mkdir -m 0755 -p "$s"
                         chmod --reference="$i" "$s"
                     fi
-                    cp --reflink=auto --sparse=auto -pfLr -t "$s" "$i"/*
+                    cp --reflink=auto --sparse=auto -fa -t "$s" "$i"/*
                 else
-                    cp --reflink=auto --sparse=auto -pfLr -t "$s" "$i"
+                    cp --reflink=auto --sparse=auto -fa -t "$s" "$i"
                 fi
             done
         fi
@@ -810,25 +944,6 @@ while pop include_src src && pop include_target tgt; do
 done
 
 if [[ $kernel_only != yes ]]; then
-    (( ${#install_items[@]} > 0 )) && dracut_install  ${install_items[@]}
-
-    while pop fstab_lines line; do
-        echo "$line 0 0" >> "${initdir}/etc/fstab"
-    done
-
-    for f in $add_fstab; do
-        cat $f >> "${initdir}/etc/fstab"
-    done
-
-    if [[ $DRACUT_RESOLVE_LAZY ]] && [[ -x /usr/bin/dracut-install ]]; then
-        dinfo "*** Resolving executable dependencies ***"
-        find "$initdir" -type f \
-            '(' -perm -0100 -or -perm -0010 -or -perm -0001 ')' \
-            -not -path '*.ko' -print0 \
-        | xargs -0 dracut-install ${initdir+-D "$initdir"} -R ${DRACUT_FIPS_MODE+-H}
-        dinfo "*** Resolving executable dependencies done***"
-    fi
-
     # make sure that library links are correct and up to date
     for f in /etc/ld.so.conf /etc/ld.so.conf.d/*; do
         [[ -f $f ]] && inst_simple "$f"
@@ -877,15 +992,17 @@ if [[ $do_strip = yes ]] ; then
     find "$initdir" -type f \
         '(' -perm -0100 -or -perm -0010 -or -perm -0001 \
         -or -path '*/lib/modules/*.ko' ')' -print0 \
-        | xargs -0 strip -g 2>/dev/null
+        | xargs -r -0 strip -g 2>/dev/null
     dinfo "*** Stripping files done ***"
 fi
 
-type hardlink &>/dev/null && {
-    dinfo "*** hardlinking files ***"
-    hardlink "$initdir" 2>&1
-    dinfo "*** hardlinking files done ***"
-}
+if [[ $do_hardlink = yes ]] ; then
+    type hardlink &>/dev/null && {
+        dinfo "*** hardlinking files ***"
+        hardlink "$initdir" 2>&1
+        dinfo "*** hardlinking files done ***"
+    }
+fi
 
 dinfo "*** Creating image file ***"
 if ! ( cd "$initdir"; find . |cpio -R 0:0 -H newc -o --quiet| \

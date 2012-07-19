@@ -289,3 +289,29 @@ ip_to_var() {
         esac
     fi
 }
+
+parse_ifname_opts() {
+    local IFS=:
+    set $1
+
+    case $# in
+        7)
+            ifname_if=$1
+            # udev requires MAC addresses to be lower case
+            ifname_mac=$(echo $2:$3:$4:$5:$6:$7 | sed 'y/ABCDEF/abcdef/')
+            ;;
+        *)
+            die "Invalid arguments for ifname="
+            ;;
+    esac
+
+    case $ifname_if in
+        eth[0-9]|eth[0-9][0-9]|eth[0-9][0-9][0-9]|eth[0-9][0-9][0-9][0-9])
+            warn "ifname=$ifname_if uses the kernel name space for interfaces"
+            warn "This can fail for multiple network interfaces and is discouraged!"
+            warn "Please use a custom name like \"netboot\" or \"bluesocket\""
+            warn "or use biosdevname and no ifname= at all."
+            ;;
+    esac
+
+}

@@ -18,12 +18,12 @@ test_run() {
 test_setup() {
     rm -f $TESTDIR/root.ext3
     # Create the blank file to use as a root filesystem
-    dd if=/dev/null of=$TESTDIR/root.ext3 bs=1M seek=40
+    dd if=/dev/null of=$TESTDIR/root.ext3 bs=1M seek=80
 
     kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay
     (
-	initdir=$TESTDIR/overlay/source
+	export initdir=$TESTDIR/overlay/source
 	mkdir -p $initdir
 	. $basedir/dracut-functions.sh
 	dracut_install sh df free ls shutdown poweroff stty cat ps ln ip route \
@@ -45,7 +45,7 @@ test_setup() {
 
     # second, install the files needed to make the root filesystem
     (
-	initdir=$TESTDIR/overlay
+	export initdir=$TESTDIR/overlay
 	. $basedir/dracut-functions.sh
 	dracut_install sfdisk mkfs.ext3 poweroff cp umount
 	inst_hook initqueue 01 ./create-root.sh
@@ -73,7 +73,7 @@ test_setup() {
 
 
     (
-	initdir=$TESTDIR/overlay
+	export initdir=$TESTDIR/overlay
 	. $basedir/dracut-functions.sh
 	dracut_install poweroff shutdown
 	inst_hook emergency 000 ./hard-off.sh

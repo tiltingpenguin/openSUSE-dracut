@@ -9,14 +9,34 @@ sysconfdir ?= ${prefix}/etc
 bindir ?= ${prefix}/bin
 mandir ?= ${prefix}/share/man
 
-manpages = dracut.8 dracut.cmdline.7 dracut.conf.5 dracut-catimages.8
+manpages = dracut.8 \
+	   dracut.cmdline.7 \
+	   dracut.conf.5 \
+	   dracut-catimages.8 \
+	   lsinitrd.1 \
+	   mkinitrd.8
 
 .PHONY: install clean archive rpm testimage test all check AUTHORS doc
 
-all: syncheck dracut-version.sh install/dracut-install
+all: syncheck dracut-version.sh dracut-install
 
-install/dracut-install:
-	$(MAKE) -C install dracut-install
+DRACUT_INSTALL_SOURCE = \
+	install/dracut-install.c \
+	install/hashmap.c\
+	install/log.c \
+	install/util.c
+
+DRACUT_INSTALL_HEADER = \
+	install/hashmap.h \
+	install/log.h \
+	install/macro.h \
+	install/util.h
+
+dracut-install: $(DRACUT_INSTALL_SOURCE) $(DRACUT_INSTALL_HEADER)
+	gcc -std=gnu99 -O2 -g -Wall -o dracut-install $(DRACUT_INSTALL_SOURCE)
+
+indent:
+	indent -i8 -nut -br -linux -l120 install/dracut-install.c
 
 doc: $(manpages) dracut.html
 
@@ -40,7 +60,7 @@ install: doc dracut-version.sh
 	mkdir -p $(DESTDIR)$(bindir)
 	mkdir -p $(DESTDIR)$(sysconfdir)
 	mkdir -p $(DESTDIR)$(pkglibdir)/modules.d
-	mkdir -p $(DESTDIR)$(mandir)/man5 $(DESTDIR)$(mandir)/man7 $(DESTDIR)$(mandir)/man8
+	mkdir -p $(DESTDIR)$(mandir)/man1 $(DESTDIR)$(mandir)/man5 $(DESTDIR)$(mandir)/man7 $(DESTDIR)$(mandir)/man8
 	install -m 0755 dracut.sh $(DESTDIR)$(bindir)/dracut
 	install -m 0755 dracut-catimages.sh $(DESTDIR)$(bindir)/dracut-catimages
 	install -m 0755 mkinitrd-dracut.sh $(DESTDIR)$(bindir)/mkinitrd
@@ -53,28 +73,22 @@ install: doc dracut-version.sh
 	install -m 0755 dracut-logger.sh $(DESTDIR)$(pkglibdir)/dracut-logger.sh
 	install -m 0755 dracut-initramfs-restore.sh $(DESTDIR)$(pkglibdir)/dracut-initramfs-restore
 	cp -arx modules.d $(DESTDIR)$(pkglibdir)
+	install -m 0644 lsinitrd.1 $(DESTDIR)$(mandir)/man1/lsinitrd.1
+	install -m 0644 mkinitrd.8 $(DESTDIR)$(mandir)/man8/mkinitrd.8
 	install -m 0644 dracut.8 $(DESTDIR)$(mandir)/man8/dracut.8
-	install -m 0644 dracut-catimages.8 $(DESTDIR)$(mandir)/man8/dracut-catimages.8
+	install -m 0644 dracut-catimages.8 \
+                        $(DESTDIR)$(mandir)/man8/dracut-catimages.8
 	install -m 0644 dracut.conf.5 $(DESTDIR)$(mandir)/man5/dracut.conf.5
 	install -m 0644 dracut.cmdline.7 $(DESTDIR)$(mandir)/man7/dracut.cmdline.7
 	ln -s dracut.cmdline.7 $(DESTDIR)$(mandir)/man7/dracut.kernel.7
 	if [ -n "$(systemdsystemunitdir)" ]; then \
 		mkdir -p $(DESTDIR)$(systemdsystemunitdir); \
-		for i in \
-			modules.d/98systemd/dracut-initqueue.service \
-			modules.d/98systemd/dracut-pre-pivot.service \
-			modules.d/98systemd/dracut-pre-trigger.service \
-			modules.d/98systemd/dracut-pre-udev.service \
-			modules.d/98systemd/initrd-switch-root.service \
-			modules.d/98systemd/initrd-switch-root.target \
-			dracut-shutdown.service; do \
-				install -m 0644 $$i $(DESTDIR)$(systemdsystemunitdir); \
-		done; \
+		install -m 0644 dracut-shutdown.service $(DESTDIR)$(systemdsystemunitdir); \
 		mkdir -p $(DESTDIR)$(systemdsystemunitdir)/shutdown.target.wants; \
 		ln -s ../dracut-shutdown.service \
 		$(DESTDIR)$(systemdsystemunitdir)/shutdown.target.wants/dracut-shutdown.service; \
 	fi
-	$(MAKE) -C install install
+	install $(strip) -m 0755 dracut-install $(DESTDIR)$(pkglibdir)/dracut-install
 
 dracut-version.sh:
 	@echo "DRACUT_VERSION=$(VERSION)-$(GITVERSION)" > dracut-version.sh
@@ -85,9 +99,9 @@ clean:
 	$(RM) */*/*~
 	$(RM) test-*.img
 	$(RM) dracut-*.rpm dracut-*.tar.bz2
+	$(RM) dracut-install
 	$(RM) $(manpages) dracut.html
 	$(MAKE) -C test clean
-	$(MAKE) -C install clean
 
 archive: dracut-$(VERSION)-$(GITVERSION).tar.bz2
 
