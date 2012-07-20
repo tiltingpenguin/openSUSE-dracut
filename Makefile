@@ -1,4 +1,4 @@
-VERSION=020
+VERSION=021
 GITVERSION=$(shell [ -d .git ] && git rev-list  --abbrev-commit  -n 1 HEAD  |cut -b 1-8)
 
 prefix ?= /usr
@@ -119,7 +119,7 @@ dracut-$(VERSION).tar.bz2: doc
 rpm: dracut-$(VERSION).tar.bz2
 	rpmbuild=$$(mktemp -d -t rpmbuild-dracut.XXXXXX); src=$$(pwd); \
 	cp dracut-$(VERSION).tar.bz2 "$$rpmbuild"; \
-	LANG=C $$src/git2spec.pl $(VERSION) "$$rpmbuild" < dracut.spec > $$rpmbuild/dracut.spec; \
+	LC_MESSAGES=C $$src/git2spec.pl $(VERSION) "$$rpmbuild" < dracut.spec > $$rpmbuild/dracut.spec; \
 	(cd "$$rpmbuild"; rpmbuild --define "_topdir $$PWD" --define "_sourcedir $$PWD" \
 	        --define "_specdir $$PWD" --define "_srcrpmdir $$PWD" \
 		--define "_rpmdir $$PWD" -ba dracut.spec; ) && \
