@@ -89,8 +89,9 @@ Creates initial ramdisk images for preloading modules
                         firmwares, separated by :
   --kernel-only         Only install kernel drivers and firmware files
   --no-kernel           Do not install kernel drivers and firmware files
-  --strip               Strip binaries in the initramfs
-  --nostrip             Do not strip binaries in the initramfs (default)
+  --kernel-cmdline [PARAMETERS] Specify default kernel command line parameters
+  --strip               Strip binaries in the initramfs (default)
+  --nostrip             Do not strip binaries in the initramfs
   --hardlink            Hardlink files in the initramfs (default)
   --nohardlink          Do not hardlink files in the initramfs
   --prefix [DIR]        Prefix initramfs files with [DIR]
@@ -101,6 +102,7 @@ Creates initial ramdisk images for preloading modules
   --nolvmconf           Do not include local /etc/lvm/lvm.conf
   --fscks [LIST]        Add a space-separated list of fsck helpers.
   --nofscks             Inhibit installation of any fsck helpers.
+  --ro-mnt              Mount / and /usr read-only by default.
   -h, --help            This message
   --debug               Output debug information of the build process
   --profile             Output profile information of the build process
@@ -126,12 +128,13 @@ Creates initial ramdisk images for preloading modules
                          Useful when running dracut from a git checkout.
   -H, --hostonly        Host-Only mode: Install only what is needed for
                          booting the local host instead of a generic host.
-  --no-hostonly         Disables Host-Only mode
+  -N, --no-hostonly     Disables Host-Only mode
   --fstab               Use /etc/fstab to determine the root device.
   --add-fstab [FILE]    Add file to the initramfs fstab
   --mount "[DEV] [MP] [FSTYPE] [FSOPTS]"
                         Mount device [DEV] on mountpoint [MP] with filesystem
                         [FSTYPE] and options [FSOPTS] in the initramfs
+  --device "[DEV]"      Bring up [DEV] in initramfs
   -i, --include [SOURCE] [TARGET]
                         Include the files in the SOURCE directory into the
                          Target directory in the final initramfs.
@@ -244,7 +247,7 @@ set -- "${@/--include/++include}"
 set -- "${@/%-i/++include}"
 
 TEMP=$(unset POSIXLY_CORRECT; getopt \
-    -o "a:m:o:d:I:k:c:L:fvqlHhM" \
+    -o "a:m:o:d:I:k:c:L:fvqlHhMN" \
     --long kver: \
     --long add: \
     --long force-add: \
@@ -260,7 +263,9 @@ TEMP=$(unset POSIXLY_CORRECT; getopt \
     --long fscks: \
     --long add-fstab: \
     --long mount: \
+    --long device: \
     --long nofscks: \
+    --long ro-mnt \
     --long kmoddir: \
     --long conf: \
     --long confdir: \
@@ -271,6 +276,7 @@ TEMP=$(unset POSIXLY_CORRECT; getopt \
     --long force \
     --long kernel-only \
     --long no-kernel \
+    --long kernel-cmdline: \
     --long strip \
     --long nostrip \
     --long hardlink \
@@ -325,7 +331,10 @@ while :; do
         --fscks)       push fscks_l              "$2"; shift;;
         --add-fstab)   push add_fstab_l          "$2"; shift;;
         --mount)       push fstab_lines          "$2"; shift;;
+        --device)      push host_devs            "$2"; shift;;
+        --kernel-cmdline) push kernel_cmdline_l  "$2"; shift;;
         --nofscks)     nofscks_l="yes";;
+        --ro-mnt)      ro_mnt_l="yes";;
         -k|--kmoddir)  drivers_dir_l="$2"; shift;;
         -c|--conf)     conffile="$2"; shift;;
         --confdir)     confdir="$2"; shift;;
@@ -356,7 +365,7 @@ while :; do
                            && dracutbasedir="$(readlink -f ${0%/*})"
                        ;;
         -H|--hostonly) hostonly_l="yes" ;;
-        --no-hostonly) hostonly_l="no" ;;
+        -N|--no-hostonly) hostonly_l="no" ;;
         --fstab)       use_fstab_l="yes" ;;
         -h|--help)     long_usage; exit 1 ;;
         -i|--include)  push include_src "$2"
@@ -542,7 +551,7 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 
 [[ $drivers_dir_l ]] && drivers_dir=$drivers_dir_l
 [[ $do_strip_l ]] && do_strip=$do_strip_l
-[[ $do_strip ]] || do_strip=no
+[[ $do_strip ]] || do_strip=yes
 [[ $do_hardlink_l ]] && do_hardlink=$do_hardlink_l
 [[ $do_hardlink ]] || do_hardlink=yes
 [[ $prefix_l ]] && prefix=$prefix_l
@@ -558,6 +567,7 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 [[ $compress_l ]] && compress=$compress_l
 [[ $show_modules_l ]] && show_modules=$show_modules_l
 [[ $nofscks_l ]] && nofscks="yes"
+[[ $ro_mnt_l ]] && ro_mnt="yes"
 # eliminate IFS hackery when messing with fw_dir
 fw_dir=${fw_dir//:/ }
 
@@ -596,11 +606,18 @@ else
     exit 1
 fi
 
+inst /bin/sh
+if ! $DRACUT_INSTALL ${initdir+-D "$initdir"} -R "$initdir/bin/sh" &>/dev/null; then
+    unset DRACUT_RESOLVE_LAZY
+    export DRACUT_RESOLVE_DEPS=1
+fi
+rm -fr ${initdir}/*
+
 if [[ -f $dracutbasedir/dracut-version.sh ]]; then
     . $dracutbasedir/dracut-version.sh
 fi
 
-# Verify bash version, curret minimum is 3.1
+# Verify bash version, current minimum is 3.1
 if (( ${BASH_VERSINFO[0]} < 3 ||
     ( ${BASH_VERSINFO[0]} == 3 && ${BASH_VERSINFO[1]} < 1 ) )); then
     dfatal 'You need at least Bash 3.1 to use dracut, sorry.'
@@ -631,6 +648,12 @@ if (( ${#omit_drivers_l[@]} )); then
     done
 fi
 omit_drivers=${omit_drivers/-/_}
+
+if (( ${#kernel_cmdline_l[@]} )); then
+    while pop kernel_cmdline_l val; do
+        kernel_cmdline+=" $val "
+    done
+fi
 
 omit_drivers_corrected=""
 for d in $omit_drivers; do
@@ -776,14 +799,14 @@ if ! [[ -d "$systemdutildir" ]]; then
 fi
 [[ -d "$systemdsystemunitdir" ]] || systemdsystemunitdir=${systemdutildir}/system
 
-export initdir dracutbasedir dracutmodules drivers \
+export initdir dracutbasedir dracutmodules \
     fw_dir drivers_dir debug no_kernel kernel_only \
-    add_drivers omit_drivers mdadmconf lvmconf filesystems \
-    use_fstab fstab_lines libdirs fscks nofscks \
+    omit_drivers mdadmconf lvmconf \
+    use_fstab fstab_lines libdirs fscks nofscks ro_mnt \
     stdloglvl sysloglvl fileloglvl kmsgloglvl logfile \
     debug host_fs_types host_devs sshkey add_fstab \
     DRACUT_VERSION udevdir systemdutildir systemdsystemunitdir \
-    prefix
+    prefix filesystems drivers
 
 # Create some directory structure first
 [[ $prefix ]] && mkdir -m 0755 -p "${initdir}${prefix}"
@@ -799,7 +822,7 @@ if [[ $prefix ]]; then
 fi
 
 if [[ $kernel_only != yes ]]; then
-    for d in usr/bin usr/sbin bin etc lib sbin tmp usr var var/log var/run var/lock $libdirs; do
+    for d in usr/bin usr/sbin bin etc lib sbin tmp usr var var/log $libdirs; do
         [[ -e "${initdir}${prefix}/$d" ]] && continue
         if [ -L "/$d" ]; then
             inst_symlink "/$d" "${prefix}/$d"
@@ -816,8 +839,8 @@ if [[ $kernel_only != yes ]]; then
         fi
     done
 
-    ln -sfn /run "$initdir/var/run"
-    ln -sfn /run/lock "$initdir/var/lock"
+    ln -sfn ../run "$initdir/var/run"
+    ln -sfn ../run/lock "$initdir/var/lock"
 else
     for d in lib "$libdir"; do
         [[ -e "${initdir}${prefix}/$d" ]] && continue
@@ -894,6 +917,18 @@ dinfo "*** Including modules done ***"
 
 ## final stuff that has to happen
 if [[ $no_kernel != yes ]]; then
+
+    if [[ $drivers ]]; then
+        hostonly='' instmods $drivers
+    fi
+
+    if [[ $add_drivers ]]; then
+        hostonly='' instmods -c $add_drivers
+    fi
+    if [[ $filesystems ]]; then
+        hostonly='' instmods -c $filesystems
+    fi
+
     dinfo "*** Installing kernel module dependencies and firmware ***"
     dracut_kernel_post
     dinfo "*** Installing kernel module dependencies and firmware done ***"
@@ -901,6 +936,8 @@ fi
 
 if [[ $kernel_only != yes ]]; then
     (( ${#install_items[@]} > 0 )) && dracut_install  ${install_items[@]}
+
+    [[ $kernel_cmdline ]] && echo "$kernel_cmdline" >> "${initdir}/etc/cmdline.d/01-default.conf"
 
     while pop fstab_lines line; do
         echo "$line 0 0" >> "${initdir}/etc/fstab"
@@ -965,50 +1002,72 @@ if (($maxloglvl >= 5)); then
     du -c "$initdir" | sort -n | ddebug
 fi
 
+PRELINK_BIN=$(command -v prelink)
+if [[ $UID = 0 ]] && [[ $PRELINK_BIN ]]; then
+    if [[ $DRACUT_FIPS_MODE ]]; then
+        dinfo "*** Pre-unlinking files ***"
+        dracut_install -o prelink /etc/prelink.conf /etc/prelink.conf.d/*.conf /etc/prelink.cache
+        chroot "$initdir" $PRELINK_BIN -u -a
+        rm -f "$initdir"/$PRELINK_BIN
+        rm -fr "$initdir"/etc/prelink.*
+        dinfo "*** Pre-unlinking files done ***"
+    else
+        dinfo "*** Pre-linking files ***"
+        dracut_install -o prelink /etc/prelink.conf /etc/prelink.conf.d/*.conf
+        chroot "$initdir" $PRELINK_BIN -a
+        rm -f "$initdir"/$PRELINK_BIN
+        rm -fr "$initdir"/etc/prelink.*
+        dinfo "*** Pre-linking files done ***"
+    fi
+fi
+
+if [[ $do_hardlink = yes ]] && command -v hardlink >/dev/null; then
+    dinfo "*** Hardlinking files ***"
+    hardlink "$initdir" 2>&1
+    dinfo "*** Hardlinking files done ***"
+fi
+
 # strip binaries
 if [[ $do_strip = yes ]] ; then
     for p in strip xargs find; do
         if ! type -P $p >/dev/null; then
-            derror "Could not find '$p'. You should run $0 with '--nostrip'."
+            dwarn "Could not find '$p'. Not stripping the initramfs."
             do_strip=no
         fi
     done
 fi
 
-if strstr "$modules_loaded" " fips " && command -v prelink >/dev/null; then
-    dinfo "*** pre-unlinking files ***"
-    for dir in "$initdir/bin" \
-       "$initdir/sbin" \
-       "$initdir/usr/bin" \
-       "$initdir/usr/sbin"; do
-        [[ -L "$dir" ]] && continue
-        for i in "$dir"/*; do
-            [[ -L $i ]] && continue
-            [[ -x $i ]] && prelink -u $i &>/dev/null
-        done
-    done
-    dinfo "*** pre-unlinking files done ***"
-fi
-
 if [[ $do_strip = yes ]] ; then
     dinfo "*** Stripping files ***"
-    find "$initdir" -type f \
-        '(' -perm -0100 -or -perm -0010 -or -perm -0001 \
-        -or -path '*/lib/modules/*.ko' ')' -print0 \
-        | xargs -r -0 strip -g 2>/dev/null
+    if [[ $DRACUT_FIPS_MODE ]]; then
+        find "$initdir" -type f \
+            -executable -not -path '*/lib/modules/*.ko' -print0 \
+            | while read -r -d $'\0' f; do
+            if ! [[ -e "${f%/*}/.${f##*/}.hmac" ]] \
+                && ! [[ -e "/lib/fipscheck/${f##*/}.hmac" ]] \
+                && ! [[ -e "/lib64/fipscheck/${f##*/}.hmac" ]]; then
+                echo -n "$f"; echo -n -e "\000"
+            fi
+        done | xargs -r -0 strip -g 2>/dev/null
+    else
+        find "$initdir" -type f \
+            -executable -not -path '*/lib/modules/*.ko' -print0 \
+            | xargs -r -0 strip -g 2>/dev/null
+    fi
+
+    # strip kernel modules, but do not touch signed modules
+    find "$initdir" -type f -path '*/lib/modules/*.ko' -print0 \
+        | while read -r -d $'\0' f; do
+        SIG=$(tail -c 28 "$f")
+        [[ $SIG == '~Module signature appended~' ]] || { echo -n "$f"; echo -n -e "\000"; }
+    done | xargs -r -0 strip -g
+
     dinfo "*** Stripping files done ***"
 fi
 
-if [[ $do_hardlink = yes ]] ; then
-    type hardlink &>/dev/null && {
-        dinfo "*** hardlinking files ***"
-        hardlink "$initdir" 2>&1
-        dinfo "*** hardlinking files done ***"
-    }
-fi
-
+rm -f "$outfile"
 dinfo "*** Creating image file ***"
-if ! ( cd "$initdir"; find . |cpio -R 0:0 -H newc -o --quiet| \
+if ! ( umask 077; cd "$initdir"; find . |cpio -R 0:0 -H newc -o --quiet| \
     $compress > "$outfile"; ); then
     dfatal "dracut: creation of $outfile failed"
     exit 1

@@ -52,14 +52,13 @@ client_test() {
 	echo "Unable to make client sda image" 1>&2
 	return 1
     fi
-
     $testdir/run-qemu \
         -hda $TESTDIR/flag.img \
         -m 256M -nographic \
 	-net nic,macaddr=$mac,model=e1000 \
 	-net socket,connect=127.0.0.1:12340 \
 	-kernel /boot/vmlinuz-$KVERSION \
-	-append "$cmdline $DEBUGFAIL rd.debug rd.info rd.retry=10 ro quiet console=ttyS0,115200n81 selinux=0" \
+	-append "$cmdline $DEBUGFAIL rd.debug rd.auto rd.info rd.retry=10 ro quiet console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.testing
 
     if [[ $? -ne 0 ]] || ! grep -m 1 -q nbd-OK $TESTDIR/flag.img; then
@@ -234,6 +233,7 @@ make_encrypted_root() {
 	-append "root=/dev/dracut/root rw quiet console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.makeroot  || return 1
     grep -m 1 -q dracut-root-block-created $TESTDIR/flag.img || return 1
+    grep -a -m 1 ID_FS_UUID $TESTDIR/flag.img > $TESTDIR/luks.uuid
 }
 
 make_client_root() {
@@ -292,6 +292,7 @@ make_server_root() {
 	    [ -f ${_terminfodir}/l/linux ] && break
 	done
 	dracut_install -o ${_terminfodir}/l/linux
+	instmods af_packet
 	type -P dhcpd >/dev/null && dracut_install dhcpd
 	[ -x /usr/sbin/dhcpd3 ] && inst /usr/sbin/dhcpd3 /usr/sbin/dhcpd
 	inst ./server-init.sh /sbin/init
@@ -328,18 +329,22 @@ test_setup() {
 	dracut_install poweroff shutdown
 	inst_hook emergency 000 ./hard-off.sh
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
-	inst ./cryptroot-ask.sh /sbin/cryptroot-ask
+        inst ./cryptroot-ask.sh /sbin/cryptroot-ask
+        . $TESTDIR/luks.uuid
+        mkdir -p $initdir/etc
+	echo "luks-$ID_FS_UUID /dev/nbd0 /etc/key" > $initdir/etc/crypttab
+        echo -n test > $initdir/etc/key
     )
 
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
 	-m "dash udev-rules rootfs-block base debug kernel-modules" \
-	-d "piix ide-gd_mod ata_piix ext2 ext3 sd_mod e1000" \
+	-d "af_packet piix ide-gd_mod ata_piix ext2 ext3 sd_mod e1000" \
 	-f $TESTDIR/initramfs.server $KVERSION || return 1
 
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
 	-o "plymouth" \
 	-a "debug watchdog" \
-	-d "piix ide-gd_mod ata_piix ext2 ext3 sd_mod e1000 ib700wdt" \
+	-d "af_packet piix ide-gd_mod ata_piix ext2 ext3 sd_mod e1000 i6300esbwdt" \
 	-f $TESTDIR/initramfs.testing $KVERSION || return 1
 }
 

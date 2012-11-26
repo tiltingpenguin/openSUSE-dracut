@@ -8,11 +8,11 @@ install() {
     # Fixme: would be nice if we didn't have to know which rules to grab....
     # ultimately, /lib/initramfs/rules.d or somesuch which includes links/copies
     # of the rules we want so that we just copy those in would be best
-    dracut_install udevadm cat uname basename blkid \
-        /etc/udev/udev.conf /etc/group
+    dracut_install udevadm cat uname blkid \
+        /etc/udev/udev.conf
 
     [ -d ${initdir}/lib/systemd ] || mkdir -p ${initdir}/lib/systemd
-    for _i in ${systemdutildir}/systemd-udevd ${udevdir}/udevd /sbin/udevd; do
+    for _i in ${systemdutildir}/systemd-udevd ${udevdir}/udevd /lib/systemd/systemd-udevd /sbin/udevd; do
         [ -x "$_i" ] || continue
         inst "$_i"
 
@@ -21,6 +21,10 @@ install() {
         fi
         break
     done
+    if ! [[ -e ${initdir}/lib/systemd/systemd-udevd ]]; then
+        derror "Cannot find [systemd-]udevd binary!"
+        exit 1
+    fi
 
     inst_rules 50-udev-default.rules 60-persistent-storage.rules \
         61-persistent-storage-edd.rules 80-drivers.rules 95-udev-late.rules \
@@ -32,6 +36,21 @@ install() {
 
     inst_dir /run/udev
     inst_dir /run/udev/rules.d
+
+    {
+        for i in cdrom tape dialout floppy; do
+            if ! egrep -q "^$i:" "$initdir/etc/group" 2>/dev/null; then
+                if ! egrep "^$i:" /etc/group 2>/dev/null; then
+                        case $i in 
+                            cdrom)   echo "$i:x:11:";;
+                            dialout) echo "$i:x:18:";;
+                            floppy)  echo "$i:x:19:";;
+                            tape)    echo "$i:x:33:";;
+                        esac
+                fi
+            fi
+        done
+    } >> "$initdir/etc/group"
 
     dracut_install -o \
         ${udevdir}/ata_id \

@@ -14,14 +14,19 @@ run_server() {
     # Start server first
     echo "MULTINIC TEST SETUP: Starting DHCP/NFS server"
 
-    $testdir/run-qemu -hda $TESTDIR/server.ext3 -m 512M -nographic \
-        -net nic,macaddr=52:54:00:12:34:56,model=e1000 \
-        -net socket,listen=127.0.0.1:12350 \
+    fsck -a $TESTDIR/server.ext3 || return 1
+    $testdir/run-qemu \
+        -hda $TESTDIR/server.ext3 \
+        -m 512M \
+        -nographic \
+        -netdev socket,mcast=230.0.0.1:12320,id=net0 \
+        -net nic,macaddr=52:54:01:12:34:56,model=e1000,netdev=net0 \
         -serial $SERIAL \
-        -watchdog ib700 -watchdog-action poweroff \
+        -watchdog i6300esb -watchdog-action poweroff \
         -kernel /boot/vmlinuz-$KVERSION \
-        -append "selinux=0 root=/dev/sda rootfstype=ext3 rd.debug rd.info rw loglevel=77 console=ttyS0,115200n81" \
-        -initrd $TESTDIR/initramfs.server -pidfile $TESTDIR/server.pid -daemonize || return 1
+        -append "rd.debug loglevel=77 root=/dev/sda rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0" \
+        -initrd $TESTDIR/initramfs.server \
+        -pidfile $TESTDIR/server.pid -daemonize || return 1
     sudo chmod 644 $TESTDIR/server.pid || return 1
 
     # Cleanup the terminal if we have one
@@ -48,12 +53,13 @@ client_test() {
     fi
 
     $testdir/run-qemu -hda $TESTDIR/client.img -m 512M -nographic \
-        -net nic,macaddr=52:54:00:12:34:$mac1,model=e1000 \
-        -net nic,macaddr=52:54:00:12:34:$mac2,model=e1000 \
-        -net nic,macaddr=52:54:00:12:34:$mac3,model=e1000 \
-        -net socket,connect=127.0.0.1:12350 \
-        -hdc /dev/null \
-        -watchdog ib700 -watchdog-action poweroff \
+        -netdev socket,mcast=230.0.0.1:12320,id=net0 \
+        -net nic,netdev=net0,macaddr=52:54:00:12:34:$mac1,model=e1000 \
+        -netdev socket,mcast=230.0.0.1:12320,id=net1 \
+        -net nic,netdev=net1,macaddr=52:54:00:12:34:$mac2,model=e1000 \
+        -netdev socket,mcast=230.0.0.1:12320,id=net2 \
+        -net nic,netdev=net2,macaddr=52:54:00:12:34:$mac3,model=e1000 \
+        -watchdog i6300esb -watchdog-action poweroff \
         -kernel /boot/vmlinuz-$KVERSION \
         -append "$cmdline $DEBUGFAIL rd.retry=5 rd.debug rd.info  ro rd.systemd.log_level=debug console=ttyS0,115200n81 selinux=0 rd.copystate rd.chroot init=/sbin/init" \
         -initrd $TESTDIR/initramfs.testing
@@ -91,10 +97,10 @@ test_client() {
     # ...:02 receives a dhcp root-path
 
     # PXE Style BOOTIF=
-#    client_test "MULTINIC root=nfs BOOTIF=" \
-#        00 01 02 \
-#        "root=nfs:192.168.50.1:/nfs/client BOOTIF=52-54-00-12-34-00" \
-#        "eth0" || return 1
+    client_test "MULTINIC root=nfs BOOTIF=" \
+        00 01 02 \
+        "root=nfs:192.168.50.1:/nfs/client BOOTIF=52-54-00-12-34-00" \
+        "eth0" || return 1
 
     # PXE Style BOOTIF= with dhcp root-path
     client_test "MULTINIC root=dhcp BOOTIF=" \
@@ -166,7 +172,7 @@ test_setup() {
         [ -f /etc/netconfig ] && dracut_install /etc/netconfig
         type -P dhcpd >/dev/null && dracut_install dhcpd
         [ -x /usr/sbin/dhcpd3 ] && inst /usr/sbin/dhcpd3 /usr/sbin/dhcpd
-        instmods nfsd sunrpc ipv6 lockd
+        instmods nfsd sunrpc ipv6 lockd af_packet
         inst ./server-init.sh /sbin/init
         inst ./hosts /etc/hosts
         inst ./exports /etc/exports
@@ -184,7 +190,7 @@ test_setup() {
         _nsslibs=${_nsslibs#|}
         _nsslibs=${_nsslibs%|}
 
-        inst_libdir_file -n "$_nsslibs" 'libnss*.so*'
+        inst_libdir_file -n "$_nsslibs" 'libnss_*.so*'
 
         inst /etc/nsswitch.conf /etc/nsswitch.conf
         inst /etc/passwd /etc/passwd
@@ -225,7 +231,7 @@ test_setup() {
         _nsslibs=${_nsslibs#|}
         _nsslibs=${_nsslibs%|}
 
-        inst_libdir_file -n "$_nsslibs" 'libnss*.so*'
+        inst_libdir_file -n "$_nsslibs" 'libnss_*.so*'
 
         cp -a /etc/ld.so.conf* $initdir/etc
         sudo ldconfig -r "$initdir"
@@ -246,14 +252,14 @@ test_setup() {
     # Make server's dracut image
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
         -m "dash udev-rules base rootfs-block debug kernel-modules watchdog" \
-        -d "piix ide-gd_mod ata_piix ext3 sd_mod e1000 ib700wdt" \
+        -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod nfsv2 nfsv3 nfsv4 nfs_acl nfs_layout_nfsv41_files nfsd e1000 i6300esbwdt" \
         -f $TESTDIR/initramfs.server $KVERSION || return 1
 
     # Make client's dracut image
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
         -o "plymouth" \
         -a "debug" \
-        -d "piix sd_mod sr_mod ata_piix ide-gd_mod e1000 nfs sunrpc ib700wdt" \
+        -d "af_packet piix sd_mod sr_mod ata_piix ide-gd_mod e1000 nfsv2 nfsv3 nfsv4 nfs_acl nfs_layout_nfsv41_files sunrpc i6300esbwdt" \
         -f $TESTDIR/initramfs.testing $KVERSION || return 1
 }
 

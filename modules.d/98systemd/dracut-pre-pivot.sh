@@ -2,6 +2,7 @@
 # -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
+export DRACUT_SYSTEMD=1
 if [ -f /dracut-state.sh ]; then
     . /dracut-state.sh 2>/dev/null
 fi
@@ -37,6 +38,6 @@ echo "NEWROOT=\"$NEWROOT\"" >> /run/initramfs/switch-root.conf
 # remove helper symlink
 [ -h /dev/root ] && rm -f /dev/root
 
-getarg rd.break rdbreak && emergency_shell -n switch_root "Break before switch_root"
+getarg rd.break -d rdbreak && emergency_shell -n switch_root "Break before switch_root"
 
 exit 0

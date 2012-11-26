@@ -25,7 +25,7 @@ depends() {
 }
 
 installkernel() {
-    instmods nfs sunrpc ipv6
+    instmods nfs sunrpc ipv6 nfsv2 nfsv3 nfsv4 nfs_acl nfs_layout_nfsv41_files
 }
 
 install() {
@@ -38,6 +38,7 @@ install() {
     if [ -f /lib/modprobe.d/nfs.conf ]; then
         dracut_install /lib/modprobe.d/nfs.conf
     else
+        [ -d $initdir/etc/modprobe.d/ ] || mkdir $initdir/etc/modprobe.d
         echo "alias nfs4 nfs" > $initdir/etc/modprobe.d/nfs.conf
     fi
 
@@ -48,7 +49,7 @@ install() {
     _nsslibs=${_nsslibs#|}
     _nsslibs=${_nsslibs%|}
 
-    inst_libdir_file -n "$_nsslibs" 'libnss*.so*'
+    inst_libdir_file -n "$_nsslibs" 'libnss_*.so*'
 
     inst_hook cmdline 90 "$moddir/parse-nfsroot.sh"
     inst_hook pre-udev 99 "$moddir/nfs-start-rpc.sh"
@@ -71,6 +72,8 @@ install() {
     # rpc user needs to be able to write to this directory to save the warmstart
     # file
     chmod 770 "$initdir/var/lib/rpcbind"
-    chown rpc.rpc "$initdir/var/lib/rpcbind"
+    egrep -q '^rpc:' /etc/passwd \
+        && egrep -q '^rpc:' /etc/group \
+        && chown rpc.rpc "$initdir/var/lib/rpcbind"
 }
 

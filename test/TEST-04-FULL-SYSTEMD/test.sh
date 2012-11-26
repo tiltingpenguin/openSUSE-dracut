@@ -2,7 +2,7 @@
 
 TEST_DESCRIPTION="Full systemd serialization/deserialization test with /usr mount"
 
-KVERSION=${KVERSION-$(uname -r)}
+export KVERSION=${KVERSION-$(uname -r)}
 
 # Uncomment this to debug failures
 #DEBUGFAIL="rd.shell rd.break"
@@ -52,7 +52,7 @@ test_setup() {
     dd if=/dev/null of=$TESTDIR/root.btrfs bs=1M seek=320
     dd if=/dev/null of=$TESTDIR/usr.btrfs bs=1M seek=320
 
-    kernel=$KVERSION
+    export kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay
     (
 	export initdir=$TESTDIR/overlay/source
@@ -131,7 +131,6 @@ After=basic.target
 
 [Service]
 ExecStart=/sbin/test-init
-ExecStopPost=/usr/bin/systemctl poweroff
 Type=oneshot
 StandardInput=tty
 StandardOutput=tty
@@ -141,11 +140,12 @@ EOF
 
         # make the testsuite the default target
         ln -fs testsuite.target $initdir/etc/systemd/system/default.target
-        mkdir -p $initdir/etc/rc.d
-        cat >$initdir/etc/rc.d/rc.local <<EOF
-#!/bin/bash
-exit 0
-EOF
+
+#         mkdir -p $initdir/etc/rc.d
+#         cat >$initdir/etc/rc.d/rc.local <<EOF
+# #!/bin/bash
+# exit 0
+# EOF
 
         # install basic tools needed
         dracut_install sh bash setsid loadkeys setfont \
@@ -206,12 +206,12 @@ EOF
         find "$initdir" -perm +111 -type f | xargs strip --strip-unneeded | ddebug
 
         # copy depmod files
-        inst /lib/modules/$KERNEL_VER/modules.order
-        inst /lib/modules/$KERNEL_VER/modules.builtin
+        inst /lib/modules/$kernel/modules.order
+        inst /lib/modules/$kernel/modules.builtin
         # generate module dependencies
-        if [[ -d $initdir/lib/modules/$KERNEL_VER ]] && \
-            ! depmod -a -b "$initdir" $KERNEL_VER; then
-                dfatal "\"depmod -a $KERNEL_VER\" failed."
+        if [[ -d $initdir/lib/modules/$kernel ]] && \
+            ! depmod -a -b "$initdir" $kernel; then
+                dfatal "\"depmod -a $kernel\" failed."
                 exit 1
         fi
 
@@ -263,7 +263,7 @@ EOF
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
 	-a "debug watchdog systemd" \
         -o "network" \
-	-d "piix ide-gd_mod ata_piix btrfs sd_mod ib700wdt" \
+	-d "piix ide-gd_mod ata_piix btrfs sd_mod i6300esb ib700wdt" \
 	-f $TESTDIR/initramfs.testing $KVERSION || return 1
 
     rm -rf $TESTDIR/overlay

@@ -5,32 +5,30 @@
 type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
 type det_fs >/dev/null 2>&1 || . /lib/fs-lib.sh
 
-filter_rootopts() {
-    rootopts=$1
-    # strip ro and rw options
-    local OLDIFS="$IFS"
-    IFS=,
-    set -- $rootopts
-    IFS="$OLDIFS"
-    local v
-    while [ $# -gt 0 ]; do
-        case $1 in
-            defaults);;
-            *)
-                v="$v,${1}";;
-        esac
-        shift
-    done
-    rootopts=${v#,}
-    echo $rootopts
-}
-
 mount_root() {
     local _ret
+    local _rflags_ro
     # sanity - determine/fix fstype
     rootfs=$(det_fs "${root#block:}" "$fstype")
-    while ! mount -t ${rootfs} -o "$rflags",ro "${root#block:}" "$NEWROOT"; do
-        warn "Failed to mount -t ${rootfs} -o $rflags,ro ${root#block:} $NEWROOT"
+
+    journaldev=$(getarg "root.journaldev=")
+    if [ -n "$journaldev" ]; then
+        case "$rootfs" in
+            xfs)
+                rflags="${rflags:+${rflags},}logdev=$journaldev"
+                ;;
+            reiserfs)
+                fsckoptions="-j $journaldev $fsckoptions"
+                rflags="${rflags:+${rflags},}jdev=$journaldev"
+                ;;
+            *);;
+        esac
+    fi
+
+    _rflags_ro="$rflags,ro"
+
+    while ! mount -t ${rootfs} -o "$_rflags_ro" "${root#block:}" "$NEWROOT"; do
+        warn "Failed to mount -t ${rootfs} -o $_rflags_ro ${root#block:} $NEWROOT"
         fsck_ask_err
     done
 
@@ -52,11 +50,11 @@ mount_root() {
         fastboot=yes
     fi
 
-    if [ -f "$NEWROOT"/fsckoptions ]; then
-        fsckoptions=$(cat "$NEWROOT"/fsckoptions)
-    fi
-
     if ! getargbool 0 rd.skipfsck; then
+        if [ -f "$NEWROOT"/fsckoptions ]; then
+            fsckoptions=$(cat "$NEWROOT"/fsckoptions)
+        fi
+
         if [ -f "$NEWROOT"/forcefsck ] || getargbool 0 forcefsck ; then
             fsckoptions="-f $fsckoptions"
         elif [ -f "$NEWROOT"/.autofsck ]; then
@@ -76,7 +74,7 @@ mount_root() {
     fi
 
     rootopts=
-    if getargbool 1 rd.fstab -n rd_NO_FSTAB \
+    if getargbool 1 rd.fstab -d -n rd_NO_FSTAB \
         && ! getarg rootflags \
         && [ -f "$NEWROOT/etc/fstab" ] \
         && ! [ -L "$NEWROOT/etc/fstab" ]; then
@@ -96,13 +94,13 @@ mount_root() {
                 break
             fi
         done < "$NEWROOT/etc/fstab"
-
-        rootopts=$(filter_rootopts $rootopts)
     fi
 
     # we want rootflags (rflags) to take precedence so prepend rootopts to
-    # them; rflags is guaranteed to not be empty
-    rflags="${rootopts:+${rootopts},}${rflags}"
+    # them
+    rflags="${rootopts},${rflags}"
+    rflags="${rflags#,}"
+    rflags="${rflags%,}"
 
     # backslashes are treated as escape character in fstab
     # esc_root=$(echo ${root#block:} | sed 's,\\,\\\\,g')
@@ -125,13 +123,15 @@ mount_root() {
     if ! ismounted "$NEWROOT"; then
         info "Mounting ${root#block:} with -o ${rflags}"
         mount "$NEWROOT" 2>&1 | vinfo
-    else
+    elif ! are_lists_eq , "$rflags" "$_rflags_ro" defaults; then
         info "Remounting ${root#block:} with -o ${rflags}"
         mount -o remount "$NEWROOT" 2>&1 | vinfo
     fi
 
-    [ -f "$NEWROOT"/forcefsck ] && rm -f "$NEWROOT"/forcefsck 2>/dev/null
-    [ -f "$NEWROOT"/.autofsck ] && rm -f "$NEWROOT"/.autofsck 2>/dev/null
+    if ! getargbool 0 rd.skipfsck; then
+        [ -f "$NEWROOT"/forcefsck ] && rm -f "$NEWROOT"/forcefsck 2>/dev/null
+        [ -f "$NEWROOT"/.autofsck ] && rm -f "$NEWROOT"/.autofsck 2>/dev/null
+    fi
 }
 
 if [ -n "$root" -a -z "${root%%block:*}" ]; then

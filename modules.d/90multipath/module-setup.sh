@@ -8,15 +8,14 @@ check() {
     type -P multipath >/dev/null || return 1
 
     is_mpath() {
-        local _dev
-        _dev=$(get_maj_min $1)
+        local _dev=$1
         [ -e /sys/dev/block/$_dev/dm/uuid ] || return 1
-        [[ $(cat /sys/dev/block/$_dev/dm/uuid) =~ ^mpath- ]] && return 0
+        [[ $(cat /sys/dev/block/$_dev/dm/uuid) =~ mpath- ]] && return 0
         return 1
     }
 
     [[ $hostonly ]] || [[ $mount_needs ]] && {
-        for_each_host_dev_fs is_mpath || return 1
+        for_each_host_dev_and_slaves is_mpath || return 1
     }
 
     return 0
@@ -24,6 +23,7 @@ check() {
 
 depends() {
     echo rootfs-block
+    echo dm
     return 0
 }
 
@@ -70,21 +70,23 @@ installkernel() {
 install() {
     local _f
     dracut_install -o  \
-        /sbin/dmsetup \
-        /sbin/kpartx \
-        /sbin/mpath_wait \
-        /sbin/multipath  \
-        /sbin/multipathd \
-        /sbin/xdrgetuid \
-        /sbin/xdrgetprio \
+        dmsetup \
+        kpartx \
+        mpath_wait \
+        multipath  \
+        multipathd \
+        xdrgetuid \
+        xdrgetprio \
         /etc/xdrdevices.conf \
         /etc/multipath.conf \
         /etc/multipath/*
+
+    inst $(command -v partx) /sbin/partx
 
     inst_libdir_file "libmultipath*" "multipath/*"
 
     inst_hook pre-trigger 02 "$moddir/multipathd.sh"
     inst_hook cleanup   02 "$moddir/multipathd-stop.sh"
-    inst_rules 40-multipath.rules
+    inst_rules 40-multipath.rules 62-multipath.rules 65-multipath.rules 66-kpartx.rules
 }
 

@@ -45,7 +45,7 @@ run_client() {
         -net nic,macaddr=52:54:00:12:34:00,model=e1000 \
         -net socket,connect=127.0.0.1:12330 \
         -kernel /boot/vmlinuz-$KVERSION \
-        -append "$* rw quiet rd.retry=5 rd.debug rd.info  console=ttyS0,115200n81 selinux=0 $DEBUGFAIL" \
+        -append "$* rw quiet rd.auto rd.retry=5 rd.debug rd.info  console=ttyS0,115200n81 selinux=0 $DEBUGFAIL" \
         -initrd $TESTDIR/initramfs.testing
     if ! grep -m 1 -q iscsi-OK $TESTDIR/client.img; then
 	echo "CLIENT TEST END: $test_name [FAILED - BAD EXIT]"
@@ -162,7 +162,7 @@ test_setup() {
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
         -o "plymouth dmraid" \
         -a "debug" \
-        -d "piix ide-gd_mod ata_piix ext3 sd_mod" \
+        -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod" \
         -f $TESTDIR/initramfs.testing $KVERSION || return 1
 
     # Make server root
@@ -211,7 +211,7 @@ test_setup() {
     # Make server's dracut image
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
         -m "dash udev-rules base rootfs-block debug kernel-modules" \
-        -d "piix ide-gd_mod ata_piix ext3 sd_mod e1000" \
+        -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod e1000" \
         -f $TESTDIR/initramfs.server $KVERSION || return 1
 
 }

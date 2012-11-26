@@ -13,21 +13,21 @@ inst_key_val() {
     _value=$(getarg $@)
     [ -z "${_value}" ] && _value=$_default
     if [ -n "${_value}" ]; then
-        printf '%s="%s"\n' $1 ${_value} >> $_file
+        printf '%s="%s"\n' $2 ${_value} >> $_file
     fi
     unset _file
     unset _value
 }
 
-inst_key_val '' /etc/vconsole.conf KEYMAP      vconsole.keymap      KEYTABLE
-inst_key_val '' /etc/vconsole.conf FONT        vconsole.font        SYSFONT
-inst_key_val '' /etc/vconsole.conf FONT_MAP    vconsole.font.map    CONTRANS
-inst_key_val '' /etc/vconsole.conf FONT_UNIMAP vconsole.font.unimap UNIMAP
-inst_key_val 1  /etc/vconsole.conf UNICODE     vconsole.unicode vconsole.font.unicode
-inst_key_val '' /etc/vconsole.conf EXT_KEYMAP  vconsole.keymap.ext
+inst_key_val '' /etc/vconsole.conf vconsole.keymap      KEYMAP      -d KEYTABLE
+inst_key_val '' /etc/vconsole.conf vconsole.font        FONT        -d SYSFONT
+inst_key_val '' /etc/vconsole.conf vconsole.font.map    FONT_MAP    -d CONTRANS
+inst_key_val '' /etc/vconsole.conf vconsole.font.unimap FONT_UNIMAP -d UNIMAP
+inst_key_val 1  /etc/vconsole.conf vconsole.font.unicode UNICODE vconsole.unicode
+inst_key_val '' /etc/vconsole.conf vconsole.keymap.ext  EXT_KEYMAP
 
-inst_key_val '' /etc/locale.conf   LANG        locale.LANG
-inst_key_val '' /etc/locale.conf   LC_ALL      locale.LC_ALL
+inst_key_val '' /etc/locale.conf   locale.LANG   LANG
+inst_key_val '' /etc/locale.conf   locale.LC_ALL LC_ALL
 
 if [ -f /etc/locale.conf ]; then
     . /etc/locale.conf
@@ -35,10 +35,8 @@ if [ -f /etc/locale.conf ]; then
     export LC_ALL
 fi
 
-# FIXME: fix systemd-vconsole-setup
-#if [ -x /lib/systemd/systemd-vconsole-setup ]; then
-#    /lib/systemd/systemd-vconsole-setup
-#    rm -f /{etc,lib}/udev/rules.d/10-console.rules
-#    rm -f /lib/udev/console_init
-#    ln -s /lib/systemd/systemd-vconsole-setup /lib/udev/console_init
-#fi
+if [ -n "$DRACUT_SYSTEMD" ]; then
+    rm -f /etc/udev/rules.d/10-console.rules
+    rm -f /lib/udev/rules.d/10-console.rules
+    rm -f /lib/udev/console_init
+fi

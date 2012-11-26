@@ -24,7 +24,6 @@ installkernel() {
             echo "blacklist $_mod" >> "${initdir}/etc/modprobe.d/fips.conf"
         fi
     done
-    hostonly='' instmods scsi_wait_scan
 }
 
 install() {
@@ -33,11 +32,11 @@ install() {
     inst_hook pre-pivot 01 "$moddir/fips-noboot.sh"
     inst_script "$moddir/fips.sh" /sbin/fips.sh
 
-    dracut_install sha512hmac rmmod insmod mount uname umount
+    dracut_install sha512hmac rmmod insmod mount uname umount fipscheck
 
     inst_libdir_file libsoftokn3.so libsoftokn3.so \
         libsoftokn3.chk libfreebl3.so libfreebl3.chk \
-        'hmaccalc/sha512hmac.hmac'
+        libssl.so 'hmaccalc/sha512hmac.hmac'
 
     dracut_install -o prelink
 }

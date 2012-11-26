@@ -32,8 +32,6 @@ mount_boot()
                     udevadm settle --timeout=30
                 fi
                 [ -e $boot ] && break
-                modprobe scsi_wait_scan && rmmod scsi_wait_scan
-                [ -e $boot ] && break
                 sleep 0.5
                 i=$(($i+1))
                 [ $i -gt 40 ] && break
@@ -45,23 +43,23 @@ mount_boot()
         mkdir /boot
         info "Mounting $boot as /boot"
         mount -oro "$boot" /boot || return 1
+    elif [ -d "$NEWROOT/boot" ]; then
+        rm -fr /boot
+        ln -sf "$NEWROOT/boot" /boot
     fi
 }
 
 do_fips()
 {
     info "Checking integrity of kernel"
-    newroot=$NEWROOT
     KERNEL=$(uname -r)
 
-    [ -e "$newroot/boot/.vmlinuz-${KERNEL}.hmac" ] || unset newroot
-
-    if ! [ -e "$newroot/boot/.vmlinuz-${KERNEL}.hmac" ]; then
-        warn "$newroot/boot/.vmlinuz-${KERNEL}.hmac does not exist"
+    if ! [ -e "/boot/.vmlinuz-${KERNEL}.hmac" ]; then
+        warn "/boot/.vmlinuz-${KERNEL}.hmac does not exist"
         return 1
     fi
 
-    sha512hmac -c "$newroot/boot/.vmlinuz-${KERNEL}.hmac" || return 1
+    sha512hmac -c "/boot/.vmlinuz-${KERNEL}.hmac" || return 1
 
     FIPSMODULES=$(cat /etc/fipsmodules)
 

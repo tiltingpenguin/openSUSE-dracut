@@ -2,6 +2,7 @@
 # -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
+export DRACUT_SYSTEMD=1
 if [ -f /dracut-state.sh ]; then
     . /dracut-state.sh 2>/dev/null
 fi
@@ -9,10 +10,10 @@ type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
 
 source_conf /etc/conf.d
 
-getarg 'rd.break=initqueue' 'rdbreak=initqueue' && emergency_shell -n initqueue "Break before initqueue"
+getarg 'rd.break=initqueue' -d 'rdbreak=initqueue' && emergency_shell -n initqueue "Break before initqueue"
 
-RDRETRY=$(getarg rd.retry 'rd_retry=')
-RDRETRY=${RDRETRY:-20}
+RDRETRY=$(getarg rd.retry -d 'rd_retry=')
+RDRETRY=${RDRETRY:-30}
 RDRETRY=$(($RDRETRY*2))
 export RDRETRY
 
@@ -51,7 +52,7 @@ while :; do
     sleep 0.5
 
 
-    if [ $main_loop -gt $(($RDRETRY/2)) ]; then
+    if [ $main_loop -gt $((2*$RDRETRY/3)) ]; then
         for job in $hookdir/initqueue/timeout/*.sh; do
             [ -e "$job" ] || break
             job=$job . $job
@@ -71,11 +72,11 @@ unset RDRETRY
 
 # pre-mount happens before we try to mount the root filesystem,
 # and happens once.
-getarg 'rd.break=pre-mount' 'rdbreak=pre-mount' && emergency_shell -n pre-mount "Break pre-mount"
+getarg 'rd.break=pre-mount' -d 'rdbreak=pre-mount' && emergency_shell -n pre-mount "Break pre-mount"
 source_hook pre-mount
 
 
-getarg 'rd.break=mount' 'rdbreak=mount' && emergency_shell -n mount "Break mount"
+getarg 'rd.break=mount' -d 'rdbreak=mount' && emergency_shell -n mount "Break mount"
 # mount scripts actually try to mount the root filesystem, and may
 # be sourced any number of times. As soon as one suceeds, no more are sourced.
 i=0

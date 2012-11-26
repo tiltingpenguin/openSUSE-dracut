@@ -6,10 +6,20 @@
 #
 # Copyright 2011, Red Hat, Inc.
 # Harald Hoyer <harald@redhat.com>
+ACTION="$1"
 
 export TERM=linux
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 . /lib/dracut-lib.sh
+
+# if "kexec" was installed after creating the initramfs, we try to copy it from the real root
+# libz normally is pulled in via kmod/modprobe and udevadm
+if [ "$ACTION" = "kexec" ] && ! command -v kexec >/dev/null 2>&1; then
+    for p in /usr/sbin /usr/bin /sbin /bin; do
+        cp -a /oldroot/${p}/kexec $p >/dev/null 2>&1 && break
+    done
+    hash kexec
+fi
 
 trap "emergency_shell --shutdown shutdown Signal caught!" 0
 getarg 'rd.break=pre-shutdown' && emergency_shell --shutdown pre-shutdown "Break before pre-shutdown"
@@ -40,8 +50,8 @@ _check_shutdown() {
     local __s=1
     for __f in $hookdir/shutdown/*.sh; do
         [ -e "$__f" ] || continue
-        ( . "$__f" $1 ) 
-        if [ $? -eq 0 ]; then 
+        ( . "$__f" $1 )
+        if [ $? -eq 0 ]; then
             rm -f $__f
             __s=0
         fi
@@ -49,14 +59,26 @@ _check_shutdown() {
     return $__s
 }
 
-_cnt=0
 while _check_shutdown; do
 :
 done
 _check_shutdown final
 
 getarg 'rd.break=shutdown' && emergency_shell --shutdown shutdown "Break before shutdown"
-[ "$1" = "reboot" ] && reboot -f -d -n --no-wall
-[ "$1" = "poweroff" ] && poweroff -f -d -n --no-wall
-[ "$1" = "halt" ] && halt -f -d -n --no-wall
-[ "$1" = "kexec" ] && kexec -e
+
+case "$ACTION" in
+    reboot|poweroff|halt)
+        $ACTION -f -d -n
+        warn "$ACTION failed!"
+        ;;
+    kexec)
+        kexec -e
+        warn "$ACTION failed!"
+        ;;
+    *)
+        warn "Shutdown called with argument '$ACTION'. Rebooting!"
+        reboot -f -d -n
+        ;;
+esac
+
+emergency_shell --shutdown shutdown

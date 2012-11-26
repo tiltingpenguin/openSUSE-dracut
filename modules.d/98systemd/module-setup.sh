@@ -29,6 +29,7 @@ install() {
         $systemdutildir/systemd-fsck \
         $systemdutildir/systemd-udevd \
         $systemdutildir/systemd-journald \
+        $systemdutildir/systemd-sysctl \
         $systemdsystemunitdir/emergency.target \
         $systemdsystemunitdir/sysinit.target \
         $systemdsystemunitdir/basic.target \
@@ -56,6 +57,7 @@ install() {
         $systemdsystemunitdir/systemd-ask-password-plymouth.path \
         $systemdsystemunitdir/systemd-journald.socket \
         $systemdsystemunitdir/systemd-ask-password-console.service \
+        $systemdsystemunitdir/emergency.service \
         $systemdsystemunitdir/halt.service \
         $systemdsystemunitdir/poweroff.service \
         $systemdsystemunitdir/systemd-reboot.service \
@@ -105,28 +107,29 @@ install() {
 
     ln -fs $systemdutildir/systemd "$initdir/init"
 
-    inst_simple "$moddir/emergency.service" ${systemdsystemunitdir}/emergency.service
+    inst_simple "$moddir/dracut-emergency.service" ${systemdsystemunitdir}/dracut-emergency.service
     inst_simple "$moddir/rescue.service" ${systemdsystemunitdir}/rescue.service
     ln -fs "basic.target" "${initdir}${systemdsystemunitdir}/default.target"
 
     dracutsystemunitdir="/etc/systemd/system"
 
     mkdir -p "${initdir}${dracutsystemunitdir}/basic.target.wants"
+    mkdir -p "${initdir}${dracutsystemunitdir}/sysinit.target.wants"
 
     inst_simple "$moddir/initrd-switch-root.target" ${dracutsystemunitdir}/initrd-switch-root.target
     inst_simple "$moddir/initrd-switch-root.service" ${dracutsystemunitdir}/initrd-switch-root.service
 
     inst_script "$moddir/dracut-cmdline.sh" /bin/dracut-cmdline
     inst_simple "$moddir/dracut-cmdline.service" ${dracutsystemunitdir}/dracut-cmdline.service
-    ln -fs ../dracut-cmdline.service "${initdir}${dracutsystemunitdir}/basic.target.wants/dracut-cmdline.service"
+    ln -fs ../dracut-cmdline.service "${initdir}${dracutsystemunitdir}/sysinit.target.wants/dracut-cmdline.service"
 
     inst_script "$moddir/dracut-pre-udev.sh" /bin/dracut-pre-udev
     inst_simple "$moddir/dracut-pre-udev.service" ${dracutsystemunitdir}/dracut-pre-udev.service
-    ln -fs ../dracut-pre-udev.service "${initdir}${dracutsystemunitdir}/basic.target.wants/dracut-pre-udev.service"
+    ln -fs ../dracut-pre-udev.service "${initdir}${dracutsystemunitdir}/sysinit.target.wants/dracut-pre-udev.service"
 
     inst_script "$moddir/dracut-pre-trigger.sh" /bin/dracut-pre-trigger
     inst_simple "$moddir/dracut-pre-trigger.service" ${dracutsystemunitdir}/dracut-pre-trigger.service
-    ln -fs ../dracut-pre-trigger.service "${initdir}${dracutsystemunitdir}/basic.target.wants/dracut-pre-trigger.service"
+    ln -fs ../dracut-pre-trigger.service "${initdir}${dracutsystemunitdir}/sysinit.target.wants/dracut-pre-trigger.service"
 
     inst_script "$moddir/dracut-initqueue.sh" /bin/dracut-initqueue
     inst_simple "$moddir/dracut-initqueue.service" ${dracutsystemunitdir}/dracut-initqueue.service
@@ -141,5 +144,15 @@ install() {
     ln -fs ../udevadm-cleanup-db.service "${initdir}${dracutsystemunitdir}/initrd-switch-root.target.requires/udevadm-cleanup-db.service"
 
     inst_script "$moddir/service-to-run.sh" "${systemdutildir}/system-generators/service-to-run"
+    inst_rules 99-systemd.rules
+
+    # turn off RateLimit for journal
+    {
+        echo "[Journal]"
+        echo "RateLimitInterval=0"
+        echo "RateLimitBurst=0"
+    } >> "$initdir/etc/systemd/journald.conf"
+
+
 }
 

@@ -31,7 +31,7 @@ install() {
             *) cmd=grep ;;
         esac
 
-        for INCL in $($cmd "^include " $MAP | while read a a b; do echo ${a/\"/}; done); do
+        for INCL in $($cmd "^include " $MAP | while read a a b; do echo ${a//\"/}; done); do
             for FN in $(find ${kbddir}/keymaps -type f -name $INCL\*); do
                 findkeymap $FN
             done
@@ -96,7 +96,7 @@ install() {
 
         for _src in $(eval echo ${kbddir}/{${KBDSUBDIRS}}); do
             inst_dir "$_src"
-            cp --reflink=auto --sparse=auto -prfL -t "${initdir}/${_src%/*}" "$_src"
+            cp --reflink=auto --sparse=auto -prfL -t "${initdir}/${_src}" "$_src"/*
         done
 
         # remove unnecessary files
@@ -173,7 +173,7 @@ install() {
 
         inst_opt_decompress ${kbddir}/consolefonts/${DEFAULT_FONT}.*
 
-        if [[ ${FONT} ]]
+        if [[ ${FONT} ]] && [[ ${FONT} != ${DEFAULT_FONT} ]]
         then
             FONT=${FONT%.psf*}
             inst_opt_decompress ${kbddir}/consolefonts/${FONT}.*

@@ -21,7 +21,7 @@
 
 usage()
 {
-    echo "Usage: $(basename $0) [-s] [<initramfs file> [<filename>]]"
+    echo "Usage: $(${0##*/}) [-s] [<initramfs file> [<filename>]]"
 }
 
 [[ $# -le 2 ]] || { usage ; exit 1 ; }
@@ -70,6 +70,6 @@ echo "========================================================================"
 if [ "$sorted" -eq 1 ]; then
     $CAT "$image" | cpio --extract --verbose --quiet --list | sort -n -k5
 else
-    $CAT "$image" | cpio --extract --verbose --quiet --list
+    $CAT "$image" | cpio --extract --verbose --quiet --list | sort -k9
 fi
 echo "========================================================================"

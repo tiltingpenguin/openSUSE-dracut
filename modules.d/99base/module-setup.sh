@@ -13,9 +13,12 @@ depends() {
 
 install() {
     local _d
-    dracut_install mount mknod mkdir modprobe pidof sleep chroot \
+    dracut_install mount mknod mkdir pidof sleep chroot \
         sed ls flock cp mv dmesg rm ln rmmod mkfifo umount readlink setsid
-    dracut_install -o less
+    inst $(command -v modprobe) /sbin/modprobe
+
+    dracut_install -o findmnt less
+
     if [ ! -e "${initdir}/bin/sh" ]; then
         dracut_install bash
         (ln -s bash "${initdir}/bin/sh" || :)
@@ -29,6 +32,7 @@ install() {
     inst_script "$moddir/init.sh" "/init"
     inst_script "$moddir/initqueue.sh" "/sbin/initqueue"
     inst_script "$moddir/loginit.sh" "/sbin/loginit"
+    inst_script "$moddir/sosreport.sh" "/sbin/sosreport"
 
     [ -e "${initdir}/lib" ] || mkdir -m 0755 -p ${initdir}/lib
     mkdir -m 0755 -p ${initdir}/lib/dracut
@@ -39,7 +43,14 @@ install() {
     dracut_install switch_root || dfatal "Failed to install switch_root"
 
     inst_simple "$moddir/dracut-lib.sh" "/lib/dracut-lib.sh"
-    inst_script "$moddir/mount-hook.sh" "/usr/bin/mount-hook"
+
+    ## save host_devs which we need bring up
+    inst_hook cmdline 00 "$moddir/wait-host-devs.sh"
+    for _dev in ${host_devs[@]}; do
+        _pdev=$(get_persistent_dev $_dev)
+        [ -n "$_pdev" ] && echo $_pdev >> $initdir/etc/host_devs
+    done
+
     inst_hook cmdline 10 "$moddir/parse-root-opts.sh"
     mkdir -p "${initdir}/var"
     [ -x /lib/systemd/systemd-timestamp ] && inst /lib/systemd/systemd-timestamp
@@ -50,6 +61,9 @@ install() {
     fi
 
     ln -fs /proc/self/mounts "$initdir/etc/mtab"
+    if [[ $ro_mnt = yes ]]; then
+        echo ro >> "${initdir}/etc/cmdline.d/base.conf"
+    fi
 
     if [ -e /etc/os-release ]; then
         . /etc/os-release
@@ -59,7 +73,7 @@ install() {
         VERSION=""
         PRETTY_NAME=""
     fi
-    NAME=Dracut
+    NAME=dracut
     ID=dracut
     VERSION+="dracut-$DRACUT_VERSION"
     PRETTY_NAME+="dracut-$DRACUT_VERSION (Initramfs)"

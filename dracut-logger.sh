@@ -23,7 +23,7 @@
 __DRACUT_LOGGER__=1
 
 
-## @brief Logging facility module for Dracut both at build- and boot-time.
+## @brief Logging facility module for dracut both at build- and boot-time.
 #
 # @section intro Introduction
 #
@@ -89,7 +89,7 @@ __DRACUT_LOGGER__=1
 # @see dlog_init()
 
 
-## @brief Initializes Dracut Logger.
+## @brief Initializes dracut Logger.
 #
 # @retval 1 if something has gone wrong
 # @retval 0 on success.
@@ -116,7 +116,7 @@ dlog_init() {
 
     if [ -z "$fileloglvl" ]; then
         [ -w "$logfile" ] && fileloglvl=4 || fileloglvl=0
-    elif (( $fileloglvl >= 0 )); then
+    elif (( $fileloglvl > 0 )); then
         __oldumask=$(umask)
         umask 0377
         ! [ -e "$logfile" ] && >"$logfile"
@@ -138,7 +138,7 @@ dlog_init() {
         fi
     fi
 
-    if (( $sysloglvl >= 0 )); then
+    if (( $sysloglvl > 0 )); then
         if ! [ -S /dev/log -a -w /dev/log ] || ! command -v logger >/dev/null
         then
             # We cannot log to syslog, so turn this facility off.
@@ -148,7 +148,7 @@ dlog_init() {
         fi
     fi
 
-    if (($sysloglvl >= 0)) || (($kmsgloglvl >= 0 )); then
+    if (($sysloglvl > 0)) || (($kmsgloglvl > 0 )); then
         if [ -n "$dracutbasedir" ]; then
             readonly syslogfacility=user
         else
