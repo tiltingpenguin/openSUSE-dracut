@@ -1,3 +1,4 @@
+/Makefile.inc
 /dracut.8
 /dracut-catimages.8
 /dracut.conf.5
@@ -11,3 +12,4 @@ test*.img
 /.buildpath
 /.project
 /dracut-version.sh
+/install/dracut-install

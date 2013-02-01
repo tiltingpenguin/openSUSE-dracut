@@ -17,7 +17,7 @@ test_run() {
 	-hdb $TESTDIR/check-success.img \
 	-m 256M -nographic \
 	-net none -kernel /boot/vmlinuz-$KVERSION \
-	-append "root=/dev/dracut/root rw quiet rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $LUKSARGS $DEBUGFAIL" \
+	-append "root=/dev/dracut/root rw quiet rd.auto rd.retry=20 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $LUKSARGS $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
     grep -m 1 -q dracut-root-block-success $TESTDIR/check-success.img || return 1
     echo "CLIENT TEST END: [OK]"
@@ -30,7 +30,7 @@ test_run() {
 	-hdb $TESTDIR/check-success.img \
 	-m 256M -nographic \
 	-net none -kernel /boot/vmlinuz-$KVERSION \
-	-append "root=/dev/dracut/root rw quiet rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $DEBUGFAIL" \
+	-append "root=/dev/dracut/root rw quiet rd.auto rd.retry=20 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
     grep -m 1 -q dracut-root-block-success $TESTDIR/check-success.img || return 1
     echo "CLIENT TEST END: [OK]"
@@ -43,7 +43,7 @@ test_run() {
 	-hdb $TESTDIR/check-success.img \
 	-m 256M -nographic \
 	-net none -kernel /boot/vmlinuz-$KVERSION \
-	-append "root=/dev/dracut/root rw quiet rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $DEBUGFAIL rd.luks.uuid=failme" \
+	-append "root=/dev/dracut/root rw quiet rd.auto rd.retry=10 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $DEBUGFAIL rd.luks.uuid=failme" \
 	-initrd $TESTDIR/initramfs.testing
     grep -m 1 -q dracut-root-block-success $TESTDIR/check-success.img && return 1
     echo "CLIENT TEST END: [OK]"
@@ -59,7 +59,7 @@ test_setup() {
     kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay
     (
-	initdir=$TESTDIR/overlay/source
+	export initdir=$TESTDIR/overlay/source
 	. $basedir/dracut-functions.sh
 	dracut_install sh df free ls shutdown poweroff stty cat ps ln ip route \
 	    mount dmesg ifconfig dhclient mkdir cp ping dhclient
@@ -79,7 +79,7 @@ test_setup() {
 
     # second, install the files needed to make the root filesystem
     (
-	initdir=$TESTDIR/overlay
+	export initdir=$TESTDIR/overlay
 	. $basedir/dracut-functions.sh
 	dracut_install sfdisk mke2fs poweroff cp umount grep
 	inst_hook initqueue 01 ./create-root.sh
@@ -108,15 +108,23 @@ test_setup() {
 
 
     (
-	initdir=$TESTDIR/overlay
+	export initdir=$TESTDIR/overlay
 	. $basedir/dracut-functions.sh
 	dracut_install poweroff shutdown
 	inst_hook emergency 000 ./hard-off.sh
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
 	inst ./cryptroot-ask.sh /sbin/cryptroot-ask
+        mkdir -p $initdir/etc
+        i=2
+        for uuid in $cryptoUUIDS; do
+	    eval $uuid
+	    printf 'luks-%s /dev/sda%s /etc/key\n' $ID_FS_UUID $i
+            ((i+=1))
+        done > $initdir/etc/crypttab
+        echo -n test > $initdir/etc/key
     )
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-o "plymouth network" \
+	-o "plymouth network systemd" \
 	-a "debug" \
 	-d "piix ide-gd_mod ata_piix ext2 sd_mod" \
 	-f $TESTDIR/initramfs.testing $KVERSION || return 1

@@ -1,5 +1,5 @@
 #!/bin/sh
-exec >/dev/console 2>&1
+exec </dev/console >/dev/console 2>&1
 set -x
 export PATH=/sbin:/bin:/usr/sbin:/usr/bin
 export TERM=linux
@@ -13,6 +13,8 @@ ip link set lo up
 ip addr add 192.168.50.1/24 dev eth0
 ip link set eth0 up
 >/dev/watchdog
+modprobe af_packet
+> /dev/watchdog
 modprobe sunrpc
 >/dev/watchdog
 mount -t rpc_pipefs sunrpc /var/lib/nfs/rpc_pipefs

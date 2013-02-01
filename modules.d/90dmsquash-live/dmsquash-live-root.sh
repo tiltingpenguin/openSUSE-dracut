@@ -6,7 +6,7 @@ type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-if getargbool 0 rd.live.debug -y rdlivedebug; then
+if getargbool 0 rd.live.debug -n -y rdlivedebug; then
     exec > /tmp/liveroot.$$.out
     exec 2>> /tmp/liveroot.$$.out
     set -x
@@ -17,22 +17,27 @@ livedev="$1"
 
 # parse various live image specific options that make sense to be
 # specified as their own things
-live_dir=$(getarg rd.live.dir live_dir)
+live_dir=$(getarg rd.live.dir -d live_dir)
 [ -z "$live_dir" ] && live_dir="LiveOS"
-getargbool 0 rd.live.ram -y live_ram && live_ram="yes"
-getargbool 0 rd.live.overlay.reset -y reset_overlay && reset_overlay="yes"
-getargbool 0 rd.live.overlay.readonly -y readonly_overlay && readonly_overlay="--readonly" || readonly_overlay=""
-overlay=$(getarg rd.live.overlay overlay)
+getargbool 0 rd.live.ram -d -y live_ram && live_ram="yes"
+getargbool 0 rd.live.overlay.reset -d -y reset_overlay && reset_overlay="yes"
+getargbool 0 rd.live.overlay.readonly -d -y readonly_overlay && readonly_overlay="--readonly" || readonly_overlay=""
+overlay=$(getarg rd.live.overlay -d overlay)
 
 # CD/DVD media check
 [ -b $livedev ] && fs=$(blkid -s TYPE -o value $livedev)
 if [ "$fs" = "iso9660" -o "$fs" = "udf" ]; then
     check="yes"
 fi
-getarg rd.live.check check || check=""
+getarg rd.live.check -d check || check=""
 if [ -n "$check" ]; then
     [ -x /bin/plymouth ] && /bin/plymouth --hide-splash
-    checkisomd5 --verbose $livedev
+    if [ -n "$DRACUT_SYSTEMD" ]; then
+        p=$(str_replace "$livedev" "-" '\x2d')
+        systemctl start checkisomd5@${p}.service
+    else
+        checkisomd5 --verbose $livedev
+    fi
     if [ $? -ne 0 ]; then
         die "CD check failed!"
         exit 1
@@ -98,7 +103,7 @@ do_live_overlay() {
         if [ -f /run/initramfs/overlayfs$pathspec -a -w /run/initramfs/overlayfs$pathspec ]; then
             losetup $OVERLAY_LOOPDEV /run/initramfs/overlayfs$pathspec
             if [ -n "$reset_overlay" ]; then
-                dd if=/dev/zero of=$OVERLAY_LOOPDEV bs=64k count=1 2>/dev/null
+                dd if=/dev/zero of=$OVERLAY_LOOPDEV bs=64k count=1 conv=fsync 2>/dev/null
             fi
             setup="yes"
         fi
@@ -167,7 +172,6 @@ if [ -e "$SQUASHED" ] ; then
         dd if=$SQUASHED of=/squashed.img bs=512 2> /dev/null
         umount -n /run/initramfs/live
         echo "Done copying live image to RAM."
-        eject -p $livedev || :
         SQUASHED="/squashed.img"
     fi
 

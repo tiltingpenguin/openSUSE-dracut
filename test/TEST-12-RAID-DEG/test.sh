@@ -9,15 +9,15 @@ KVERSION=${KVERSION-$(uname -r)}
 
 client_run() {
     echo "CLIENT TEST START: $@"
-    cp --sparse=always $TESTDIR/disk2.img $TESTDIR/disk2.img.new
-    cp --sparse=always $TESTDIR/disk3.img $TESTDIR/disk3.img.new
+    cp --sparse=always --reflink=auto $TESTDIR/disk2.img $TESTDIR/disk2.img.new
+    cp --sparse=always --reflink=auto $TESTDIR/disk3.img $TESTDIR/disk3.img.new
 
     $testdir/run-qemu \
 	-hda $TESTDIR/root.ext2 -m 256M -nographic \
 	-hdc $TESTDIR/disk2.img.new \
 	-hdd $TESTDIR/disk3.img.new \
 	-net none -kernel /boot/vmlinuz-$KVERSION \
-	-append "$@ root=LABEL=root rw quiet rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $DEBUGFAIL " \
+	-append "$* root=LABEL=root rw quiet rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $DEBUGFAIL " \
 	-initrd $TESTDIR/initramfs.testing
     if ! grep -m 1 -q dracut-root-block-success $TESTDIR/root.ext2; then
 	echo "CLIENT TEST END: $@ [FAIL]"
@@ -32,18 +32,21 @@ client_run() {
 test_run() {
     eval $(grep --binary-files=text -m 1 MD_UUID $TESTDIR/root.ext2)
     echo "MD_UUID=$MD_UUID"
+    read LUKS_UUID < $TESTDIR/luksuuid
 
-    client_run || return 1
+    client_run failme && return 1
+    client_run rd.auto || return 1
 
-    client_run rd.md.uuid=$MD_UUID rd.md.conf=0 || return 1
+    client_run rd.luks.uuid=$LUKS_UUID rd.md.uuid=$MD_UUID rd.md.conf=0 rd.lvm.vg=dracut || return 1
 
-    client_run rd.md.uuid=failme rd.md.conf=0 failme && return 1
+    client_run rd.luks.uuid=$LUKS_UUID rd.md.uuid=failme rd.md.conf=0 rd.lvm.vg=dracut failme && return 1
 
-    client_run rd.lvm=0 failme && return 1
-    client_run rd.lvm.vg=failme failme && return 1
-    client_run rd.lvm.vg=dracut || return 1
-    client_run rd.lvm.lv=dracut/failme failme && return 1
-    client_run rd.lvm.lv=dracut/root || return 1
+    client_run rd.luks.uuid=$LUKS_UUID rd.md.uuid=$MD_UUID rd.lvm=0 failme && return 1
+    client_run rd.luks.uuid=$LUKS_UUID rd.md.uuid=$MD_UUID rd.lvm=0 rd.auto=1 failme && return 1
+    client_run rd.luks.uuid=$LUKS_UUID rd.md.uuid=$MD_UUID rd.lvm.vg=failme failme && return 1
+    client_run rd.luks.uuid=$LUKS_UUID rd.md.uuid=$MD_UUID rd.lvm.vg=dracut || return 1
+    client_run rd.luks.uuid=$LUKS_UUID rd.md.uuid=$MD_UUID rd.lvm.lv=dracut/failme failme && return 1
+    client_run rd.luks.uuid=$LUKS_UUID rd.md.uuid=$MD_UUID rd.lvm.lv=dracut/root || return 1
     return 0
 }
 
@@ -58,7 +61,7 @@ test_setup() {
     kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay
     (
-	initdir=$TESTDIR/overlay/source
+	export initdir=$TESTDIR/overlay/source
 	. $basedir/dracut-functions.sh
 	dracut_install sh df free ls shutdown poweroff stty cat ps ln ip route \
 	    mount dmesg ifconfig dhclient mkdir cp ping dhclient
@@ -78,7 +81,7 @@ test_setup() {
 
     # second, install the files needed to make the root filesystem
     (
-	initdir=$TESTDIR/overlay
+	export initdir=$TESTDIR/overlay
 	. $basedir/dracut-functions.sh
 	dracut_install sfdisk mke2fs poweroff cp umount dd grep
 	inst_hook initqueue 01 ./create-root.sh
@@ -103,10 +106,14 @@ test_setup() {
 	-kernel "/boot/vmlinuz-$kernel" \
 	-append "root=/dev/dracut/root rw rootfstype=ext2 quiet console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.makeroot  || return 1
+
     grep -m 1 -q dracut-root-block-created $TESTDIR/root.ext2 || return 1
     eval $(grep --binary-files=text -m 1 MD_UUID $TESTDIR/root.ext2)
+    eval $(grep -a -m 1 ID_FS_UUID $TESTDIR/root.ext2)
+    echo $ID_FS_UUID > $TESTDIR/luksuuid
+
     (
-	initdir=$TESTDIR/overlay
+	export initdir=$TESTDIR/overlay
 	. $basedir/dracut-functions.sh
 	dracut_install poweroff shutdown
 	inst_hook emergency 000 ./hard-off.sh
@@ -114,9 +121,12 @@ test_setup() {
 	inst ./cryptroot-ask.sh /sbin/cryptroot-ask
         mkdir -p $initdir/etc
         echo "ARRAY /dev/md0 level=raid5 num-devices=3 UUID=$MD_UUID" > $initdir/etc/mdadm.conf
+        echo "luks-$ID_FS_UUID /dev/md0 /etc/key" > $initdir/etc/crypttab
+        echo -n test > $initdir/etc/key
     )
+
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-o "plymouth network" \
+	-o "plymouth network systemd" \
 	-a "debug" \
 	-d "piix ide-gd_mod ata_piix ext2 sd_mod" \
 	-f $TESTDIR/initramfs.testing $KVERSION || return 1

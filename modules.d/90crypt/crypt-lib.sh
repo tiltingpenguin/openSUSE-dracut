@@ -165,8 +165,15 @@ readkey() {
     local keydev="$2"
     local device="$3"
 
-    local mntp=$(mkuniqdir /mnt keydev)
-    mount -r "$keydev" "$mntp" || die 'Mounting rem. dev. failed!'
+    # This creates a unique single mountpoint for *, or several for explicitly
+    # given LUKS devices. It accomplishes unlocking multiple LUKS devices with
+    # a single password entry.
+    local mntp="/mnt/$(str_replace "keydev-$keydev-$keypath" '/' '-')"
+
+    if [ ! -d "$mntp" ]; then
+        mkdir "$mntp"
+        mount -r "$keydev" "$mntp" || die 'Mounting rem. dev. failed!'
+    fi
 
     case "${keypath##*.}" in
         gpg)
@@ -177,9 +184,22 @@ readkey() {
                 die "No GPG support to decrypt '$keypath' on '$keydev'."
             fi
             ;;
+        img)
+            if [ -f /lib/dracut-crypt-loop-lib.sh ]; then
+                . /lib/dracut-crypt-loop-lib.sh
+                loop_decrypt "$mntp" "$keypath" "$keydev" "$device"
+                initqueue --onetime --finished --unique --name "crypt-loop-cleanup-99-${mntp##*/}" \
+                    $(command -v umount) "$mntp; " $(command -v rmdir) "$mntp"
+                return 0
+            else
+                die "No loop file support to decrypt '$keypath' on '$keydev'."
+            fi
+            ;;
         *) cat "$mntp/$keypath" ;;
     esac
 
+    # General unmounting mechanism, modules doing custom cleanup should return earlier
+    # and install a pre-pivot cleanup hook
     umount "$mntp"
     rmdir "$mntp"
 }

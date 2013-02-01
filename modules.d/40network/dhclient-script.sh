@@ -25,8 +25,7 @@ setup_interface() {
         if ! ip link set $netif mtu $mtu ; then
             ip link set $netif down
             ip link set $netif mtu $mtu
-            ip link set $netif up
-            wait_for_if_up $netif
+            linkup $netif
         fi
     fi
 
@@ -51,6 +50,7 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PS4="dhclient.$interface.$$ + "
 exec >>/run/initramfs/loginit.pipe 2>>/run/initramfs/loginit.pipe
 type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
+type ip_to_var >/dev/null 2>&1 || . /lib/net-lib.sh
 
 # We already need a set netif here
 netif=$interface
@@ -61,8 +61,7 @@ netif=$interface
 case $reason in
     PREINIT)
         echo "dhcp: PREINIT $netif up"
-        ip link set $netif up
-        wait_for_if_up $netif
+        linkup $netif
         ;;
     BOUND)
         echo "dhcp: BOND setting $netif"
@@ -88,9 +87,12 @@ case $reason in
             echo "setup_net $netif"
             echo "source_hook initqueue/online $netif"
             [ -e /tmp/net.$netif.manualup ] || echo "/sbin/netroot $netif"
+            echo "> /tmp/setup_net_$netif.ok"
+            echo "> /tmp/setup_net_\$(cat /sys/class/net/$netif/address).ok"
             echo "rm -f $hookdir/initqueue/setup_net_$netif.sh"
         } > $hookdir/initqueue/setup_net_$netif.sh
 
+        echo "[ -f /tmp/setup_net_$netif.ok ]" > $hookdir/initqueue/finished/dhclient-$netif.sh
         >/tmp/net.$netif.up
         ;;
     *) echo "dhcp: $reason";;

@@ -1,3 +1,89 @@
+dracut-025
+==========
+- do not strip signed kernel modules
+- add sosreport script and generate /run/initramfs/sosreport.txt
+- make short uuid specification for allow-discards work
+- turn off RateLimit for the systemd journal
+- fixed MAC address assignment
+- add systemd checkisomd5 service
+- splitout drm kernel modules from plymouth module
+- add 'swapoff' to initramfs to fix shutdown/reboot
+- add team device support
+- add pre-shutdown hook
+- kill all processes in shutdown and report remaining ones
+- "--device" changed to "--add-device" and "add_device=" added for conf files
+- add memory usage trace to different hook points
+- cope with optional field #7 in /proc/self/mountinfo
+- lots of small bugfixes
+
+dracut-024
+==========
+- new dracut option "--device"
+- new dracut kernel command line options "rd.auto"
+- new dracut kernel command line options "rd.noverifyssl"
+- new dracut option "--kernel-cmdline" and "kernel_cmdline" option for default parameters
+- fixes for systemd and crypto
+- fix for kexec in shutdown, if not included in initramfs
+- create the initramfs non-world readable
+- prelink/preunlink in the initramfs
+- strip binaries in the initramfs by default now
+- various FIPS fixes
+- various dracut-install fixes
+
+dracut-023
+==========
+- resume from hibernate fixes
+- -N option for --no-hostonly
+- support for systemd crypto handling
+- new dracut module "crypt-loop"
+- deprecate the old kernel command line options
+- more documentation
+- honor CFLAGS for dracut-install build
+- multipath fixes
+- / is mounted according to rootflags parameter but forced ro at first.
+  Later it is remounted according to /etc/fstab + rootflags parameter
+  and "ro"/"rw".
+- support for xfs / reiserfs separate journal device
+- new "ro_mnt" option to force ro mount of / and /usr
+- root on cifs support
+- dracut-install: fixed issue for /var/tmp containing a symlink
+- only lazy resolve with ldd, if the /var/tmp partition is not mounted with "noexec"
+- i18n: fixed inclusion of "include" keymaps
+
+dracut-022
+==========
+- fixed host-only kernel module bug
+
+dracut-021
+==========
+- fixed systemd in the initramfs (requires systemd >= 187)
+- dracut-install: massive speedup with /var on the same filesystem with COW copy
+- dracut-install: moved to /usr/lib/dracut until it becomes a general purpose tool
+- new options: "rd.usrmount.ro" and "rd.skipfsck"
+- less mount/umount
+- apply "ro" on the kernel command line also to /usr
+- mount according to fstab, if neither "ro" or "rw" is specified
+- skip fsck for xfs and btrfs. remount is enough
+- give emergency_shell if /usr mount failed
+- dracut now uses getopt:
+  * options can be position independent now!!
+  * we can now use --option=<arg>
+- added option "--kver=<kernel-version>", and the image location can be omitted
+  # dracut --kver 3.5.0-0.rc7.git1.2.fc18.x86_64
+- dracut.sh: for --include copy also the symbolic links
+- man pages: lsinitrd and mkinitrd added
+- network: We do not support renaming in the kernel namespace anymore (as udev does
+  that not anymore). So, if a user wants to use ifname, he has to rename
+  to a custom namespace. "eth[0-9]+" is not allowed anymore. !!!!!
+- resume: moved the resume process to the initqueue.
+  This should prevent accidently mounting the root file system.
+- testsuite: add support for: make V=1 TESTS="01 20 40" check
+    $ sudo make V=1 clean check
+    now runs the testsuite in verbose mode
+
+    $ sudo make TESTS="01 20 40" clean check
+    now only runs the 01, 20 and 40 tests.
+
 dracut-020
 ==========
 - changed rd.dasd kernel parameter

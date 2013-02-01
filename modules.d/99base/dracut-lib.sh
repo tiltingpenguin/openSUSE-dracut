@@ -43,6 +43,20 @@ str_replace() {
     echo "${out}${in}"
 }
 
+killall_proc_mountpoint() {
+    local _pid
+    local _t
+    for _pid in /proc/*; do
+        _pid=${_pid##/proc/}
+        case $_pid in
+            *[!0-9]*) continue;;
+        esac
+        [ -e /proc/$_pid/exe ] || continue
+        [ -e /proc/$_pid/root ] || continue
+        strstr "$(ls -l /proc/$_pid /proc/$_pid/fd 2>/dev/null)" "$1" && kill -9 $_pid
+    done
+}
+
 _getcmdline() {
     local _line
     local _i
@@ -103,24 +117,41 @@ _dogetarg() {
 
 getarg() {
     debug_off
+    local _deprecated _newoption
     while [ $# -gt 0 ]; do
         case $1 in
+            -d) _deprecated=1; shift;;
             -y) if _dogetarg $2 >/dev/null; then
+                    if [ "$_deprecated" = "1" ]; then
+                        [ -n "$_newoption" ] && warn "Kernel command line option '$2' is deprecated, use '$_newoption' instead." || warn "Option '$2' is deprecated."
+                    fi
                     echo 1
                     debug_on
                     return 0
                 fi
+                _deprecated=0
                 shift 2;;
             -n) if _dogetarg $2 >/dev/null; then
                     echo 0;
+                    if [ "$_deprecated" = "1" ]; then
+                        [ -n "$_newoption" ] && warn "Kernel command line option '$2' is deprecated, use '$_newoption=0' instead." || warn "Option '$2' is deprecated."
+                    fi
                     debug_on
                     return 1
                 fi
+                _deprecated=0
                 shift 2;;
-            *)  if _dogetarg $1; then
+            *)  if [ -z "$_newoption" ]; then
+                    _newoption=$1
+                fi
+                if _dogetarg $1; then
+                    if [ "$_deprecated" = "1" ]; then
+                        [ -n "$_newoption" ] && warn "Kernel command line option '$1' is deprecated, use '$_newoption' instead." || warn "Option '$1' is deprecated."
+                    fi
                     debug_on
                     return 0;
                 fi
+                _deprecated=0
                 shift;;
         esac
     done
@@ -128,6 +159,13 @@ getarg() {
     return 1
 }
 
+# getargbool <defaultval> <args...>
+# False if "getarg <args...>" returns "0", "no", or "off".
+# True if getarg returns any other non-empty string.
+# If not found, assumes <defaultval> - usually 0 for false, 1 for true.
+# example: getargbool 0 rd.info
+#   true: rd.info, rd.info=1, rd.info=xxx
+#   false: rd.info=0, rd.info=off, rd.info not present (default val is 0)
 getargbool() {
     local _b
     unset _b
@@ -141,6 +179,35 @@ getargbool() {
         [ $_b = "off" ] && return 1
     fi
     return 0
+}
+
+isdigit() {
+    case "$1" in
+        *[!0-9]*|"") return 1;;
+    esac
+
+    return 0
+}
+
+# getargnum <defaultval> <minval> <maxval> <arg>
+# Will echo the arg if it's in range [minval - maxval].
+# If it's not set or it's not valid, will set it <defaultval>.
+# Note all values are required to be >= 0 here.
+# <defaultval> should be with [minval -maxval].
+getargnum() {
+    local _b
+    unset _b
+    local _default _min _max
+    _default=$1; shift
+    _min=$1; shift
+    _max=$1; shift
+    _b=$(getarg "$1")
+    [ $? -ne 0 -a -z "$_b" ] && _b=$_default
+    if [ -n "$_b" ]; then
+        isdigit "$_b" && _b=$(($_b)) && \
+        [ $_b -ge $_min ] && [ $_b -le $_max ] && echo $_b && return
+    fi
+    echo $_default
 }
 
 _dogetargs() {
@@ -168,15 +235,26 @@ _dogetargs() {
 
 getargs() {
     debug_off
-    local _val _i _args _gfound
+    local _val _i _args _gfound _deprecated
     unset _val
     unset _gfound
+    _newoption="$1"
     _args="$@"
     set --
     for _i in $_args; do
+        if [ "$i" = "-d" ]; then
+            _deprecated=1
+            continue
+        fi
         _val="$(_dogetargs $_i)"
-        [ $? -eq 0 ] && _gfound=1
+        if [ $? -eq 0 ]; then
+            if [ "$_deprecated" = "1" ]; then
+                [ -n "$_newoption" ] && warn "Option '$_i' is deprecated, use '$_newoption' instead." || warn "Option $_i is deprecated!"
+            fi
+            _gfound=1
+        fi
         [ -n "$_val" ] && set -- "$@" "$_val"
+        _deprecated=0
     done
     if [ -n "$_gfound" ]; then
         if [ $# -gt 0 ]; then
@@ -236,12 +314,12 @@ splitsep() {
 
     while [ -n "$str" -a "$#" -gt 1 ]; do
         tmp="${str%%$sep*}"
-        eval "$1=${tmp}"
-        str="${str#$tmp}"
+        eval "$1='${tmp}'"
+        str="${str#"$tmp"}"
         str="${str#$sep}"
         shift
     done
-    [ -n "$str" -a -n "$1" ] && eval "$1=$str"
+    [ -n "$str" -a -n "$1" ] && eval "$1='$str'"
     debug_on
     return 0
 }
@@ -250,7 +328,7 @@ setdebug() {
     if [ -z "$RD_DEBUG" ]; then
         if [ -e /proc/cmdline ]; then
             RD_DEBUG=no
-            if getargbool 0 rd.debug -y rdinitdebug -y rdnetdebug; then
+            if getargbool 0 rd.debug -d -y rdinitdebug -d -y rdnetdebug; then
                 RD_DEBUG=yes
                 [ -n "$BASH" ] && \
                     export PS4='${BASH_SOURCE}@${LINENO}(${FUNCNAME[0]}): ';
@@ -314,8 +392,8 @@ die() {
 check_quiet() {
     if [ -z "$DRACUT_QUIET" ]; then
         DRACUT_QUIET="yes"
-        getargbool 0 rd.info -y rdinfo && DRACUT_QUIET="no"
-        getargbool 0 rd.debug -y rdinitdebug && DRACUT_QUIET="no"
+        getargbool 0 rd.info -d -y rdinfo && DRACUT_QUIET="no"
+        getargbool 0 rd.debug -d -y rdinitdebug && DRACUT_QUIET="no"
         getarg quiet || DRACUT_QUIET="yes"
         a=$(getarg loglevel=)
         [ -n "$a" ] && [ $a -ge 28 ] && DRACUT_QUIET="yes"
@@ -323,7 +401,7 @@ check_quiet() {
     fi
 }
 
-if [ ! -x /lib/systemd/systemd ]; then
+if [ -z "$DRACUT_SYSTEMD" ]; then
 
     warn() {
         check_quiet
@@ -417,35 +495,34 @@ udevproperty() {
     fi
 }
 
-ismounted() {
-    while read a m a; do
-        [ "$m" = "$1" ] && return 0
+find_mount() {
+    local dev mnt etc wanted_dev
+    wanted_dev="$(readlink -e -q $1)"
+    while read dev mnt etc; do
+        [ "$dev" = "$wanted_dev" ] && echo "$dev" && return 0
     done < /proc/mounts
     return 1
 }
 
-wait_for_if_up() {
-    local cnt=0
-    local li
-    while [ $cnt -lt 200 ]; do
-        li=$(ip -o link show up dev $1)
-        [ -n "$li" ] && return 0
-        sleep 0.1
-        cnt=$(($cnt+1))
-    done
-    return 1
-}
+# usage: ismounted <mountpoint>
+# usage: ismounted /dev/<device>
+if command -v findmnt >/dev/null; then
+    ismounted() {
+        findmnt "$1" > /dev/null 2>&1
+    }
+else
+    ismounted() {
+        if [ -b "$1" ]; then
+            find_mount "$1" > /dev/null && return 0
+            return 1
+        fi
 
-wait_for_route_ok() {
-    local cnt=0
-    while [ $cnt -lt 200 ]; do
-        li=$(ip route show)
-        [ -n "$li" ] && [ -z "${li##*$1*}" ] && return 0
-        sleep 0.1
-        cnt=$(($cnt+1))
-    done
-    return 1
-}
+        while read a m a; do
+            [ "$m" = "$1" ] && return 0
+        done < /proc/mounts
+        return 1
+    }
+fi
 
 # root=nfs:[<server-ip>:]<root-dir>[:<nfs-options>]
 # root=nfs4:[<server-ip>:]<root-dir>[:<nfs-options>]
@@ -813,6 +890,46 @@ wait_for_loginit()
     rm -f /run/initramfs/loginit.pipe /run/initramfs/loginit.pid
 }
 
+_emergency_shell()
+{
+    local _name="$1"
+    if [ -n "$DRACUT_SYSTEMD" ]; then
+        > /.console_lock
+        echo "PS1=\"$_name:\${PWD}# \"" >/etc/profile
+        systemctl start dracut-emergency.service
+        rm -f /.console_lock
+    else
+        debug_off
+        echo
+        /sbin/sosreport
+        echo 'You might want to save "/run/initramfs/sosreport.txt" to a USB stick or /boot'
+        echo 'after mounting them and attach it to a bug report.'
+        if ! RD_DEBUG= getargbool 0 rd.debug -d -y rdinitdebug -d -y rdnetdebug; then
+            echo
+            echo 'To get more debug information in the report,'
+            echo 'reboot with "rd.debug" added to the kernel command line.'
+        fi
+        echo
+        echo 'Dropping to debug shell.'
+        echo
+        export PS1="$_name:\${PWD}# "
+        [ -e /.profile ] || >/.profile
+
+        _ctty="$(RD_DEBUG= getarg rd.ctty=)" && _ctty="/dev/${_ctty##*/}"
+        if [ -z "$_ctty" ]; then
+            _ctty=console
+            while [ -f /sys/class/tty/$_ctty/active ]; do
+                _ctty=$(cat /sys/class/tty/$_ctty/active)
+                _ctty=${_ctty##* } # last one in the list
+            done
+            _ctty=/dev/$_ctty
+        fi
+        [ -c "$_ctty" ] || _ctty=/dev/tty1
+        case "$(/usr/bin/setsid --help 2>&1)" in *--ctty*) CTTY="--ctty";; esac
+        setsid $CTTY /bin/sh -i -l 0<>$_ctty 1<>$_ctty 2<>$_ctty
+    fi
+}
+
 emergency_shell()
 {
     local _ctty
@@ -823,6 +940,11 @@ emergency_shell()
         shift 2
     elif [ "$1" = "--shutdown" ]; then
         _rdshell_name=$2; action="Shutdown"; hook="shutdown-emergency"
+        if [ -x /bin/plymouth ]; then
+            /bin/plymouth --hide-splash
+        elif [ -x /oldroot/bin/plymouth ]; then
+            /oldroot/bin/plymouth --hide-splash
+        fi
         shift 2
     fi
 
@@ -831,35 +953,10 @@ emergency_shell()
     source_hook "$hook"
     echo
 
-    if getargbool 1 rd.shell -y rdshell || getarg rd.break rdbreak; then
-        if [ -x /lib/systemd/systemd ]; then
-            > /.console_lock
-            echo "PS1=\"$_rdshell_name:\${PWD}# \"" >/etc/profile
-            systemctl start emergency.service
-            debug_off
-            while [ -e /.console_lock ]; do sleep 1; done
-            debug_on
-        else
-            echo "Dropping to debug shell."
-            echo
-            export PS1="$_rdshell_name:\${PWD}# "
-            [ -e /.profile ] || >/.profile
-
-            _ctty="$(getarg rd.ctty=)" && _ctty="/dev/${_ctty##*/}"
-            if [ -z "$_ctty" ]; then
-                _ctty=console
-                while [ -f /sys/class/tty/$_ctty/active ]; do
-                    _ctty=$(cat /sys/class/tty/$_ctty/active)
-                    _ctty=${_ctty##* } # last one in the list
-                done
-                _ctty=/dev/$_ctty
-            fi
-            [ -c "$_ctty" ] || _ctty=/dev/tty1
-            strstr "$(setsid --help 2>/dev/null)" "ctty" && CTTY="-c"
-            setsid $CTTY /bin/sh -i -l 0<$_ctty 1>$_ctty 2>&1
-        fi
+    if getargbool 1 rd.shell -d -y rdshell || getarg rd.break -d rdbreak; then
+        _emergency_shell $_rdshell_name
     else
-        warn "$action has failed. To debug this issue add \"rd.shell\" to the kernel command line."
+        warn "$action has failed. To debug this issue add \"rd.shell rd.debug\" to the kernel command line."
         # cause a kernel panic
         exit 1
     fi
@@ -877,4 +974,137 @@ export_n()
         unset $var
         [ -n "$val" ] && eval $var=\"$val\"
     done
+}
+
+# returns OK if list1 contains all elements of list2, i.e. checks if list2 is a
+# sublist of list1.  An order and a duplication doesn't matter.
+#
+# $1 = separator
+# $2 = list1
+# $3 = list2
+# $4 = ignore values, separated by $1
+listlist() {
+    local _sep="$1"
+    local _list="${_sep}${2}${_sep}"
+    local _sublist="$3"
+    [ -n "$4" ] && local _iglist="${_sep}${4}${_sep}"
+    local IFS="$_sep"
+    local _v
+
+    [ "$_list" = "$_sublist" ] && return 0
+
+    for _v in $_sublist; do
+        if [ -n "$_v" ] && ! ( [ -n "$_iglist" ] && strstr "$_iglist" "$_v" )
+        then
+            strstr "$_list" "$_v" || return 1
+        fi
+    done
+
+    return 0
+}
+
+# returns OK if both lists contain the same values.  An order and a duplication
+# doesn't matter.
+# 
+# $1 = separator
+# $2 = list1
+# $3 = list2
+# $4 = ignore values, separated by $1
+are_lists_eq() {
+    listlist "$1" "$2" "$3" "$4" && listlist "$1" "$3" "$2" "$4"
+}
+
+setmemdebug() {
+    if [ -z "$DEBUG_MEM_LEVEL" ]; then
+        export DEBUG_MEM_LEVEL=$(getargnum 0 0 3 rd.memdebug)
+    fi
+}
+
+setmemdebug
+
+# parameters: msg [trace_level:trace]...
+make_trace_mem()
+{
+    local msg
+    msg="$1"
+    shift
+    if [ -n "$DEBUG_MEM_LEVEL" ] && [ "$DEBUG_MEM_LEVEL" -gt 0 ]; then
+        make_trace show_memstats $DEBUG_MEM_LEVEL "[debug_mem]" "$msg" "$@"
+    fi
+}
+
+# parameters: func log_level prefix msg [trace_level:trace]...
+make_trace()
+{
+    local func log_level prefix msg msg_printed
+    local trace trace_level trace_in_higher_levels insert_trace
+
+    func=$1
+    shift
+
+    log_level=$1
+    shift
+
+    prefix=$1
+    shift
+
+    msg=$1
+    shift
+
+    if [ -z "$log_level" ]; then
+        return
+    fi
+
+    msg=$(echo $msg)
+
+    msg_printed=0
+    while [ $# -gt 0 ]; do
+        trace=${1%%:*}
+        trace_level=${trace%%+}
+        [ "$trace" != "$trace_level" ] && trace_in_higher_levels="yes"
+        trace=${1##*:}
+
+        if [ -z "$trace_level" ]; then
+            trace_level=0
+        fi
+
+        insert_trace=0
+        if [ -n "$trace_in_higher_levels" ]; then
+            if [ "$log_level" -ge "$trace_level" ]; then
+                insert_trace=1
+            fi
+        else
+            if [ "$log_level" -eq "$trace_level" ]; then
+                insert_trace=1
+            fi
+        fi
+
+        if [ $insert_trace -eq 1 ]; then
+            if [ $msg_printed -eq 0 ]; then
+                echo "$prefix $msg"
+                msg_printed=1
+            fi
+            $func $trace
+        fi
+        shift
+    done
+}
+
+# parameters: type
+show_memstats()
+{
+    case $1 in
+        shortmem)
+            cat /proc/meminfo  | grep -e "^MemFree" -e "^Cached" -e "^Slab"
+            ;;
+        mem)
+            cat /proc/meminfo
+            ;;
+        slab)
+            cat /proc/slabinfo
+            ;;
+        iomem)
+            cat /proc/iomem
+            ;;
+    esac
 }

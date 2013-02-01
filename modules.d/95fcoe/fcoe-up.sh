@@ -16,12 +16,12 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PS4="fcoe-up.$1.$$ + "
 exec >>/run/initramfs/loginit.pipe 2>>/run/initramfs/loginit.pipe
 type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
+type ip_to_var >/dev/null 2>&1 || . /lib/net-lib.sh
 
 netif=$1
 dcb=$2
 
-ip link set "$netif" up
-wait_for_if_up "$netif"
+linkup "$netif"
 
 netdriver=$(readlink -f /sys/class/net/$netif/device/driver)
 netdriver=${netdriver##*/}
@@ -42,6 +42,8 @@ elif [ "$netdriver" = "bnx2x" ]; then
     # If driver is bnx2x, do not use /sys/module/fcoe/parameters/create but fipvlan
     modprobe 8021q
     udevadm settle --timeout=30
+    # Sleep for 3 s to allow dcb negotiation
+    sleep 3
     fipvlan "$netif" -c -s
 else
     echo -n "$netif" > /sys/module/fcoe/parameters/create

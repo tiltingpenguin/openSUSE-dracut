@@ -28,6 +28,15 @@ if [ -e /tmp/bond.info ]; then
     done
 fi
 
+if [ -e /tmp/team.info ]; then
+    . /tmp/team.info
+    for slave in $teamslaves ; do
+        if [ "$netif" = "$slave" ] ; then
+            netif=$teammaster
+        fi
+    done
+fi
+
 # bridge this interface?
 if [ -e /tmp/bridge.info ]; then
     . /tmp/bridge.info
@@ -84,27 +93,20 @@ do_ipv6auto() {
     echo 0 > /proc/sys/net/ipv6/conf/$netif/forwarding
     echo 1 > /proc/sys/net/ipv6/conf/$netif/accept_ra
     echo 1 > /proc/sys/net/ipv6/conf/$netif/accept_redirects
-    ip link set $netif up
-    wait_for_if_up $netif
+    linkup $netif
 
     [ -n "$hostname" ] && echo "echo $hostname > /proc/sys/kernel/hostname" > /tmp/net.$netif.hostname
 
-    namesrv=$(getargs nameserver)
-    if  [ -n "$namesrv" ] ; then
-        for s in $namesrv; do
-            echo nameserver $s
-        done
-    fi >> /tmp/net.$netif.resolv.conf
+    return 0
 }
 
 # Handle static ip configuration
 do_static() {
     strstr $ip '*:*:*' && load_ipv6
 
-    ip link set $netif up
-    wait_for_if_up $netif
-    [ -n "$macaddr" ] && ip link set address $macaddr
-    [ -n "$mtu" ] && ip link set mtu $mtu
+    linkup $netif
+    [ -n "$macaddr" ] && ip link set address $macaddr dev $netif
+    [ -n "$mtu" ] && ip link set mtu $mtu dev $netif
     if strstr $ip '*:*:*'; then
         # note no ip addr flush for ipv6
         ip addr add $ip/$mask dev $netif
@@ -116,12 +118,8 @@ do_static() {
     [ -n "$gw" ] && echo ip route add default via $gw dev $netif > /tmp/net.$netif.gw
     [ -n "$hostname" ] && echo "echo $hostname > /proc/sys/kernel/hostname" > /tmp/net.$netif.hostname
 
-    namesrv=$(getargs nameserver)
-    if  [ -n "$namesrv" ] ; then
-        for s in $namesrv; do
-            echo nameserver $s
-        done
-    fi >> /tmp/net.$netif.resolv.conf
+    > /tmp/setup_net_${netif}.ok
+    return 0
 }
 
 # loopback is always handled the same way
@@ -157,13 +155,12 @@ if [ -e /tmp/bond.info ]; then
             fi
         done
 
-        ip link set $netif up
+        linkup $netif
 
         for slave in $bondslaves ; do
             ip link set $slave down
             echo "+$slave" > /sys/class/net/$bondname/bonding/slaves
-            ip link set $slave up
-            wait_for_if_up $slave
+            linkup $slave
         done
 
         # add the bits to setup the needed post enslavement parameters
@@ -177,6 +174,28 @@ if [ -e /tmp/bond.info ]; then
     fi
 fi
 
+if [ -e /tmp/team.info ]; then
+    . /tmp/team.info
+    if [ "$netif" = "$teammaster" ] && [ ! -e /tmp/net.$teammaster.up ] ; then
+        # We shall only bring up those _can_ come up
+        # in case of some slave is gone in active-backup mode
+        working_slaves=""
+        for slave in $teamslaves ; do
+            ip link set $slave up 2>/dev/null
+            if wait_for_if_up $slave; then
+                working_slaves+="$slave "
+            fi
+        done
+        # Do not add slaves now
+        teamd -d -U -n -t $teammaster -f /etc/teamd/$teammaster.conf
+        for slave in $working_slaves; do
+            # team requires the slaves to be down before joining team
+            ip link set $slave down
+            teamdctl $teammaster port add $slave
+        done
+        ip link set $teammaster up
+    fi
+fi
 
 # XXX need error handling like dhclient-script
 
@@ -190,9 +209,8 @@ if [ -e /tmp/bridge.info ]; then
             if [ "$ethname" = "$bondname" ] ; then
                 DO_BOND_SETUP=yes ifup $bondname -m
             else
-                ip link set $ethname up
+                linkup $ethname
             fi
-            wait_for_if_up $ethname
             brctl addif $bridgename $ethname
         done
     fi
@@ -214,11 +232,18 @@ if [ "$netif" = "$vlanname" ] && [ ! -e /tmp/net.$vlanname.up ]; then
     if [ "$phydevice" = "$bondname" ] ; then
         DO_BOND_SETUP=yes ifup $phydevice -m
     else
-        ip link set "$phydevice" up
+        linkup "$phydevice"
     fi
-    wait_for_if_up "$phydevice"
     ip link add dev "$vlanname" link "$phydevice" type vlan id "$(get_vid $vlanname; echo $?)"
 fi
+
+# setup nameserver
+namesrv=$(getargs nameserver)
+if  [ -n "$namesrv" ] ; then
+    for s in $namesrv; do
+        echo nameserver $s
+    done
+fi >> /tmp/net.$netif.resolv.conf
 
 # No ip lines default to dhcp
 ip=$(getarg ip)

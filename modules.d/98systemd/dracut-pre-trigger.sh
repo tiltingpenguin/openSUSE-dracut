@@ -2,14 +2,17 @@
 # -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
+export DRACUT_SYSTEMD=1
 if [ -f /dracut-state.sh ]; then
-    . /dracut-state.sh || :
+    . /dracut-state.sh 2>/dev/null
 fi
-. /lib/dracut-lib.sh
+type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
+
 source_conf /etc/conf.d
 
-getargbool 0 rd.udev.info -y rdudevinfo && udevadm control --log-priority=info
-getargbool 0 rd.udev.debug -y rdudevdebug && udevadm control --log-priority=debug
+make_trace_mem "hook pre-trigger" "1:shortmem" "2+:mem" "3+:slab"
+getargbool 0 rd.udev.info -n -y rdudevinfo && udevadm control --log-priority=info
+getargbool 0 rd.udev.debug -n -y rdudevdebug && udevadm control --log-priority=debug
 udevproperty "hookdir=$hookdir"
 
 source_hook pre-trigger
@@ -17,3 +20,4 @@ source_hook pre-trigger
 udevadm control --reload >/dev/null 2>&1 || :
 
 export -p > /dracut-state.sh
+exit 0

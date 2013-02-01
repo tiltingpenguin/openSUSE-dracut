@@ -13,9 +13,10 @@ depends() {
 }
 
 install() {
-    local _i _progs _path
-    inst busybox /usr/bin/busybox
-    for _i in `/sbin/busybox | sed -ne '1,/Currently/!{s/,//g; s/busybox//g; p}'`
+    local _i _progs _path _busybox
+    _busybox=$(type -P busybox)
+    inst $_busybox /usr/bin/busybox
+    for _i in $($_busybox | sed -ne '1,/Currently/!{s/,//g; s/busybox//g; p}')
     do
         _progs="$_progs $_i"
     done
@@ -26,11 +27,7 @@ install() {
     for _i in $_progs; do
         _path=$(find_binary "$_i")
         [ -z "$_path" ] && continue
-        if [[ $_path != ${_path#/usr} ]]; then
-            ln -sf ../../usr/bin/busybox "$initdir/$_path"
-        else
-            ln -sf ../usr/bin/busybox "$initdir/$_path"
-        fi
+        ln_r /usr/bin/busybox $_path
     done
 }
 

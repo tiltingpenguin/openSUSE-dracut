@@ -1,5 +1,5 @@
 #!/bin/sh
-exec >/dev/console 2>&1
+exec </dev/console >/dev/console 2>&1
 set -x
 export PATH=/sbin:/bin:/usr/sbin:/usr/bin
 export TERM=linux
@@ -14,6 +14,8 @@ ip addr add 192.168.50.1/24 dev eth0
 ip addr add 192.168.50.2/24 dev eth0
 ip addr add 192.168.50.3/24 dev eth0
 ip link set eth0 up
+echo > /dev/watchdog
+modprobe af_packet
 echo > /dev/watchdog
 mount --bind /nfs/client /nfs/nfs3-5
 echo > /dev/watchdog

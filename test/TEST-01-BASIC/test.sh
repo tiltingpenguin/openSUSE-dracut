@@ -13,8 +13,8 @@ test_run() {
 	-hdb $TESTDIR/result \
 	-m 256M -nographic \
 	-net none -kernel /boot/vmlinuz-$KVERSION \
-	-watchdog ib700 -watchdog-action poweroff \
-	-append "root=LABEL=dracut rw quiet rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug $DEBUGFAIL" \
+	-watchdog i6300esb -watchdog-action poweroff \
+	-append "root=LABEL=dracut rw systemd.log_level=debug systemd.log_target=console rd.retry=3 rd.debug console=ttyS0,115200n81 $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing || return 1
     grep -m 1 -q dracut-root-block-success $TESTDIR/result || return 1
 }
@@ -22,12 +22,12 @@ test_run() {
 test_setup() {
     rm -f $TESTDIR/root.ext3
     # Create the blank file to use as a root filesystem
-    dd if=/dev/null of=$TESTDIR/root.ext3 bs=1M seek=40
+    dd if=/dev/null of=$TESTDIR/root.ext3 bs=1M seek=80
 
     kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay
     (
-	initdir=$TESTDIR/overlay/source
+	export initdir=$TESTDIR/overlay/source
 	mkdir -p $initdir
 	. $basedir/dracut-functions.sh
 	dracut_install sh df free ls shutdown poweroff stty cat ps ln ip route \
@@ -49,7 +49,7 @@ test_setup() {
 
     # second, install the files needed to make the root filesystem
     (
-	initdir=$TESTDIR/overlay
+	export initdir=$TESTDIR/overlay
 	. $basedir/dracut-functions.sh
 	dracut_install sfdisk mkfs.ext3 poweroff cp umount sync
 	inst_hook initqueue 01 ./create-root.sh
@@ -77,7 +77,7 @@ test_setup() {
 
 
     (
-	initdir=$TESTDIR/overlay
+	export initdir=$TESTDIR/overlay
 	. $basedir/dracut-functions.sh
 	dracut_install poweroff shutdown
 	inst_hook emergency 000 ./hard-off.sh
@@ -85,7 +85,7 @@ test_setup() {
     )
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
 	-a "debug watchdog" \
-	-d "piix ide-gd_mod ata_piix ext3 sd_mod ib700wdt" \
+	-d "piix ide-gd_mod ata_piix ext3 sd_mod i6300esbwdt" \
 	-f $TESTDIR/initramfs.testing $KVERSION || return 1
 
 #	-o "plymouth network md dmraid multipath fips caps crypt btrfs resume dmsquash-live dm"

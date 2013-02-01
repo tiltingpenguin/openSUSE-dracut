@@ -5,6 +5,21 @@
 type info >/dev/null 2>&1 || . /lib/dracut-lib.sh
 type fsck_single >/dev/null 2>&1 || . /lib/fs-lib.sh
 
+filtersubvol() {
+    local _oldifs
+    _oldifs="$IFS"
+    IFS=","
+    set $*
+    IFS="$_oldifs"
+    while [ $# -gt 0 ]; do
+        case $1 in
+            subvol\=*) :;;
+            *) echo -n "${1}," ;;
+        esac
+        shift
+    done
+}
+
 fsck_usr()
 {
     local _dev=$1
@@ -52,24 +67,45 @@ mount_usr()
                     _dev="/dev/disk/by-uuid/${_dev#UUID=}"
                     ;;
             esac
+            if strstr "$_opts" "subvol=" && \
+                [ "${root#block:}" -ef $_dev ]
+                [ -n "$rflags" ]; then
+                # for btrfs subvolumes we have to mount /usr with the same rflags
+                rflags=$(filtersubvol "$rflags")
+                rflags=${rflags%%,}
+                _opts="${_opts:+${_opts},}${rflags}"
+            elif getargbool 0 ro; then
+                # if "ro" is specified, we want /usr to be mounted read-only
+                _opts="${_opts:+${_opts},}ro"
+            elif getargbool 0 rw; then
+                # if "rw" is specified, we want /usr to be mounted read-write
+                _opts="${_opts:+${_opts},}rw"
+            fi
             echo "$_dev ${NEWROOT}${_mp} $_fs ${_opts} $_freq $_passno"
             _usr_found="1"
             break
         fi
     done < "$NEWROOT/etc/fstab" >> /etc/fstab
 
-    if [ "x$_usr_found" != "x" ]; then
+    if [ "$_usr_found" != "" ]; then
         # we have to mount /usr
-        if [ "0" != "${_passno:-0}" ]; then
-            fsck_usr "$_dev" "$_fs" "$_opts"
-        else
-            :
+        _fsck_ret=0
+        if ! getargbool 0 rd.skipfsck; then
+            if [ "0" != "${_passno:-0}" ]; then
+                fsck_usr "$_dev" "$_fs" "$_opts"
+                _fsck_ret=$?
+                [ $_fsck_ret -ne 255 ] && echo $_fsck_ret >/run/initramfs/usr-fsck
+            fi
         fi
-        _ret=$?
-        echo $_ret >/run/initramfs/usr-fsck
-        if [ $_ret -ne 255 ]; then
-            info "Mounting /usr"
-            mount "$NEWROOT/usr" 2>&1 | vinfo
+
+        info "Mounting /usr with -o $_opts"
+        mount "$NEWROOT/usr" 2>&1 | vinfo
+
+        if ! ismounted "$NEWROOT/usr"; then
+            warn "Mounting /usr to $NEWROOT/usr failed"
+            warn "*** Dropping you to a shell; the system will continue"
+            warn "*** when you leave the shell."
+            emergency_shell
         fi
     fi
 }

@@ -43,8 +43,10 @@ installkernel() {
 }
 
 install() {
-    dracut_install mdadm partx cat
+    dracut_install cat
     dracut_install -o mdmon
+    inst $(command -v partx) /sbin/partx
+    inst $(command -v mdadm) /sbin/mdadm
 
      # XXX: mdmon really needs to run as non-root?
      #      If so, write only the user it needs in the initrd's /etc/passwd (and maybe /etc/group)
@@ -64,10 +66,10 @@ install() {
     inst_rules "$moddir/65-md-incremental-imsm.rules"
 
     # guard against pre-3.0 mdadm versions, that can't handle containers
-    if ! mdadm -Q -e imsm /dev/null &> /dev/null; then
+    if ! mdadm -Q -e imsm /dev/null >/dev/null 2>&1; then
         inst_hook pre-trigger 30 "$moddir/md-noimsm.sh"
     fi
-    if ! mdadm -Q -e ddf /dev/null &> /dev/null; then
+    if ! mdadm -Q -e ddf /dev/null >/dev/null 2>&1; then
         inst_hook pre-trigger 30 "$moddir/md-noddf.sh"
     fi
 
@@ -82,8 +84,12 @@ install() {
     inst_hook pre-udev 30 "$moddir/mdmon-pre-udev.sh"
     inst_hook pre-trigger 30 "$moddir/parse-md.sh"
     inst_hook pre-mount 10 "$moddir/mdraid-waitclean.sh"
+    inst_hook cleanup 99 "$moddir/mdraid-needshutdown.sh"
     inst_hook shutdown 30 "$moddir/md-shutdown.sh"
     inst_script "$moddir/mdraid-cleanup.sh" /sbin/mdraid-cleanup
     inst_script "$moddir/mdraid_start.sh" /sbin/mdraid_start
+    if [ -e /lib/systemd/system/mdmon-offroot@.service ]; then
+        inst_simple /lib/systemd/system/mdmon-offroot@.service
+    fi
+    inst_hook pre-shutdown 30 "$moddir/mdmon-pre-shutdown.sh"
 }
-

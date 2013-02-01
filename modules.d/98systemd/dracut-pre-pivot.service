@@ -8,16 +8,16 @@
 # See systemd.special(7) for details
 
 [Unit]
-Description=Dracut pre-pivot and cleanup hook
+Description=dracut pre-pivot and cleanup hook
+Documentation=man:dracut-pre-pivot.service(8)
 DefaultDependencies=no
-Before=initrd-switch-root.service
+After=dracut-initqueue.service
 ConditionPathExists=/etc/initrd-release
 
 [Service]
-Environment=HOME=/
-WorkingDirectory=/
-ExecStart=-/bin/dracut-pre-pivot
 Type=oneshot
+ExecStart=-/bin/dracut-pre-pivot
+ExecStopPost=-/usr/bin/systemctl --no-block isolate initrd-switch-root.target
 StandardInput=null
 StandardOutput=syslog
 StandardError=syslog+console

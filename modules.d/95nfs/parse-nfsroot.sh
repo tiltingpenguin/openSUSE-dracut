@@ -72,7 +72,7 @@ esac
 
 # Check required arguments
 
-if nfsdomain=$(getarg rd.nfs.domain rd_NFS_DOMAIN); then
+if nfsdomain=$(getarg rd.nfs.domain -d rd_NFS_DOMAIN); then
     if [ -f /etc/idmapd.conf ]; then
         sed -i -e \
             "s/^[[:space:]#]*Domain[[:space:]]*=.*/Domain = $nfsdomain/g" \
@@ -87,13 +87,6 @@ nfsroot_to_var $netroot
 
 # Set fstype, might help somewhere
 fstype=${nfs#/dev/}
-
-# NFS actually supported? Some more uglyness here: nfs3 or nfs4 might not
-# be in the module...
-if ! incol2 /proc/filesystems $fstype ; then
-    modprobe nfs
-    incol2 /proc/filesystems $fstype || die "nfsroot type $fstype requested but kernel/initrd does not support nfs"
-fi
 
 # Rewrite root so we don't have to parse this uglyness later on again
 netroot="$fstype:$server:$path:$options"

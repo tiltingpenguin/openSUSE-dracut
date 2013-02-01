@@ -4,7 +4,7 @@ for x in 64-lvm.rules 70-mdadm.rules 99-mount-rules; do
     > "/etc/udev/rules.d/$x"
 done
 rm /etc/lvm/lvm.conf
-udevadm control --reload-rules
+udevadm control --reload
 echo -n test >keyfile
 cryptsetup -q luksFormat /dev/sdb /keyfile
 echo "The passphrase is test"
@@ -18,11 +18,13 @@ mke2fs -j /dev/dracut/root && \
 mkdir -p /sysroot && \
 mount /dev/dracut/root /sysroot && \
 cp -a -t /sysroot /source/* && \
-umount /sysroot && \
-sleep 1 && \
-lvm lvchange -a n /dev/dracut/root && \
-sleep 1 && \
-cryptsetup luksClose /dev/mapper/dracut_crypt_test && \
-sleep 1 && \
-echo "dracut-root-block-created" >/dev/sda
+umount /sysroot
+sleep 1
+lvm lvchange -a n /dev/dracut/root
+udevadm settle
+cryptsetup luksClose /dev/mapper/dracut_crypt_test
+udevadm settle
+sleep 1
+eval $(udevadm info --query=env --name=/dev/sdb|while read line; do [ "$line" != "${line#*ID_FS_UUID*}" ] && echo $line; done;)
+{ echo "dracut-root-block-created"; echo "ID_FS_UUID=$ID_FS_UUID"; } >/dev/sda
 poweroff -f

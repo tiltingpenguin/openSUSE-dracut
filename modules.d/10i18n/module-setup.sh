@@ -31,7 +31,7 @@ install() {
             *) cmd=grep ;;
         esac
 
-        for INCL in $($cmd "^include " $MAP | while read a a b; do echo ${a/\"/}; done); do
+        for INCL in $($cmd "^include " $MAP | while read a a b; do echo ${a//\"/}; done); do
             for FN in $(find ${kbddir}/keymaps -type f -name $INCL\*); do
                 findkeymap $FN
             done
@@ -74,9 +74,11 @@ install() {
             for map in ${item[1]//,/ }
             do
                 map=(${map//-/ })
-                value=$(grep "^${map[0]}=" "${item[0]}")
-                value=${value#*=}
-                echo "${map[1]:-${map[0]}}=${value}"
+                if [[ -f "${item[0]}" ]]; then
+                    value=$(grep "^${map[0]}=" "${item[0]}")
+                    value=${value#*=}
+                    echo "${map[1]:-${map[0]}}=${value}"
+                fi
             done
         done
     }
@@ -94,7 +96,7 @@ install() {
 
         for _src in $(eval echo ${kbddir}/{${KBDSUBDIRS}}); do
             inst_dir "$_src"
-            cp --reflink=auto --sparse=auto -prfL -t "${initdir}/${_src%/*}" "$_src"
+            cp --reflink=auto --sparse=auto -prfL -t "${initdir}/${_src}" "$_src"/*
         done
 
         # remove unnecessary files
@@ -155,9 +157,10 @@ install() {
         EXT_KEYMAPS+=\ ${UNIKEYMAP}\ ${GRP_TOGGLE}
 
         [[ ${KEYMAP} ]] || {
-            derror 'No KEYMAP.'
+            dinfo 'No KEYMAP configured.'
             return 1
         }
+
         findkeymap ${KEYMAP}
 
         for map in ${EXT_KEYMAPS}
@@ -170,7 +173,7 @@ install() {
 
         inst_opt_decompress ${kbddir}/consolefonts/${DEFAULT_FONT}.*
 
-        if [[ ${FONT} ]]
+        if [[ ${FONT} ]] && [[ ${FONT} != ${DEFAULT_FONT} ]]
         then
             FONT=${FONT%.psf*}
             inst_opt_decompress ${kbddir}/consolefonts/${FONT}.*

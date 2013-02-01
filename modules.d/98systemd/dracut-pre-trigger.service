@@ -8,18 +8,17 @@
 # See systemd.special(7) for details
 
 [Unit]
-Description=Dracut pre-trigger hook
+Description=dracut pre-trigger hook
+Documentation=man:dracut-pre-trigger.service(8)
 DefaultDependencies=no
 Before=systemd-udev-trigger.service dracut-initqueue.service
-After=dracut-pre-udev.service systemd-udev.service
-Wants=dracut-pre-udev.service systemd-udev.service
+After=dracut-pre-udev.service systemd-udevd.service
+Wants=dracut-pre-udev.service systemd-udevd.service
 ConditionPathExists=/etc/initrd-release
 
 [Service]
-Environment=HOME=/
-WorkingDirectory=/
-ExecStart=-/bin/dracut-pre-trigger
 Type=oneshot
+ExecStart=-/bin/dracut-pre-trigger
 StandardInput=null
 StandardOutput=syslog
 StandardError=syslog+console

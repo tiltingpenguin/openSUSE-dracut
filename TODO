@@ -6,14 +6,21 @@ Items are ordered in priority.
 
 INITRAMFS TODO
 
-- fix btrfs subvolume mounting for /usr (fsck)
+- use info and warn prefix
+- add sosreport
 - generate systemd unit dracut-initramfs-restore in /run/systemd dynamically
 - put "root=" parsing hooks in separate hook dir
 - call "root=" parsing hooks after getting new rootpath from dhcp
-- put mount hook in main initqueue loop
+- put mount hook in main initqueue loop / careful about resume!
 - the hard-coded list of udev rules that we care about is kind of lame.
-- automatic kexec fallback
 - panic fallback
+- bridging/bonding without "netroot=" https://bugzilla.redhat.com/show_bug.cgi?id=822750
+- progress indication for fsck https://bugzilla.redhat.com/show_bug.cgi?id=827118
+- domain, searchdomain https://bugzilla.redhat.com/show_bug.cgi?id=840778
+- disable write-ifcfg https://bugzilla.redhat.com/show_bug.cgi?id=840784
+- check for /var to be mounted in convertfs https://bugzilla.redhat.com/show_bug.cgi?id=848172
+- probably fix "--include" https://bugzilla.redhat.com/show_bug.cgi?id=849338
+- iscsi livecd boot
 
 GENERATOR TODO
 
@@ -33,5 +40,5 @@ CODE TODO
 Future Enhancement Requests
 
 - run ssh server to enter crypto password or perform debugging (supported by debian)
-- https://bugzilla.redhat.com/show_bug.cgi?id=524727 - Dracut + encrypted root + networking
+- https://bugzilla.redhat.com/show_bug.cgi?id=524727 - dracut + encrypted root + networking
 
