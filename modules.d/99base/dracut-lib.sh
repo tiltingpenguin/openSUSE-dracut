@@ -43,6 +43,20 @@ str_replace() {
     echo "${out}${in}"
 }
 
+killall_proc_mountpoint() {
+    local _pid
+    local _t
+    for _pid in /proc/*; do
+        _pid=${_pid##/proc/}
+        case $_pid in
+            *[!0-9]*) continue;;
+        esac
+        [ -e /proc/$_pid/exe ] || continue
+        [ -e /proc/$_pid/root ] || continue
+        strstr "$(ls -l /proc/$_pid /proc/$_pid/fd 2>/dev/null)" "$1" && kill -9 $_pid
+    done
+}
+
 _getcmdline() {
     local _line
     local _i
@@ -165,6 +179,35 @@ getargbool() {
         [ $_b = "off" ] && return 1
     fi
     return 0
+}
+
+isdigit() {
+    case "$1" in
+        *[!0-9]*|"") return 1;;
+    esac
+
+    return 0
+}
+
+# getargnum <defaultval> <minval> <maxval> <arg>
+# Will echo the arg if it's in range [minval - maxval].
+# If it's not set or it's not valid, will set it <defaultval>.
+# Note all values are required to be >= 0 here.
+# <defaultval> should be with [minval -maxval].
+getargnum() {
+    local _b
+    unset _b
+    local _default _min _max
+    _default=$1; shift
+    _min=$1; shift
+    _max=$1; shift
+    _b=$(getarg "$1")
+    [ $? -ne 0 -a -z "$_b" ] && _b=$_default
+    if [ -n "$_b" ]; then
+        isdigit "$_b" && _b=$(($_b)) && \
+        [ $_b -ge $_min ] && [ $_b -le $_max ] && echo $_b && return
+    fi
+    echo $_default
 }
 
 _dogetargs() {
@@ -480,29 +523,6 @@ else
         return 1
     }
 fi
-
-wait_for_if_up() {
-    local cnt=0
-    local li
-    while [ $cnt -lt 200 ]; do
-        li=$(ip -o link show up dev $1)
-        [ -n "$li" ] && return 0
-        sleep 0.1
-        cnt=$(($cnt+1))
-    done
-    return 1
-}
-
-wait_for_route_ok() {
-    local cnt=0
-    while [ $cnt -lt 200 ]; do
-        li=$(ip route show)
-        [ -n "$li" ] && [ -z "${li##*$1*}" ] && return 0
-        sleep 0.1
-        cnt=$(($cnt+1))
-    done
-    return 1
-}
 
 # root=nfs:[<server-ip>:]<root-dir>[:<nfs-options>]
 # root=nfs4:[<server-ip>:]<root-dir>[:<nfs-options>]
@@ -920,6 +940,11 @@ emergency_shell()
         shift 2
     elif [ "$1" = "--shutdown" ]; then
         _rdshell_name=$2; action="Shutdown"; hook="shutdown-emergency"
+        if [ -x /bin/plymouth ]; then
+            /bin/plymouth --hide-splash
+        elif [ -x /oldroot/bin/plymouth ]; then
+            /oldroot/bin/plymouth --hide-splash
+        fi
         shift 2
     fi
 
@@ -987,4 +1012,99 @@ listlist() {
 # $4 = ignore values, separated by $1
 are_lists_eq() {
     listlist "$1" "$2" "$3" "$4" && listlist "$1" "$3" "$2" "$4"
+}
+
+setmemdebug() {
+    if [ -z "$DEBUG_MEM_LEVEL" ]; then
+        export DEBUG_MEM_LEVEL=$(getargnum 0 0 3 rd.memdebug)
+    fi
+}
+
+setmemdebug
+
+# parameters: msg [trace_level:trace]...
+make_trace_mem()
+{
+    local msg
+    msg="$1"
+    shift
+    if [ -n "$DEBUG_MEM_LEVEL" ] && [ "$DEBUG_MEM_LEVEL" -gt 0 ]; then
+        make_trace show_memstats $DEBUG_MEM_LEVEL "[debug_mem]" "$msg" "$@"
+    fi
+}
+
+# parameters: func log_level prefix msg [trace_level:trace]...
+make_trace()
+{
+    local func log_level prefix msg msg_printed
+    local trace trace_level trace_in_higher_levels insert_trace
+
+    func=$1
+    shift
+
+    log_level=$1
+    shift
+
+    prefix=$1
+    shift
+
+    msg=$1
+    shift
+
+    if [ -z "$log_level" ]; then
+        return
+    fi
+
+    msg=$(echo $msg)
+
+    msg_printed=0
+    while [ $# -gt 0 ]; do
+        trace=${1%%:*}
+        trace_level=${trace%%+}
+        [ "$trace" != "$trace_level" ] && trace_in_higher_levels="yes"
+        trace=${1##*:}
+
+        if [ -z "$trace_level" ]; then
+            trace_level=0
+        fi
+
+        insert_trace=0
+        if [ -n "$trace_in_higher_levels" ]; then
+            if [ "$log_level" -ge "$trace_level" ]; then
+                insert_trace=1
+            fi
+        else
+            if [ "$log_level" -eq "$trace_level" ]; then
+                insert_trace=1
+            fi
+        fi
+
+        if [ $insert_trace -eq 1 ]; then
+            if [ $msg_printed -eq 0 ]; then
+                echo "$prefix $msg"
+                msg_printed=1
+            fi
+            $func $trace
+        fi
+        shift
+    done
+}
+
+# parameters: type
+show_memstats()
+{
+    case $1 in
+        shortmem)
+            cat /proc/meminfo  | grep -e "^MemFree" -e "^Cached" -e "^Slab"
+            ;;
+        mem)
+            cat /proc/meminfo
+            ;;
+        slab)
+            cat /proc/slabinfo
+            ;;
+        iomem)
+            cat /proc/iomem
+            ;;
+    esac
 }

@@ -134,7 +134,7 @@ Creates initial ramdisk images for preloading modules
   --mount "[DEV] [MP] [FSTYPE] [FSOPTS]"
                         Mount device [DEV] on mountpoint [MP] with filesystem
                         [FSTYPE] and options [FSOPTS] in the initramfs
-  --device "[DEV]"      Bring up [DEV] in initramfs
+  --add-device "[DEV]"  Bring up [DEV] in initramfs
   -i, --include [SOURCE] [TARGET]
                         Include the files in the SOURCE directory into the
                          Target directory in the final initramfs.
@@ -331,7 +331,8 @@ while :; do
         --fscks)       push fscks_l              "$2"; shift;;
         --add-fstab)   push add_fstab_l          "$2"; shift;;
         --mount)       push fstab_lines          "$2"; shift;;
-        --device)      push host_devs            "$2"; shift;;
+        --add-device|--device)
+                       push add_device_l         "$2"; shift;;
         --kernel-cmdline) push kernel_cmdline_l  "$2"; shift;;
         --nofscks)     nofscks_l="yes";;
         --ro-mnt)      ro_mnt_l="yes";;
@@ -734,6 +735,16 @@ for f in $add_fstab; do
     done < $f
 done
 
+if (( ${#add_device_l[@]} )); then
+    while pop add_device_l val; do
+        add_device+=" $val "
+    done
+fi
+
+for dev in $add_device; do
+    push host_devs $dev
+done
+
 if [[ $hostonly ]]; then
     # in hostonly mode, determine all devices, which have to be accessed
     # and examine them for filesystem types
@@ -755,18 +766,18 @@ if [[ $hostonly ]]; then
 fi
 
 _get_fs_type() (
-    [[ $1 ]] || return
+    [[ $1 ]] || return 1
     if [[ -b $1 ]] && get_fs_env $1; then
         echo "$(readlink -f $1)|$ID_FS_TYPE"
-        return 1
+        return 0
     fi
     if [[ -b /dev/block/$1 ]] && get_fs_env /dev/block/$1; then
         echo "$(readlink -f /dev/block/$1)|$ID_FS_TYPE"
-        return 1
+        return 0
     fi
     if fstype=$(find_dev_fstype $1); then
         echo "$1|$fstype"
-        return 1
+        return 0
     fi
     return 1
 )

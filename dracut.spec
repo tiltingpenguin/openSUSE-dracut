@@ -106,6 +106,8 @@ NFS, iSCSI, NBD, FCoE with the dracut-network package.
 %package network
 Summary: dracut modules to build a dracut initramfs with network support
 Requires: %{name} = %{version}-%{release}
+Requires: iputils
+Requires: iproute
 Obsoletes: dracut-generic < 008
 Provides:  dracut-generic = %{version}-%{release}
 
@@ -274,6 +276,7 @@ rm -rf $RPM_BUILD_ROOT
 %{dracutlibdir}/modules.d/10i18n
 %{dracutlibdir}/modules.d/30convertfs
 %{dracutlibdir}/modules.d/45url-lib
+%{dracutlibdir}/modules.d/50drm
 %{dracutlibdir}/modules.d/50plymouth
 %{dracutlibdir}/modules.d/80cms
 %{dracutlibdir}/modules.d/90btrfs
