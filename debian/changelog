@@ -1,3 +1,10 @@
+dracut (025+8+g19bab59) UNRELEASED; urgency=low
+
+  * new upstream 025+8+g19bab59
+  * remove patch kernelversion
+
+ -- Thomas Lange <lange@debian.org>  Wed, 06 Feb 2013 16:20:08 +0100
+
 dracut (020-2) unstable; urgency=low
 
   * use $kernel when calling modprobe: Closes: #685004
