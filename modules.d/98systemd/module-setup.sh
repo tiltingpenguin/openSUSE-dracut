@@ -30,6 +30,7 @@ install() {
         $systemdutildir/systemd-udevd \
         $systemdutildir/systemd-journald \
         $systemdutildir/systemd-sysctl \
+        $systemdutildir/systemd-modules-load \
         $systemdsystemunitdir/emergency.target \
         $systemdsystemunitdir/sysinit.target \
         $systemdsystemunitdir/basic.target \
@@ -57,12 +58,17 @@ install() {
         $systemdsystemunitdir/systemd-ask-password-plymouth.path \
         $systemdsystemunitdir/systemd-journald.socket \
         $systemdsystemunitdir/systemd-ask-password-console.service \
+        $systemdsystemunitdir/systemd-modules-load.service \
         $systemdsystemunitdir/emergency.service \
         $systemdsystemunitdir/halt.service \
+        $systemdsystemunitdir/systemd-halt.service \
         $systemdsystemunitdir/poweroff.service \
+        $systemdsystemunitdir/systemd-poweroff.service \
         $systemdsystemunitdir/systemd-reboot.service \
         $systemdsystemunitdir/kexec.service \
+        $systemdsystemunitdir/systemd-kexec.service \
         $systemdsystemunitdir/fsck@.service \
+        $systemdsystemunitdir/systemd-fsck@.service \
         $systemdsystemunitdir/systemd-udevd.service \
         $systemdsystemunitdir/systemd-udev-trigger.service \
         $systemdsystemunitdir/systemd-udev-settle.service \
@@ -71,15 +77,14 @@ install() {
         $systemdsystemunitdir/systemd-vconsole-setup.service \
         $systemdsystemunitdir/sysinit.target.wants/systemd-modules-load.service \
         $systemdsystemunitdir/sysinit.target.wants/systemd-ask-password-console.path \
-        $systemdsystemunitdir/sysinit.target.wants/systemd-vconsole-setup.service \
         $systemdsystemunitdir/sysinit.target.wants/systemd-journald.service \
         $systemdsystemunitdir/sockets.target.wants/systemd-udevd-control.socket \
         $systemdsystemunitdir/sockets.target.wants/systemd-udevd-kernel.socket \
         $systemdsystemunitdir/sockets.target.wants/systemd-journald.socket \
         $systemdsystemunitdir/sysinit.target.wants/systemd-udevd.service \
         $systemdsystemunitdir/sysinit.target.wants/systemd-udev-trigger.service \
+\
         $systemdsystemunitdir/ctrl-alt-del.target \
-        $systemdsystemunitdir/single.service \
         $systemdsystemunitdir/syslog.socket \
         $systemdsystemunitdir/syslog.target \
         $systemdsystemunitdir/initrd-switch-root.target \
@@ -87,13 +92,20 @@ install() {
         $systemdsystemunitdir/umount.target \
         journalctl systemctl echo swapoff
 
+    dracut_install -o \
+        /usr/lib/modules-load.d/*.conf
+
     if [[ $hostonly ]]; then
-        dracut_install -o /etc/systemd/journald.conf \
+        dracut_install -o \
+            /etc/systemd/journald.conf \
             /etc/systemd/system.conf \
             /etc/hostname \
             /etc/machine-id \
             /etc/vconsole.conf \
             /etc/locale.conf
+
+        dracut_install -o \
+            /etc/modules-load.d/*.conf
     else
         if ! [[ -e "$initdir/etc/machine-id" ]]; then
             > "$initdir/etc/machine-id"
@@ -106,6 +118,7 @@ install() {
     egrep '^adm:' /etc/group >> "$initdir/etc/group"
 
     ln -fs $systemdutildir/systemd "$initdir/init"
+    ln -fs $systemdutildir/systemd "$initdir/sbin/init"
 
     inst_simple "$moddir/dracut-emergency.service" ${systemdsystemunitdir}/dracut-emergency.service
     inst_simple "$moddir/rescue.service" ${systemdsystemunitdir}/rescue.service
@@ -145,6 +158,19 @@ install() {
 
     inst_script "$moddir/service-to-run.sh" "${systemdutildir}/system-generators/service-to-run"
     inst_rules 99-systemd.rules
+
+
+    for i in \
+        emergency.target \
+        dracut-emergency.service \
+        rescue.service \
+        systemd-ask-password-console.service \
+        systemd-ask-password-plymouth.service \
+        ; do
+        mkdir -p "${initdir}${dracutsystemunitdir}/${i}.requires"
+        ln_r "${systemdsystemunitdir}/systemd-vconsole-setup.service" \
+            "${dracutsystemunitdir}/${i}.requires/systemd-vconsole-setup.service"
+    done
 
     # turn off RateLimit for journal
     {

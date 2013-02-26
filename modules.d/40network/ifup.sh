@@ -17,6 +17,8 @@ type ip_to_var >/dev/null 2>&1 || . /lib/net-lib.sh
 
 # $netif reads easier than $1
 netif=$1
+use_bridge='false'
+use_vlan='false'
 
 # enslave this interface to bond?
 if [ -e /tmp/bond.info ]; then
@@ -46,6 +48,7 @@ if [ -e /tmp/bridge.info ]; then
                 : # We need to really setup bond (recursive call)
             else
                 netif="$bridgename"
+                use_bridge='true'
             fi
         fi
     done
@@ -58,6 +61,7 @@ if [ -e /tmp/vlan.info ]; then
             : # We need to really setup bond (recursive call)
         else
             netif="$vlanname"
+            use_vlan='true'
         fi
     fi
 fi
@@ -109,10 +113,10 @@ do_static() {
     [ -n "$mtu" ] && ip link set mtu $mtu dev $netif
     if strstr $ip '*:*:*'; then
         # note no ip addr flush for ipv6
-        ip addr add $ip/$mask dev $netif
+        ip addr add $ip/$mask ${srv+peer $srv} dev $netif
     else
         ip addr flush dev $netif
-        ip addr add $ip/$mask brd + dev $netif
+        ip addr add $ip/$mask ${srv+peer $srv} brd + dev $netif
     fi
 
     [ -n "$gw" ] && echo ip route add default via $gw dev $netif > /tmp/net.$netif.gw
@@ -219,10 +223,10 @@ fi
 get_vid() {
     case "$1" in
     vlan*)
-        return ${1#vlan}
+        echo ${1#vlan}
         ;;
     *.*)
-        return ${1##*.}
+        echo ${1##*.}
         ;;
     esac
 }
@@ -234,7 +238,7 @@ if [ "$netif" = "$vlanname" ] && [ ! -e /tmp/net.$vlanname.up ]; then
     else
         linkup "$phydevice"
     fi
-    ip link add dev "$vlanname" link "$phydevice" type vlan id "$(get_vid $vlanname; echo $?)"
+    ip link add dev "$vlanname" link "$phydevice" type vlan id "$(get_vid $vlanname)"
 fi
 
 # setup nameserver
@@ -256,6 +260,7 @@ if [ -z "$ip" ]; then
     fi
 fi
 
+
 # Specific configuration, spin through the kernel command line
 # looking for ip= lines
 for p in $(getargs ip=); do
@@ -264,7 +269,9 @@ for p in $(getargs ip=); do
     [ "$autoconf" = "ibft" ] && continue
 
     # If this option isn't directed at our interface, skip it
-    [ -n "$dev" ] && [ "$dev" != "$netif" ] && continue
+    [ -n "$dev" ] && [ "$dev" != "$netif" ] && \
+    [ "$use_bridge" != 'true' ] && \
+    [ "$use_vlan" != 'true' ] && continue
 
     # Store config for later use
     for i in ip srv gw mask hostname macaddr; do
