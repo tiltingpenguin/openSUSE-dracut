@@ -24,9 +24,6 @@ netif=$1
 # handlers when this is not called from manually network bringing up.
 if [ -z "$2" ]; then
     if [ "$netroot" = "dhcp" ] || [ "$netroot" = "dhcp6" ] ; then
-        # Unset root so we can check later
-        unset root
-
         # Load dhcp options
         [ -e /tmp/dhclient.$netif.dhcpopts ] && . /tmp/dhclient.$netif.dhcpopts
 
@@ -67,6 +64,7 @@ source_hook netroot $netif
 # Run the handler; don't store the root, it may change from device to device
 # XXX other variables to export?
 if $handler $netif $netroot $NEWROOT; then
+    rm -f $hookdir/initqueue/finished/dhcp.sh
     # Network rootfs mount successful - save interface info for ifcfg etc.
     save_netinfo $netif
 fi

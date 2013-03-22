@@ -10,6 +10,7 @@
 
 type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
 type parse_iscsi_root >/dev/null 2>&1 || . /lib/net-lib.sh
+type write_fs_tab >/dev/null 2>&1 || . /lib/fs-lib.sh
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -43,6 +44,8 @@ if getargbool 0 rd.iscsi.firmware -d -y iscsi_firmware ; then
         # if root is not specified try to mount the whole iSCSI LUN
         printf 'ENV{DEVTYPE}!="partition", SYMLINK=="disk/by-path/*-iscsi-*-*", SYMLINK+="root"\n' >> /etc/udev/rules.d/99-iscsi-root.rules
         udevadm control --reload
+        write_fs_tab /dev/root
+        wait_for_dev /dev/root
     fi
 
     for p in $(getargs rd.iscsi.param -d iscsi_param); do
@@ -50,6 +53,8 @@ if getargbool 0 rd.iscsi.firmware -d -y iscsi_firmware ; then
     done
 
     iscsistart -b $iscsi_param
+    echo 'started' > "/tmp/iscsistarted-iscsi"
+    echo 'started' > "/tmp/iscsistarted-firmware"
     exit 0
 fi
 
@@ -136,13 +141,13 @@ handle_netroot()
         # if root is not specified try to mount the whole iSCSI LUN
         printf 'SYMLINK=="disk/by-path/*-iscsi-*-%s", SYMLINK+="root"\n' $iscsi_lun >> /etc/udev/rules.d/99-iscsi-root.rules
         udevadm control --reload
+        write_fs_tab /dev/root
+        wait_for_dev /dev/root
 
         # install mount script
-        echo "iscsi_lun=$iscsi_lun . /bin/mount-lun.sh " > $hookdir/mount/01-$$-iscsi.sh
+        [ -z "$DRACUT_SYSTEMD" ] && \
+            echo "iscsi_lun=$iscsi_lun . /bin/mount-lun.sh " > $hookdir/mount/01-$$-iscsi.sh
     fi
-
-    # inject new exit_if_exists
-    echo 'settle_exit_if_exists="--exit-if-exists=/dev/root"; rm "$job"' > $hookdir/initqueue/iscsi-settle.sh
 
     # force udevsettle to break
     > $hookdir/initqueue/work
@@ -158,6 +163,10 @@ handle_netroot()
 	${iscsi_netdev_name+--param iface.net_ifacename=$iscsi_netdev_name} \
         ${iscsi_param} \
 	|| :
+
+    netroot_enc=$(str_replace "$1" '/' '\2f')
+    echo 'started' > "/tmp/iscsistarted-iscsi:${netroot_enc}"
+
 }
 
 # loop over all netroot parameter

@@ -9,9 +9,9 @@ check() {
 
     [[ $hostonly ]] || [[ $mount_needs ]] && {
         for fs in ${host_fs_types[@]}; do
-            strstr "$fs" "\|nfs"  && return 0
-            strstr "$fs" "\|nfs3" && return 0
-            strstr "$fs" "\|nfs4" && return 0
+            [[ "$fs" == "nfs" ]] && return 0
+            [[ "$fs" == "nfs3" ]] && return 0
+            [[ "$fs" == "nfs4" ]] && return 0
         done
         return 255
     }
@@ -75,5 +75,6 @@ install() {
     egrep -q '^rpc:' /etc/passwd \
         && egrep -q '^rpc:' /etc/group \
         && chown rpc.rpc "$initdir/var/lib/rpcbind"
+    dracut_need_initqueue
 }
 

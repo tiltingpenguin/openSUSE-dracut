@@ -1,4 +1,4 @@
-VERSION=025
+VERSION=026
 GITVERSION=$(shell [ -d .git ] && git rev-list  --abbrev-commit  -n 1 HEAD  |cut -b 1-8)
 
 -include Makefile.inc
@@ -11,23 +11,26 @@ sysconfdir ?= ${prefix}/etc
 bindir ?= ${prefix}/bin
 mandir ?= ${prefix}/share/man
 CFLAGS ?= -O2 -g -Wall
-CFLAGS += -std=gnu99
+CFLAGS += -std=gnu99  -D_FILE_OFFSET_BITS=64
+bashcompletiondir ?= ${datadir}/bash-completion/completions
 
 man1pages = lsinitrd.1
 
 man5pages = dracut.conf.5
 
-man7pages = dracut.cmdline.7
+man7pages = dracut.cmdline.7 \
+            dracut.bootup.7
 
 man8pages = dracut.8 \
             dracut-catimages.8 \
             mkinitrd.8 \
             modules.d/98systemd/dracut-cmdline.service.8 \
             modules.d/98systemd/dracut-initqueue.service.8 \
+            modules.d/98systemd/dracut-mount.service.8 \
+            modules.d/98systemd/dracut-pre-mount.service.8 \
             modules.d/98systemd/dracut-pre-pivot.service.8 \
             modules.d/98systemd/dracut-pre-trigger.service.8 \
             modules.d/98systemd/dracut-pre-udev.service.8 \
-            modules.d/98systemd/initrd-switch-root.service.8 \
             modules.d/98systemd/udevadm-cleanup-db.service.8
 
 manpages = $(man1pages) $(man5pages) $(man7pages) $(man8pages)
@@ -115,6 +118,11 @@ endif
 	if [ -f install/dracut-install ]; then \
 		install -m 0755 install/dracut-install $(DESTDIR)$(pkglibdir)/dracut-install; \
 	fi
+	mkdir -p $(DESTDIR)${prefix}/lib/kernel/install.d
+	install -m 0755 50-dracut.install $(DESTDIR)${prefix}/lib/kernel/install.d/50-dracut.install
+	install -m 0755 51-dracut-rescue.install $(DESTDIR)${prefix}/lib/kernel/install.d/51-dracut-rescue.install
+	mkdir -p $(DESTDIR)${bashcompletiondir}
+	install -m 0644 dracut-bash-completion.sh $(DESTDIR)${bashcompletiondir}/dracut
 
 dracut-version.sh:
 	@echo "DRACUT_VERSION=$(VERSION)-$(GITVERSION)" > dracut-version.sh

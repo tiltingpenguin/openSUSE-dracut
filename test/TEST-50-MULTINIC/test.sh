@@ -17,14 +17,14 @@ run_server() {
     fsck -a $TESTDIR/server.ext3 || return 1
     $testdir/run-qemu \
         -hda $TESTDIR/server.ext3 \
-        -m 512M \
+        -m 512M -smp 2 \
         -nographic \
         -netdev socket,mcast=230.0.0.1:12320,id=net0 \
         -net nic,macaddr=52:54:01:12:34:56,model=e1000,netdev=net0 \
         -serial $SERIAL \
         -watchdog i6300esb -watchdog-action poweroff \
         -kernel /boot/vmlinuz-$KVERSION \
-        -append "rd.debug loglevel=77 root=/dev/sda rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0" \
+        -append "loglevel=77 root=/dev/sda rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0" \
         -initrd $TESTDIR/initramfs.server \
         -pidfile $TESTDIR/server.pid -daemonize || return 1
     sudo chmod 644 $TESTDIR/server.pid || return 1
@@ -52,7 +52,7 @@ client_test() {
         return 1
     fi
 
-    $testdir/run-qemu -hda $TESTDIR/client.img -m 512M -nographic \
+    $testdir/run-qemu -hda $TESTDIR/client.img -m 512M -smp 2 -nographic \
         -netdev socket,mcast=230.0.0.1:12320,id=net0 \
         -net nic,netdev=net0,macaddr=52:54:00:12:34:$mac1,model=e1000 \
         -netdev socket,mcast=230.0.0.1:12320,id=net1 \
@@ -61,7 +61,7 @@ client_test() {
         -net nic,netdev=net2,macaddr=52:54:00:12:34:$mac3,model=e1000 \
         -watchdog i6300esb -watchdog-action poweroff \
         -kernel /boot/vmlinuz-$KVERSION \
-        -append "$cmdline $DEBUGFAIL rd.retry=5 rd.debug rd.info  ro rd.systemd.log_level=debug console=ttyS0,115200n81 selinux=0 rd.copystate rd.chroot init=/sbin/init" \
+        -append "$cmdline $DEBUGFAIL rd.retry=5 rd.info  ro rd.systemd.log_level=debug console=ttyS0,115200n81 selinux=0 rd.copystate rd.chroot init=/sbin/init" \
         -initrd $TESTDIR/initramfs.testing
 
     if [[ $? -ne 0 ]] || ! grep -m 1 -q OK $TESTDIR/client.img; then

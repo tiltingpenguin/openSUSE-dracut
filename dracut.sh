@@ -7,7 +7,7 @@
 # of the various mkinitrd implementations out there
 #
 
-# Copyright 2005-2010 Red Hat, Inc.  All rights reserved.
+# Copyright 2005-2013 Red Hat, Inc.  All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -69,11 +69,11 @@ Creates initial ramdisk images for preloading modules
 
   --kver [VERSION]      Set kernel version to [VERSION].
   -f, --force           Overwrite existing initramfs file.
+  -a, --add [LIST]      Add a space-separated list of dracut modules.
   -m, --modules [LIST]  Specify a space-separated list of dracut modules to
                          call when building the initramfs. Modules are located
                          in /usr/lib/dracut/modules.d.
   -o, --omit [LIST]     Omit a space-separated list of dracut modules.
-  -a, --add [LIST]      Add a space-separated list of dracut modules.
   -d, --drivers [LIST]  Specify a space-separated list of kernel modules to
                         exclusively include in the initramfs.
   --add-drivers [LIST] Specify a space-separated list of kernel
@@ -90,12 +90,12 @@ Creates initial ramdisk images for preloading modules
   --kernel-only         Only install kernel drivers and firmware files
   --no-kernel           Do not install kernel drivers and firmware files
   --kernel-cmdline [PARAMETERS] Specify default kernel command line parameters
-  --strip               Strip binaries in the initramfs (default)
+  --strip               Strip binaries in the initramfs
   --nostrip             Do not strip binaries in the initramfs
-  --hardlink            Hardlink files in the initramfs (default)
+  --hardlink            Hardlink files in the initramfs
   --nohardlink          Do not hardlink files in the initramfs
   --prefix [DIR]        Prefix initramfs files with [DIR]
-  --noprefix            Do not prefix initramfs files (default)
+  --noprefix            Do not prefix initramfs files
   --mdadmconf           Include local /etc/mdadm.conf
   --nomdadmconf         Do not include local /etc/mdadm.conf
   --lvmconf             Include local /etc/lvm/lvm.conf
@@ -111,11 +111,11 @@ Creates initial ramdisk images for preloading modules
                          1 - only fatal errors
                          2 - all errors
                          3 - warnings
-                         4 - info (default)
+                         4 - info
                          5 - debug info (here starts lots of output)
                          6 - trace info (and even more)
-  -v, --verbose         Increase verbosity level (default is info(4))
-  -q, --quiet           Decrease verbosity level (default is info(4))
+  -v, --verbose         Increase verbosity level
+  -q, --quiet           Decrease verbosity level
   -c, --conf [FILE]     Specify configuration file to use.
                          Default: /etc/dracut.conf
   --confdir [DIR]       Specify configuration directory to use *.conf files
@@ -236,7 +236,7 @@ read_arg() {
 }
 
 
-source_dirs_prio()
+dropindirs_sort()
 {
     suffix=$1; shift
     args=("$@")
@@ -329,6 +329,8 @@ TEMP=$(unset POSIXLY_CORRECT; getopt \
     --long show-modules \
     --long keep \
     --long printsize \
+    --long regenerate-all \
+    --long noimageifnotneeded \
     -- "$@")
 
 if (( $? != 0 )); then
@@ -406,6 +408,8 @@ while :; do
                        ;;
         --keep)        keep="yes";;
         --printsize)   printsize="yes";;
+        --regenerate-all) regenerate_all="yes";;
+        --noimageifnotneeded) noimageifnotneeded="yes";;
 
         --) shift; break;;
 
@@ -437,12 +441,45 @@ while (($# > 0)); do
     shift
 done
 
+if [[ $regenerate_all == "yes" ]]; then
+    ret=0
+    if [[ $kernel ]]; then
+        echo "--regenerate-all cannot be called with a kernel version" >&2
+        exit 1
+    fi
+
+    if [[ $outfile ]]; then
+        echo "--regenerate-all cannot be called with a image file" >&2
+        exit 1
+    fi
+
+    ((len=${#dracut_args[@]}))
+    for ((i=0; i < len; i++)); do
+        [[ ${dracut_args[$i]} == "--regenerate-all" ]] && \
+            unset dracut_args[$i]
+    done
+
+    cd /lib/modules
+    for i in *; do
+        [[ -f $i/modules.builtin ]] || continue
+        dracut --kver=$i "${dracut_args[@]}"
+        ((ret+=$?))
+    done
+    exit $ret
+fi
+
 if ! [[ $kernel ]]; then
     kernel=$(uname -r)
 fi
 
 if ! [[ $outfile ]]; then
-    outfile="/boot/initramfs-$kernel.img"
+    [[ -f /etc/machine-id ]] && read MACHINE_ID < /etc/machine-id
+
+    if [[ $MACHINE_ID ]] && ( [[ -d /boot/${MACHINE_ID} ]] || [[ -L /boot/${MACHINE_ID} ]] ); then
+        outfile="/boot/${MACHINE_ID}/$kernel/initrd"
+    else
+        outfile="/boot/initramfs-$kernel.img"
+    fi
 fi
 
 for i in /usr/sbin /sbin /usr/bin /bin; do
@@ -489,7 +526,7 @@ fi
 [[ -f $conffile ]] && . "$conffile"
 
 # source our config dir
-for f in $(source_dirs_prio ".conf" "$confdir" "$dracutbasedir/dracut.conf.d"); do
+for f in $(dropindirs_sort ".conf" "$confdir" "$dracutbasedir/dracut.conf.d"); do
     [[ -e $f ]] && . "$f"
 done
 
@@ -617,6 +654,11 @@ readonly initdir=$(mktemp --tmpdir="$TMPDIR/" -d -t initramfs.XXXXXX)
     exit 1
 }
 
+# clean up after ourselves no matter how we die.
+trap 'ret=$?;[[ $outfile ]] && [[ -f $outfile.$$ ]] && rm -f "$outfile.$$";[[ $keep ]] && echo "Not removing $initdir." >&2 || { [[ $initdir ]] && rm -rf "$initdir";exit $ret; };' EXIT
+# clean up after ourselves no matter how we die.
+trap 'exit 1;' SIGINT
+
 export DRACUT_KERNEL_LAZY="1"
 export DRACUT_RESOLVE_LAZY="1"
 
@@ -726,7 +768,7 @@ outdir=${outfile%/*}
 [[ $outdir ]] || outdir="/"
 
 if [[ ! -d "$outdir" ]]; then
-    dfatal "Can't write $outfile: Directory $outdir does not exist."
+    dfatal "Can't write to $outdir: Directory $outdir does not exist or is not accessible."
     exit 1
 elif [[ ! -w "$outdir" ]]; then
     dfatal "No permission to write to $outdir."
@@ -736,19 +778,29 @@ elif [[ -f "$outfile" && ! -w "$outfile" ]]; then
     exit 1
 fi
 
-# clean up after ourselves no matter how we die.
-trap 'ret=$?;[[ $keep ]] && echo "Not removing $initdir." >&2 || rm -rf "$initdir";exit $ret;' EXIT
-# clean up after ourselves no matter how we die.
-trap 'exit 1;' SIGINT
-
 # Need to be able to have non-root users read stuff (rpcbind etc)
 chmod 755 "$initdir"
+
+if [[ $hostonly ]]; then
+    for i in /sys /proc /run /dev; do
+        if ! findmnt "$i" &>/dev/null; then
+            dwarning "Turning off host-only mode: '$i' is not mounted!"
+            unset hostonly
+        fi
+    done
+    if ! [[ -d /run/udev/data ]]; then
+        dwarning "Turning off host-only mode: udev database not found!"
+        unset hostonly
+    fi
+fi
+
+declare -A host_fs_types
 
 for line in "${fstab_lines[@]}"; do
     set -- $line
     #dev mp fs fsopts
     push host_devs "$1"
-    push host_fs_types "$1|$3"
+    host_fs_types["$1"]="$3"
 done
 
 for f in $add_fstab; do
@@ -786,33 +838,49 @@ if [[ $hostonly ]]; then
         mountpoint "$mp" >/dev/null 2>&1 || continue
         push host_devs $(readlink -f "/dev/block/$(find_block_device "$mp")")
     done
+
+    while read dev type rest; do
+        [[ -b $dev ]] || continue
+        [[ "$type" == "partition" ]] || continue
+        while read _d _m _t _o _r; do
+            [[ "$_d" == \#* ]] && continue
+            [[ $_d ]] || continue
+            [[ $_t != "swap" ]] || [[ $_m != "swap" ]] && continue
+            [[ "$_o" == *noauto* ]] && continue
+            [[ "$_d" == UUID\=* ]] && _d="/dev/disk/by-uuid/${_d#UUID=}"
+            [[ "$_d" == LABEL\=* ]] && _d="/dev/disk/by-label/$_d#LABEL=}"
+            [[ "$_d" -ef "$dev" ]] || continue
+            push host_devs $(readlink -f $dev)
+            break
+        done < /etc/fstab
+    done < /proc/swaps
+
 fi
 
 _get_fs_type() (
     [[ $1 ]] || return
     if [[ -b $1 ]] && get_fs_env $1; then
-        echo "$(readlink -f $1)|$ID_FS_TYPE"
+        echo "$(readlink -f $1) $ID_FS_TYPE"
         return 1
     fi
     if [[ -b /dev/block/$1 ]] && get_fs_env /dev/block/$1; then
-        echo "$(readlink -f /dev/block/$1)|$ID_FS_TYPE"
+        echo "$(readlink -f /dev/block/$1) $ID_FS_TYPE"
         return 1
     fi
     if fstype=$(find_dev_fstype $1); then
-        echo "$1|$fstype"
+        echo "$1 $fstype"
         return 1
     fi
     return 1
 )
 
 for dev in "${host_devs[@]}"; do
-    unset fs_type
-    for fstype in $(_get_fs_type $dev) \
-        $(check_block_and_slaves _get_fs_type $(get_maj_min $dev)); do
-        if ! strstr " ${host_fs_types[*]} " " $fstype ";then
-            push host_fs_types "$fstype"
-        fi
-    done
+    while read key val; do
+        host_fs_types["$key"]="$val"
+    done < <(
+        _get_fs_type $dev
+        check_block_and_slaves_all _get_fs_type $(get_maj_min $dev)
+    )
 done
 
 [[ -d $udevdir ]] \
@@ -967,6 +1035,16 @@ if [[ $no_kernel != yes ]]; then
     dinfo "*** Installing kernel module dependencies and firmware ***"
     dracut_kernel_post
     dinfo "*** Installing kernel module dependencies and firmware done ***"
+
+    if [[ $noimageifnotneeded == yes ]] && [[ $hostonly ]]; then
+        if [[ ! -f "$initdir/lib/dracut/need-initqueue" ]] && \
+            [[ -f ${initdir}/lib/modules/$kernel/modules.dep && ! -s ${initdir}/lib/modules/$kernel/modules.dep ]]; then
+            for i in ${initdir}/etc/cmdline.d/*.conf; do
+                # We need no initramfs image and do not generate one.
+                [[ $i == "${initdir}/etc/cmdline.d/*.conf" ]] && exit 0
+            done
+        fi
+    fi
 fi
 
 if [[ $kernel_only != yes ]]; then
@@ -1103,10 +1181,11 @@ fi
 rm -f "$outfile"
 dinfo "*** Creating image file ***"
 if ! ( umask 077; cd "$initdir"; find . |cpio -R 0:0 -H newc -o --quiet| \
-    $compress > "$outfile"; ); then
-    dfatal "dracut: creation of $outfile failed"
+    $compress > "$outfile.$$"; ); then
+    dfatal "dracut: creation of $outfile.$$ failed"
     exit 1
 fi
+mv $outfile.$$ $outfile
 dinfo "*** Creating image file done ***"
 
 dinfo "Wrote $outfile:"

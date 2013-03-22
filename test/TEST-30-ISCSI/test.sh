@@ -16,7 +16,7 @@ run_server() {
         -hdb $TESTDIR/root.ext3 \
         -hdc $TESTDIR/iscsidisk2.img \
         -hdd $TESTDIR/iscsidisk3.img \
-        -m 256M -nographic \
+        -m 256M  -smp 2 -nographic \
         -serial $SERIAL \
         -net nic,macaddr=52:54:00:12:34:56,model=e1000 \
         -net socket,listen=127.0.0.1:12330 \
@@ -41,7 +41,7 @@ run_client() {
 
     $testdir/run-qemu \
         -hda $TESTDIR/client.img \
-        -m 256M -nographic \
+        -m 256M -smp 2 -nographic \
         -net nic,macaddr=52:54:00:12:34:00,model=e1000 \
         -net socket,connect=127.0.0.1:12330 \
         -kernel /boot/vmlinuz-$KVERSION \
@@ -122,6 +122,7 @@ test_setup() {
         . $basedir/dracut-functions.sh
         dracut_install sfdisk mkfs.ext3 poweroff cp umount
         inst_hook initqueue 01 ./create-root.sh
+        inst_hook initqueue/finished 01 ./finished-false.sh
         inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
 
@@ -146,9 +147,9 @@ test_setup() {
         -hdb $TESTDIR/client.img \
         -hdc $TESTDIR/iscsidisk2.img \
         -hdd $TESTDIR/iscsidisk3.img \
-        -m 256M -nographic -net none \
+        -smp 2 -m 256M -nographic -net none \
         -kernel "/boot/vmlinuz-$kernel" \
-        -append "root=/dev/dracut/root rw rootfstype=ext3 quiet console=ttyS0,115200n81 selinux=0" \
+        -append "root=/dev/fakeroot rw rootfstype=ext3 quiet console=ttyS0,115200n81 selinux=0" \
         -initrd $TESTDIR/initramfs.makeroot  || return 1
     grep -m 1 -q dracut-root-block-created $TESTDIR/client.img || return 1
     rm $TESTDIR/client.img
@@ -160,7 +161,7 @@ test_setup() {
         inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-        -o "plymouth dmraid" \
+        -o "dash plymouth dmraid" \
         -a "debug" \
         -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod" \
         -f $TESTDIR/initramfs.testing $KVERSION || return 1

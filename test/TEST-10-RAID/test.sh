@@ -5,11 +5,12 @@ KVERSION=${KVERSION-$(uname -r)}
 
 # Uncomment this to debug failures
 #DEBUGFAIL="rd.shell rd.udev.log-priority=debug loglevel=70 systemd.log_target=kmsg"
+#DEBUGFAIL="rd.debug rd.break=pre-mount rd.shell"
 test_run() {
     DISKIMAGE=$TESTDIR/TEST-10-RAID-root.img
     $testdir/run-qemu \
 	-hda $DISKIMAGE \
-	-m 256M -nographic \
+	-m 256M -smp 2 -nographic \
 	-net none -kernel /boot/vmlinuz-$KVERSION \
 	-append "root=/dev/dracut/root rd.auto rw rd.retry=10 console=ttyS0,115200n81 selinux=0 $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
@@ -38,7 +39,7 @@ test_setup() {
 	inst "$basedir/modules.d/40network/dhclient-script.sh" "/sbin/dhclient-script"
 	inst "$basedir/modules.d/40network/ifup.sh" "/sbin/ifup"
 	dracut_install grep
-	dracut_install /lib/systemd/systemd-shutdown
+	dracut_install -o /lib/systemd/systemd-shutdown
 	find_binary plymouth >/dev/null && dracut_install plymouth
 	cp -a /etc/ld.so.conf* $initdir/etc
 	sudo ldconfig -r "$initdir"
@@ -50,6 +51,7 @@ test_setup() {
 	. $basedir/dracut-functions.sh
 	dracut_install sfdisk mke2fs poweroff cp umount
 	inst_hook initqueue 01 ./create-root.sh
+        inst_hook initqueue/finished 01 ./finished-false.sh
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
 
@@ -65,9 +67,9 @@ test_setup() {
     # Invoke KVM and/or QEMU to actually create the target filesystem.
     $testdir/run-qemu \
 	-hda $DISKIMAGE \
-	-m 256M -nographic -net none \
+	-m 256M -smp 2 -nographic -net none \
 	-kernel "/boot/vmlinuz-$kernel" \
-	-append "root=/dev/dracut/root rw rootfstype=ext2 quiet console=ttyS0,115200n81 selinux=0" \
+	-append "root=/dev/cannotreach rw rootfstype=ext2 console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.makeroot  || return 1
     grep -m 1 -q dracut-root-block-created $DISKIMAGE || return 1
     eval $(grep -a -m 1 ID_FS_UUID $DISKIMAGE)
@@ -80,6 +82,7 @@ test_setup() {
 	inst ./cryptroot-ask.sh /sbin/cryptroot-ask
         mkdir -p $initdir/etc
         echo "luks-$ID_FS_UUID /dev/md0 /etc/key" > $initdir/etc/crypttab
+        #echo "luks-$ID_FS_UUID /dev/md0 none" > $initdir/etc/crypttab
         echo -n "test" > $initdir/etc/key
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )

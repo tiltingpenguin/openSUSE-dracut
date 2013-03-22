@@ -34,6 +34,8 @@ BuildRequires: dash bash git
 
 %if 0%{?fedora} || 0%{?rhel}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+BuildRequires: bash-completion
+BuildRequires: pkgconfig
 %endif
 %if 0%{?suse_version}
 BuildRoot: %{_tmppath}/%{name}-%{version}-build
@@ -70,7 +72,7 @@ Provides: mkinitrd = 2.6.1
 Obsoletes: dracut-kernel < 005
 Provides:  dracut-kernel = %{version}-%{release}
 
-Requires: bash
+Requires: bash >= 4
 Requires: coreutils
 Requires: cpio
 Requires: filesystem >= 2.1.0
@@ -82,12 +84,14 @@ Requires: module-init-tools >= 3.7-9
 Requires: sed
 Requires: file
 Requires: kpartx
-Requires: udev > 166
 Requires: kbd kbd-misc
+
 %if 0%{?fedora} || 0%{?rhel} > 6
 Requires: util-linux >= 2.21
-Conflicts: systemd < 187
+Requires: systemd >= 198-5
+Conflicts: grubby < 8.23
 %else
+Requires: udev > 166
 Requires: util-linux-ng >= 2.21
 %endif
 
@@ -132,7 +136,7 @@ Requires: nss-softokn-freebl
 
 %description fips
 This package requires everything which is needed to build an
-all purpose initramfs with dracut, which does an integrity check.
+initramfs with dracut, which does an integrity check.
 %endif
 
 %package fips-aesni
@@ -141,8 +145,7 @@ Requires: %{name}-fips = %{version}-%{release}
 
 %description fips-aesni
 This package requires everything which is needed to build an
-all purpose initramfs with dracut, which does an integrity check
-and adds the aesni-intel kernel module.
+initramfs with dracut, which does an integrity check and adds the aesni-intel kernel module.
 
 %package caps
 Summary: dracut modules to build a dracut initramfs which drops capabilities
@@ -151,7 +154,23 @@ Requires: libcap
 
 %description caps
 This package requires everything which is needed to build an
-all purpose initramfs with dracut, which drops capabilities.
+initramfs with dracut, which drops capabilities.
+
+%package nohostonly
+Summary: dracut configuration to turn off hostonly image generation
+Requires: %{name} = %{version}-%{release}
+
+%description nohostonly
+This package provides the configuration to turn off the host specific initramfs
+generation with dracut.
+
+%package norescue
+Summary: dracut configuration to turn off rescue image generation
+Requires: %{name} = %{version}-%{release}
+
+%description norescue
+This package provides the configuration to turn off the rescue initramfs
+generation with dracut.
 
 %package tools
 Summary: dracut tools to build the local initramfs
@@ -175,25 +194,28 @@ git am -p1 %{patches}
 %endif
 
 %build
-make all
+%configure --systemdsystemunitdir=%{_unitdir} --bashcompletiondir=$(pkg-config --variable=completionsdir bash-completion) --libdir=%{_prefix}/lib
+
+make %{?_smp_mflags}
 
 %install
 %if 0%{?fedora} || 0%{?rhel}
 rm -rf $RPM_BUILD_ROOT
 %endif
-make install DESTDIR=$RPM_BUILD_ROOT \
-     libdir=%{_prefix}/lib \
-     bindir=%{_bindir} \
-%if %{defined _unitdir}
-     systemdsystemunitdir=%{_unitdir} \
-%endif
-     sysconfdir=/etc mandir=%{_mandir}
+make %{?_smp_mflags} install \
+     DESTDIR=$RPM_BUILD_ROOT \
+     libdir=%{_prefix}/lib
 
 echo "DRACUT_VERSION=%{version}-%{release}" > $RPM_BUILD_ROOT/%{dracutlibdir}/dracut-version.sh
 
 %if 0%{?fedora} == 0 && 0%{?rhel} == 0 && 0%{?suse_version} == 0
 rm -fr $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/01fips
 rm -fr $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/02fips-aesni
+%endif
+
+%if %{defined _unitdir}
+# for systemd, better use systemd-bootchart
+rm -fr $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/00bootchart
 %endif
 
 # we do not support dash in the initramfs
@@ -230,8 +252,17 @@ rm $RPM_BUILD_ROOT%{_bindir}/mkinitrd
 rm $RPM_BUILD_ROOT%{_bindir}/lsinitrd
 %endif
 
-mkdir -p $RPM_BUILD_ROOT/etc/logrotate.d
-install -m 0644 dracut.logrotate $RPM_BUILD_ROOT/etc/logrotate.d/dracut_log
+%if 0%{?fedora} || 0%{?rhel} > 6
+# FIXME: remove after F19
+mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/kernel/postinst.d
+install -m 0755 51-dracut-rescue-postinst.sh $RPM_BUILD_ROOT%{_sysconfdir}/kernel/postinst.d/51-dracut-rescue-postinst.sh
+
+echo 'hostonly="no"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/02-nohostonly.conf
+echo 'dracut_rescue_image="no"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/02-norescue.conf
+%endif
+
+mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/logrotate.d
+install -m 0644 dracut.logrotate $RPM_BUILD_ROOT%{_sysconfdir}/logrotate.d/dracut_log
 
 # create compat symlink
 mkdir -p $RPM_BUILD_ROOT/sbin
@@ -246,6 +277,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/dracut
 # compat symlink
 /sbin/dracut
+%{_datadir}/bash-completion/completions/dracut
 %if 0%{?fedora} > 12 || 0%{?rhel} >= 6 || 0%{?suse_version} > 9999
 %{_bindir}/mkinitrd
 %{_bindir}/lsinitrd
@@ -258,11 +290,11 @@ rm -rf $RPM_BUILD_ROOT
 %{dracutlibdir}/dracut-logger.sh
 %{dracutlibdir}/dracut-initramfs-restore
 %{dracutlibdir}/dracut-install
-%config(noreplace) /etc/dracut.conf
+%config(noreplace) %{_sysconfdir}/dracut.conf
 %if 0%{?fedora} || 0%{?suse_version} || 0%{?rhel}
 %{dracutlibdir}/dracut.conf.d/01-dist.conf
 %endif
-%dir /etc/dracut.conf.d
+%dir %{_sysconfdir}/dracut.conf.d
 %dir %{dracutlibdir}/dracut.conf.d
 %{_mandir}/man8/dracut.8*
 %{_mandir}/man8/*service.8*
@@ -272,8 +304,14 @@ rm -rf $RPM_BUILD_ROOT
 %endif
 %{_mandir}/man7/dracut.kernel.7*
 %{_mandir}/man7/dracut.cmdline.7*
+%{_mandir}/man7/dracut.bootup.7*
 %{_mandir}/man5/dracut.conf.5*
+%if %{defined _unitdir}
+%{dracutlibdir}/modules.d/00systemd-bootchart
+%else
 %{dracutlibdir}/modules.d/00bootchart
+%endif
+%{dracutlibdir}/modules.d/03rescue
 %{dracutlibdir}/modules.d/04watchdog
 %{dracutlibdir}/modules.d/05busybox
 %{dracutlibdir}/modules.d/10i18n
@@ -320,12 +358,17 @@ rm -rf $RPM_BUILD_ROOT
 %{dracutlibdir}/modules.d/99fs-lib
 %{dracutlibdir}/modules.d/99img-lib
 %{dracutlibdir}/modules.d/99shutdown
-%config(noreplace) /etc/logrotate.d/dracut_log
+%config(noreplace) %{_sysconfdir}/logrotate.d/dracut_log
 %attr(0644,root,root) %ghost %config(missingok,noreplace) %{_localstatedir}/log/dracut.log
 %dir %{_sharedstatedir}/initramfs
 %if %{defined _unitdir}
 %{_unitdir}/dracut-shutdown.service
 %{_unitdir}/shutdown.target.wants/dracut-shutdown.service
+%endif
+%if 0%{?fedora} || 0%{?rhel} > 6
+%{_prefix}/lib/kernel/install.d/50-dracut.install
+%{_prefix}/lib/kernel/install.d/51-dracut-rescue.install
+%{_sysconfdir}/kernel/postinst.d/51-dracut-rescue-postinst.sh
 %endif
 
 %files network
@@ -365,5 +408,13 @@ rm -rf $RPM_BUILD_ROOT
 %dir /boot/dracut
 %dir /var/lib/dracut
 %dir /var/lib/dracut/overlay
+
+%files nohostonly
+%defattr(-,root,root,0755)
+%{dracutlibdir}/dracut.conf.d/02-nohostonly.conf
+
+%files norescue
+%defattr(-,root,root,0755)
+%{dracutlibdir}/dracut.conf.d/02-norescue.conf
 
 %changelog

@@ -8,7 +8,7 @@ check() {
 
     [[ $hostonly ]] || [[ $mount_needs ]] && {
         for fs in ${host_fs_types[@]}; do
-            strstr "$fs" "\|cifs"  && return 0
+            [[ "$fs" == "cifs" ]] && return 0
         done
         return 255
     }
@@ -43,4 +43,5 @@ install() {
     inst_hook cmdline 90 "$moddir/parse-cifsroot.sh"
     inst "$moddir/cifsroot.sh" "/sbin/cifsroot"
     inst "$moddir/cifs-lib.sh" "/lib/cifs-lib.sh"
+    dracut_need_initqueue
 }

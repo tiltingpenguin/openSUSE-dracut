@@ -110,6 +110,14 @@ fi
     export hookdirs
 }
 
+dracut_need_initqueue() {
+    >"$initdir/lib/dracut/need-initqueue"
+}
+
+dracut_module_included() {
+    strstr "$mods_to_load $modules_loaded" "$@"
+}
+
 # Create all subdirectories for given path without creating the last element.
 # $1 = path
 mksubdirs() { [[ -e ${1%/*} ]] || mkdir -m 0755 -p ${1%/*}; }
@@ -442,25 +450,25 @@ find_mp_fstype() {
 find_root_block_device() { find_block_device /; }
 
 # for_each_host_dev_fs <func>
-# Execute "<func> <dev> <filesystem>" for every "<dev>|<fs>" pair found
+# Execute "<func> <dev> <filesystem>" for every "<dev> <fs>" pair found
 # in ${host_fs_types[@]}
 for_each_host_dev_fs()
 {
     local _func="$1"
     local _dev
-    local _fs
     local _ret=1
-    for f in ${host_fs_types[@]}; do
-        OLDIFS="$IFS"
-        IFS="|"
-        set -- $f
-        IFS="$OLDIFS"
-        _dev="$1"
-        [[ -b "$_dev" ]] || continue
-        _fs="$2"
-        $_func $_dev $_fs && _ret=0
+
+    [[ "${!host_fs_types[@]}" ]] || return 0
+
+    for _dev in "${!host_fs_types[@]}"; do
+        $_func "$_dev" "${host_fs_types[$_dev]}" && _ret=0
     done
     return $_ret
+}
+
+host_fs_all()
+{
+    echo "${host_fs_types[@]}"
 }
 
 # Walk all the slave relationships for a given block device.
@@ -508,6 +516,9 @@ for_each_host_dev_and_slaves_all()
     local _func="$1"
     local _dev
     local _ret=1
+
+    [[ "${host_devs[@]}" ]] || return 0
+
     for _dev in ${host_devs[@]}; do
         [[ -b "$_dev" ]] || continue
         if check_block_and_slaves_all $_func $(get_maj_min $_dev); then
@@ -521,6 +532,9 @@ for_each_host_dev_and_slaves()
 {
     local _func="$1"
     local _dev
+
+    [[ "${host_devs[@]}" ]] || return 0
+
     for _dev in ${host_devs[@]}; do
         [[ -b "$_dev" ]] || continue
         check_block_and_slaves $_func $(get_maj_min $_dev) && return 0
@@ -870,7 +884,7 @@ inst_rule_programs() {
             _bin=""
             if [ -x ${udevdir}/$_prog ]; then
                 _bin=${udevdir}/$_prog
-            elif [[ "${_prog/\$\{/}" != "$_prog" ]]; then
+            elif [[ "${_prog/\$env\{/}" == "$_prog" ]]; then
                 _bin=$(find_binary "$_prog") || {
                     dinfo "Skipping program $_prog using in udev rule ${1##*/} as it cannot be found"
                     continue;
@@ -885,7 +899,7 @@ inst_rule_programs() {
             _bin=""
             if [ -x ${udevdir}/$_prog ]; then
                 _bin=${udevdir}/$_prog
-            elif [[ "${_prog/\$\{/}" != "$_prog" ]]; then
+            elif [[ "${_prog/\$env\{/}" == "$_prog" ]] && [[ "${_prog}" != "/sbin/initqueue" ]]; then
                 _bin=$(find_binary "$_prog") || {
                     dinfo "Skipping program $_prog using in udev rule ${1##*/} as it cannot be found"
                     continue;
@@ -900,7 +914,7 @@ inst_rule_programs() {
             _bin=""
             if [ -x ${udevdir}/$_prog ]; then
                 _bin=${udevdir}/$_prog
-            elif [[ "${_prog/\$\{/}" != "$_prog" ]]; then
+            elif [[ "${_prog/\$env\{/}" == "$_prog" ]]; then
                 _bin=$(find_binary "$_prog") || {
                     dinfo "Skipping program $_prog using in udev rule ${1##*/} as it cannot be found"
                     continue;
@@ -932,6 +946,12 @@ inst_rule_group_owner() {
     fi
 }
 
+inst_rule_initqueue() {
+    if grep -q -F initqueue "$1"; then
+        dracut_need_initqueue
+    fi
+}
+
 # udev rules always get installed in the same place, so
 # create a function to install them to make life simpler.
 inst_rules() {
@@ -946,6 +966,7 @@ inst_rules() {
                     _found="$r/$_rule"
                     inst_rule_programs "$_found"
                     inst_rule_group_owner "$_found"
+                    inst_rule_initqueue "$_found"
                     inst_simple "$_found"
                 fi
             done
@@ -955,10 +976,38 @@ inst_rules() {
                 _found="${r}$_rule"
                 inst_rule_programs "$_found"
                 inst_rule_group_owner "$_found"
+                inst_rule_initqueue "$_found"
                 inst_simple "$_found" "$_target/${_found##*/}"
             fi
         done
         [[ $_found ]] || dinfo "Skipping udev rule: $_rule"
+    done
+}
+
+prepare_udev_rules() {
+    [ -z "$UDEVVERSION" ] && export UDEVVERSION=$(udevadm --version)
+
+    for f in "$@"; do
+        f="${initdir}/etc/udev/rules.d/$f"
+        [ -e "$f" ] || continue
+        while read line; do
+            if [ "${line%%IMPORT PATH_ID}" != "$line" ]; then
+                if [ $UDEVVERSION -ge 174 ]; then
+                    printf '%sIMPORT{builtin}="path_id"\n' "${line%%IMPORT PATH_ID}"
+                else
+                    printf '%sIMPORT{program}="path_id %%p"\n' "${line%%IMPORT PATH_ID}"
+                fi
+            elif [ "${line%%IMPORT BLKID}" != "$line" ]; then
+                if [ $UDEVVERSION -ge 176 ]; then
+                    printf '%sIMPORT{builtin}="blkid"\n' "${line%%IMPORT BLKID}"
+                else
+                    printf '%sIMPORT{program}="/sbin/blkid -o udev -p $tempnode"\n' "${line%%IMPORT BLKID}"
+                fi
+            else
+                echo "$line"
+            fi
+        done < "${f}" > "${f}.new"
+        mv "${f}.new" "$f"
     done
 }
 

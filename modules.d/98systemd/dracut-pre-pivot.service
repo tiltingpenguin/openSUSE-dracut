@@ -10,18 +10,21 @@
 [Unit]
 Description=dracut pre-pivot and cleanup hook
 Documentation=man:dracut-pre-pivot.service(8)
-DefaultDependencies=no
-After=dracut-initqueue.service
+After=initrd.target initrd-parse-etc.service
+After=dracut-initqueue.service dracut-pre-mount.service dracut-mount.service
+Before=initrd-cleanup.service
 ConditionPathExists=/etc/initrd-release
+ConditionDirectoryNotEmpty=|/lib/dracut/hooks/pre-pivot
+ConditionKernelCommandLine=|rd.break=pre-pivot
 
 [Service]
 Type=oneshot
 ExecStart=-/bin/dracut-pre-pivot
-ExecStopPost=-/usr/bin/systemctl --no-block isolate initrd-switch-root.target
 StandardInput=null
 StandardOutput=syslog
 StandardError=syslog+console
 KillMode=process
+RemainAfterExit=yes
 
 # Bash ignores SIGTERM, so we send SIGHUP instead, to ensure that bash
 # terminates cleanly.

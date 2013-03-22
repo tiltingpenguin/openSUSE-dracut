@@ -8,7 +8,7 @@ KVERSION=${KVERSION-$(uname -r)}
 test_run() {
     $testdir/run-qemu \
 	-hda $TESTDIR/root.ext3 \
-	-m 256M -nographic \
+	-m 256M -smp 2 -nographic \
 	-net none -kernel /boot/vmlinuz-$KVERSION \
 	-append "root=LABEL=dracut rw loglevel=77 systemd.log_level=debug systemd.log_target=console rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug init=/sbin/init $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
@@ -49,6 +49,7 @@ test_setup() {
 	. $basedir/dracut-functions.sh
 	dracut_install sfdisk mkfs.ext3 poweroff cp umount
 	inst_hook initqueue 01 ./create-root.sh
+        inst_hook initqueue/finished 01 ./finished-false.sh
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
 
@@ -65,9 +66,9 @@ test_setup() {
 
     $testdir/run-qemu \
 	-hda $TESTDIR/root.ext3 \
-	-m 256M -nographic -net none \
+	-m 256M -smp 2 -nographic -net none \
 	-kernel "/boot/vmlinuz-$kernel" \
-	-append "root=/dev/dracut/root rw rootfstype=ext3 quiet console=ttyS0,115200n81 selinux=0" \
+	-append "root=/dev/fakeroot rw rootfstype=ext3 quiet console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.makeroot  || return 1
     grep -m 1 -q dracut-root-block-created $TESTDIR/root.ext3 || return 1
 

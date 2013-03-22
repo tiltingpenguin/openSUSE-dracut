@@ -8,7 +8,7 @@ export KVERSION=${KVERSION-$(uname -r)}
 #DEBUGFAIL="rd.shell rd.break"
 #DEBUGFAIL="rd.shell"
 #DEBUGOUT="quiet systemd.log_level=debug systemd.log_target=console loglevel=77  rd.info rd.debug"
-DEBUGOUT="loglevel=0 systemd.log_level=debug systemd.log_target=kmsg"
+DEBUGOUT="loglevel=0 systemd.log_level=debug"
 client_run() {
     local test_name="$1"; shift
     local client_opts="$*"
@@ -20,7 +20,7 @@ client_run() {
 	-hda $TESTDIR/root.btrfs \
 	-hdb $TESTDIR/usr.btrfs \
 	-hdc $TESTDIR/result \
-	-m 256M -nographic \
+	-m 256M -smp 2 -nographic \
 	-net none -kernel /boot/vmlinuz-$KVERSION \
 	-append "root=LABEL=dracut $client_opts rd.retry=3 console=ttyS0,115200n81 selinux=0 $DEBUGOUT $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
@@ -83,10 +83,10 @@ test_setup() {
 	dracut_install grep
         inst_simple ./fstab /etc/fstab
         rpm -ql systemd | xargs -r $DRACUT_INSTALL ${initdir+-D "$initdir"} -o -a -l
+        inst /lib/systemd/system/systemd-remount-fs.service
+        inst /lib/systemd/systemd-remount-fs
         inst /lib/systemd/system/systemd-journal-flush.service
         inst /etc/sysconfig/init
-        # activate kmsg import
-        echo 'ImportKernel=yes' >> $initdir/etc/systemd/journald.conf
 
         # make a journal directory
         mkdir -p $initdir/var/log/journal
@@ -223,6 +223,7 @@ EOF
 	. $basedir/dracut-functions.sh
 	dracut_install sfdisk mkfs.btrfs btrfs poweroff cp umount sync
 	inst_hook initqueue 01 ./create-root.sh
+        inst_hook initqueue/finished 01 ./finished-false.sh
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
 
@@ -246,9 +247,9 @@ EOF
     $testdir/run-qemu \
 	-hda $TESTDIR/root.btrfs \
 	-hdb $TESTDIR/usr.btrfs \
-	-m 256M -nographic -net none \
+	-m 256M -smp 2 -nographic -net none \
 	-kernel "/boot/vmlinuz-$kernel" \
-	-append "root=/dev/dracut/root rw rootfstype=btrfs quiet console=ttyS0,115200n81 selinux=0" \
+	-append "root=/dev/fakeroot rw rootfstype=btrfs quiet console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.makeroot  || return 1
     grep -m 1 -q dracut-root-block-created $TESTDIR/root.btrfs || return 1
 
@@ -261,8 +262,8 @@ EOF
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-a "debug watchdog systemd" \
-        -o "network" \
+	-a "debug systemd" \
+        -o "dash network plymouth lvm mdraid resume crypt i18n caps dm terminfo usrmount" \
 	-d "piix ide-gd_mod ata_piix btrfs sd_mod i6300esb ib700wdt" \
 	-f $TESTDIR/initramfs.testing $KVERSION || return 1
 

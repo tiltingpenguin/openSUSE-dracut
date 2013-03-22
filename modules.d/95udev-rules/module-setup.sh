@@ -34,14 +34,13 @@ install() {
         "$moddir/59-persistent-storage.rules" \
         "$moddir/61-persistent-storage.rules"
 
-    inst_dir /run/udev
-    inst_dir /run/udev/rules.d
+    prepare_udev_rules 59-persistent-storage.rules 61-persistent-storage.rules
 
     {
         for i in cdrom tape dialout floppy; do
             if ! egrep -q "^$i:" "$initdir/etc/group" 2>/dev/null; then
                 if ! egrep "^$i:" /etc/group 2>/dev/null; then
-                        case $i in 
+                        case $i in
                             cdrom)   echo "$i:x:11:";;
                             dialout) echo "$i:x:18:";;
                             floppy)  echo "$i:x:19:";;
@@ -75,6 +74,5 @@ install() {
 
     inst_libdir_file "libnss_files*"
 
-    . "$moddir/udev-rules-prepare.sh"
 }
 

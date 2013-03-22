@@ -11,7 +11,7 @@ test_run() {
     $testdir/run-qemu \
 	-hda $TESTDIR/root.ext3 \
 	-hdb $TESTDIR/result \
-	-m 256M -nographic \
+	-m 256M -smp 2 -nographic \
 	-net none -kernel /boot/vmlinuz-$KVERSION \
 	-watchdog i6300esb -watchdog-action poweroff \
 	-append "root=LABEL=dracut rw systemd.log_level=debug systemd.log_target=console rd.retry=3 rd.debug console=ttyS0,115200n81 $DEBUGFAIL" \
@@ -53,6 +53,7 @@ test_setup() {
 	. $basedir/dracut-functions.sh
 	dracut_install sfdisk mkfs.ext3 poweroff cp umount sync
 	inst_hook initqueue 01 ./create-root.sh
+        inst_hook initqueue/finished 01 ./finished-false.sh
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
 
@@ -69,7 +70,7 @@ test_setup() {
 
     $testdir/run-qemu \
 	-hda $TESTDIR/root.ext3 \
-	-m 256M -nographic -net none \
+	-m 256M -smp 2 -nographic -net none \
 	-kernel "/boot/vmlinuz-$kernel" \
 	-append "root=/dev/dracut/root rw rootfstype=ext3 quiet console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.makeroot  || return 1
