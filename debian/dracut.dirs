@@ -21,6 +21,7 @@ usr/lib/dracut/modules.d/98usrmount
 usr/lib/dracut/modules.d/99base
 /var/lib/dracut
 /etc/dracut.conf.d
+/etc/bash_completion.d
 /etc/kernel/postinst.d
 /etc/kernel/postrm.d
 /etc/logrotate.d
