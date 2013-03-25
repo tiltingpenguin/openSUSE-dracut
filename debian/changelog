@@ -1,9 +1,12 @@
-dracut (025+8+g19bab59) UNRELEASED; urgency=low
+dracut (026+71+g78d1d4f-1) unstable; urgency=low
 
-  * new upstream 025+8+g19bab59
+  * new upstream 026+71+g78d1d4f
+  * add man pages
+  * add bash completions
+  * add cifs module to dracut-network
   * cleanup patches
 
- -- Thomas Lange <lange@debian.org>  Wed, 06 Feb 2013 16:20:08 +0100
+ -- Thomas Lange <lange@debian.org>  Mon, 25 Mar 2013 14:03:36 +0100
 
 dracut (020-2) unstable; urgency=low
 
