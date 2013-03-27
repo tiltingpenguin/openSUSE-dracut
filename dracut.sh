@@ -892,14 +892,21 @@ fi
 
 [[ -d $systemdutildir ]] \
     || systemdutildir=$(pkg-config systemd --variable=systemdutildir 2>/dev/null)
-[[ -d $systemdsystemunitdir ]] \
-    || systemdsystemunitdir=$(pkg-config systemd --variable=systemdsystemunitdir 2>/dev/null)
 
 if ! [[ -d "$systemdutildir" ]]; then
     [[ -d /lib/systemd ]] && systemdutildir=/lib/systemd
     [[ -d /usr/lib/systemd ]] && systemdutildir=/usr/lib/systemd
 fi
+
+[[ -d $systemdsystemunitdir ]] \
+    || systemdsystemunitdir=$(pkg-config systemd --variable=systemdsystemunitdir 2>/dev/null)
+
 [[ -d "$systemdsystemunitdir" ]] || systemdsystemunitdir=${systemdutildir}/system
+
+[[ -d $systemdsystemconfdir ]] \
+    || systemdsystemconfdir=$(pkg-config systemd --variable=systemdsystemconfdir 2>/dev/null)
+
+[[ -d "$systemdsystemconfdir" ]] || systemdsystemconfdir=/etc/systemd/system
 
 export initdir dracutbasedir dracutmodules \
     fw_dir drivers_dir debug no_kernel kernel_only \
@@ -907,8 +914,8 @@ export initdir dracutbasedir dracutmodules \
     use_fstab fstab_lines libdirs fscks nofscks ro_mnt \
     stdloglvl sysloglvl fileloglvl kmsgloglvl logfile \
     debug host_fs_types host_devs sshkey add_fstab \
-    DRACUT_VERSION udevdir systemdutildir systemdsystemunitdir \
-    prefix filesystems drivers
+    DRACUT_VERSION udevdir prefix filesystems drivers \
+    systemdutildir systemdsystemunitdir systemdsystemconfdir
 
 # Create some directory structure first
 [[ $prefix ]] && mkdir -m 0755 -p "${initdir}${prefix}"
@@ -1059,6 +1066,15 @@ if [[ $kernel_only != yes ]]; then
     for f in $add_fstab; do
         cat $f >> "${initdir}/etc/fstab"
     done
+
+    if [ -d ${initdir}/$systemdutildir ]; then
+        mkdir -p ${initdir}/etc/conf.d
+        {
+            echo "systemdutildir=\"$systemdutildir\""
+            echo "systemdsystemunitdir=\"$systemdsystemunitdir\""
+            echo "systemdsystemconfdir=\"$systemdsystemconfdir\""
+        } > ${initdir}/etc/conf.d/systemd.conf
+    fi
 
     if [[ $DRACUT_RESOLVE_LAZY ]] && [[ $DRACUT_INSTALL ]]; then
         dinfo "*** Resolving executable dependencies ***"

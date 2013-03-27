@@ -34,9 +34,13 @@ BuildRequires: dash bash git
 
 %if 0%{?fedora} || 0%{?rhel}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+BuildRequires: pkgconfig
+%endif
+%if 0%{?fedora}
 BuildRequires: bash-completion
 BuildRequires: pkgconfig
 %endif
+
 %if 0%{?suse_version}
 BuildRoot: %{_tmppath}/%{name}-%{version}-build
 %endif
@@ -88,7 +92,7 @@ Requires: kbd kbd-misc
 
 %if 0%{?fedora} || 0%{?rhel} > 6
 Requires: util-linux >= 2.21
-Requires: systemd >= 198-5
+Requires: systemd >= 199
 Conflicts: grubby < 8.23
 %else
 Requires: udev > 166
@@ -364,6 +368,21 @@ rm -rf $RPM_BUILD_ROOT
 %if %{defined _unitdir}
 %{_unitdir}/dracut-shutdown.service
 %{_unitdir}/shutdown.target.wants/dracut-shutdown.service
+%{_unitdir}/dracut-cmdline.service
+%{_unitdir}/dracut-initqueue.service
+%{_unitdir}/dracut-mount.service
+%{_unitdir}/dracut-pre-mount.service
+%{_unitdir}/dracut-pre-pivot.service
+%{_unitdir}/dracut-pre-trigger.service
+%{_unitdir}/dracut-pre-udev.service
+%{_unitdir}/initrd.target.wants/dracut-cmdline.service
+%{_unitdir}/initrd.target.wants/dracut-initqueue.service
+%{_unitdir}/initrd.target.wants/dracut-mount.service
+%{_unitdir}/initrd.target.wants/dracut-pre-mount.service
+%{_unitdir}/initrd.target.wants/dracut-pre-pivot.service
+%{_unitdir}/initrd.target.wants/dracut-pre-trigger.service
+%{_unitdir}/initrd.target.wants/dracut-pre-udev.service
+
 %endif
 %if 0%{?fedora} || 0%{?rhel} > 6
 %{_prefix}/lib/kernel/install.d/50-dracut.install
