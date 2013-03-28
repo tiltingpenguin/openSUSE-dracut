@@ -1,9 +1,9 @@
-dracut (027-1) UNRELEASED; urgency=low
+dracut (027-1) unstable; urgency=low
 
   * new upstream
   * update copyright information
 
- -- Thomas Lange <lange@debian.org>  Thu, 28 Mar 2013 20:36:15 +0100
+ -- Thomas Lange <lange@debian.org>  Thu, 28 Mar 2013 20:52:50 +0100
 
 dracut (026+71+g78d1d4f-1) unstable; urgency=low
 
