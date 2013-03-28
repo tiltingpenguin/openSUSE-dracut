@@ -1,11 +1,11 @@
 Index: dracut/modules.d/10i18n/module-setup.sh
 ===================================================================
---- dracut.orig/modules.d/10i18n/module-setup.sh	2012-02-29 17:48:28.252374697 +0100
-+++ dracut/modules.d/10i18n/module-setup.sh	2012-02-29 17:48:35.183752498 +0100
+--- dracut.orig/modules.d/10i18n/module-setup.sh	2013-03-27 13:41:43.000000000 +0100
++++ dracut/modules.d/10i18n/module-setup.sh	2013-03-28 19:36:46.123833771 +0100
 @@ -13,7 +13,7 @@
  
  install() {
-     [ -x /lib/systemd/systemd-vconsole-setup ] && dracut_install /lib/systemd/systemd-vconsole-setup
+     dracut_install -o $systemdutildir/systemd-vconsole-setup
 -    KBDSUBDIRS=consolefonts,consoletrans,keymaps,unimaps
 +    KBDSUBDIRS=consolefonts,consoletrans,keymaps
      DEFAULT_FONT=LatArCyrHeb-16
