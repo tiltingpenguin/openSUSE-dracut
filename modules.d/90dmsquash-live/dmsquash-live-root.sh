@@ -19,6 +19,9 @@ livedev="$1"
 # specified as their own things
 live_dir=$(getarg rd.live.dir -d live_dir)
 [ -z "$live_dir" ] && live_dir="LiveOS"
+squash_image=$(getarg rd.live.squashimg)
+[ -z "$squash_image" ] && squash_image="squashfs.img"
+
 getargbool 0 rd.live.ram -d -y live_ram && live_ram="yes"
 getargbool 0 rd.live.overlay.reset -d -y reset_overlay && reset_overlay="yes"
 getargbool 0 rd.live.overlay.readonly -d -y readonly_overlay && readonly_overlay="--readonly" || readonly_overlay=""
@@ -31,7 +34,7 @@ if [ "$fs" = "iso9660" -o "$fs" = "udf" ]; then
 fi
 getarg rd.live.check -d check || check=""
 if [ -n "$check" ]; then
-    [ -x /bin/plymouth ] && /bin/plymouth --hide-splash
+    type plymouth >/dev/null 2>&1 && plymouth --hide-splash
     if [ -n "$DRACUT_SYSTEMD" ]; then
         p=$(str_replace "$livedev" "-" '\x2d')
         systemctl start checkisomd5@${p}.service
@@ -42,7 +45,7 @@ if [ -n "$check" ]; then
         die "CD check failed!"
         exit 1
     fi
-    [ -x /bin/plymouth ] && /bin/plymouth --show-splash
+    type plymouth >/dev/null 2>&1 && plymouth --show-splash
 fi
 
 ln -s $livedev /run/initramfs/livedev
@@ -180,8 +183,8 @@ if [ -n "$FSIMG" ] ; then
 fi
 
 # we might have an embedded fs image on squashfs (compressed live)
-if [ -e /run/initramfs/live/${live_dir}/squashfs.img ]; then
-    SQUASHED="/run/initramfs/live/${live_dir}/squashfs.img"
+if [ -e /run/initramfs/live/${live_dir}/${squash_image} ]; then
+    SQUASHED="/run/initramfs/live/${live_dir}/${squash_image}"
 fi
 
 if [ -e "$SQUASHED" ] ; then

@@ -5,6 +5,8 @@
 check() {
     [[ $mount_needs ]] && return 1
     if [[ -x $systemdutildir/systemd ]]; then
+        SYSTEMD_VERSION=$($systemdutildir/systemd --version | { read a b a; echo $b; })
+        (( $SYSTEMD_VERSION >= 198 )) && return 0
        return 255
     fi
 
@@ -18,13 +20,7 @@ depends() {
 install() {
     local _mods
 
-#    SYSTEMD_VERSION=$($systemdutildir/systemd --version | { read a b a; echo $b; })
-#    if (( $SYSTEMD_VERSION < 198 )); then
-#        dfatal "systemd version $SYSTEMD_VERSION is too low. Need at least version 198."
-#        exit 1
-#    fi
-
-    if strstr "$prefix" "/run/"; then
+    if [[ "$prefix" == /run/* ]]; then
         dfatal "systemd does not work with a prefix, which contains \"/run\"!!"
         exit 1
     fi
@@ -39,6 +35,7 @@ install() {
         $systemdutildir/systemd-journald \
         $systemdutildir/systemd-sysctl \
         $systemdutildir/systemd-modules-load \
+        $systemdutildir/systemd-vconsole-setup \
         $systemdutildir/system-generators/systemd-fstab-generator \
         $systemdsystemunitdir/cryptsetup.target \
         $systemdsystemunitdir/emergency.target \
@@ -67,6 +64,9 @@ install() {
         $systemdsystemunitdir/swap.target \
         $systemdsystemunitdir/timers.target \
         $systemdsystemunitdir/paths.target \
+        $systemdsystemunitdir/umount.target \
+        $systemdsystemunitdir/kmod-static-nodes.service \
+        $systemdsystemunitdir/systemd-tmpfiles-setup-dev.service \
         $systemdsystemunitdir/systemd-ask-password-console.path \
         $systemdsystemunitdir/systemd-udevd-control.socket \
         $systemdsystemunitdir/systemd-udevd-kernel.socket \
@@ -85,6 +85,8 @@ install() {
         $systemdsystemunitdir/systemd-ask-password-plymouth.service \
         $systemdsystemunitdir/systemd-journald.service \
         $systemdsystemunitdir/systemd-vconsole-setup.service \
+        $systemdsystemunitdir/systemd-random-seed-load.service \
+        \
         $systemdsystemunitdir/sysinit.target.wants/systemd-modules-load.service \
         $systemdsystemunitdir/sysinit.target.wants/systemd-ask-password-console.path \
         $systemdsystemunitdir/sysinit.target.wants/systemd-journald.service \
@@ -93,21 +95,8 @@ install() {
         $systemdsystemunitdir/sockets.target.wants/systemd-journald.socket \
         $systemdsystemunitdir/sysinit.target.wants/systemd-udevd.service \
         $systemdsystemunitdir/sysinit.target.wants/systemd-udev-trigger.service \
-        \
-        $systemdsystemunitdir/dracut-cmdline.service \
-        $systemdsystemunitdir/dracut-initqueue.service \
-        $systemdsystemunitdir/dracut-mount.service \
-        $systemdsystemunitdir/dracut-pre-mount.service \
-        $systemdsystemunitdir/dracut-pre-pivot.service \
-        $systemdsystemunitdir/dracut-pre-trigger.service \
-        $systemdsystemunitdir/dracut-pre-udev.service \
-        $systemdsystemunitdir/initrd.target.wants/dracut-cmdline.service \
-        $systemdsystemunitdir/initrd.target.wants/dracut-initqueue.service \
-        $systemdsystemunitdir/initrd.target.wants/dracut-mount.service \
-        $systemdsystemunitdir/initrd.target.wants/dracut-pre-mount.service \
-        $systemdsystemunitdir/initrd.target.wants/dracut-pre-pivot.service \
-        $systemdsystemunitdir/initrd.target.wants/dracut-pre-trigger.service \
-        $systemdsystemunitdir/initrd.target.wants/dracut-pre-udev.service \
+        $systemdsystemunitdir/sysinit.target.wants/kmod-static-nodes.service \
+        $systemdsystemunitdir/sysinit.target.wants/systemd-tmpfiles-setup-dev.service \
         \
         $systemdsystemunitdir/ctrl-alt-del.target \
         $systemdsystemunitdir/syslog.socket \
@@ -117,8 +106,10 @@ install() {
         $systemdsystemunitdir/initrd-udevadm-cleanup-db.service \
         $systemdsystemunitdir/initrd-parse-etc.service \
         \
-        $systemdsystemunitdir/umount.target \
-        journalctl systemctl echo swapoff systemd-cgls
+        $systemdsystemunitdir/slices.target \
+        $systemdsystemunitdir/system.slice \
+        \
+        journalctl systemctl echo swapoff systemd-cgls systemd-tmpfiles
 
     dracut_install -o \
         /usr/lib/modules-load.d/*.conf \
@@ -158,10 +149,10 @@ install() {
 
         _mods=$(modules_load_get /etc/modules-load.d)
         [[ $_mods ]] && instmods $_mods
-    else
-        if ! [[ -e "$initdir/etc/machine-id" ]]; then
-            > "$initdir/etc/machine-id"
-        fi
+    fi
+
+    if ! [[ -e "$initdir/etc/machine-id" ]]; then
+        > "$initdir/etc/machine-id"
     fi
 
     # install adm user/group for journald
@@ -196,11 +187,26 @@ install() {
         systemd-ask-password-console.service \
         systemd-ask-password-plymouth.service \
         ; do
-        mkdir -p "${initdir}${systemdsystemconfdir}/${i}.wants"
+        mkdir -p "${initdir}${systemdsystemunitdir}/${i}.wants"
         ln_r "${systemdsystemunitdir}/systemd-vconsole-setup.service" \
-            "${systemdsystemconfdir}/${i}.wants/systemd-vconsole-setup.service"
+            "${systemdsystemunitdir}/${i}.wants/systemd-vconsole-setup.service"
     done
 
+    mkdir -p "${initdir}/$systemdsystemunitdir/initrd.target.wants"
+    for i in \
+        dracut-cmdline.service \
+        dracut-initqueue.service \
+        dracut-mount.service \
+        dracut-pre-mount.service \
+        dracut-pre-pivot.service \
+        dracut-pre-trigger.service \
+        dracut-pre-udev.service \
+        ; do
+        inst_simple "$moddir/${i}" "$systemdsystemunitdir/${i}"
+        ln_r "$systemdsystemunitdir/${i}" "$systemdsystemunitdir/initrd.target.wants/${i}"
+    done
+
+    mkdir -p "$initdir/etc/systemd"
     # turn off RateLimit for journal
     {
         echo "[Journal]"

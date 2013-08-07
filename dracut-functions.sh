@@ -39,13 +39,13 @@ strstr() { [[ $1 = *$2* ]]; }
 # search in the usual places to find the binary.
 find_binary() {
     if [[ -z ${1##/*} ]]; then
-        if [[ -x $1 ]] || { strstr "$1" ".so" && ldd $1 &>/dev/null; };  then
-            echo $1
+        if [[ -x $1 ]] || { [[ "$1" == *.so* ]] && ldd "$1" &>/dev/null; };  then
+            printf "%s\n" "$1"
             return 0
         fi
     fi
 
-    type -P ${1##*/}
+    type -P "${1##*/}"
 }
 
 if ! [[ $dracutbasedir ]]; then
@@ -65,7 +65,7 @@ fi
 
 # Detect lib paths
 if ! [[ $libdirs ]] ; then
-    if strstr "$(ldd /bin/sh)" "/lib64/" &>/dev/null \
+    if [[ "$(ldd /bin/sh)" == */lib64/* ]] &>/dev/null \
         && [[ -d /lib64 ]]; then
         libdirs+=" /lib64"
         [[ -d /usr/lib64 ]] && libdirs+=" /usr/lib64"
@@ -83,7 +83,7 @@ fi
 
 srcmods="/lib/modules/$kernel/"
 [[ $drivers_dir ]] && {
-    if vercmp $(modprobe --version | cut -d' ' -f3) lt 3.7; then
+    if vercmp "$(modprobe --version | cut -d' ' -f3)" lt 3.7; then
         dfatal 'To use --kmoddir option module-init-tools >= 3.7 is required.'
         exit 1
     fi
@@ -115,19 +115,21 @@ dracut_need_initqueue() {
 }
 
 dracut_module_included() {
-    strstr "$mods_to_load $modules_loaded" "$@"
+    [[ "$mods_to_load $modules_loaded" == *$@* ]]
 }
 
 # Create all subdirectories for given path without creating the last element.
 # $1 = path
-mksubdirs() { [[ -e ${1%/*} ]] || mkdir -m 0755 -p ${1%/*}; }
+mksubdirs() {
+    [[ -e ${1%/*} ]] || mkdir -m 0755 -p -- "${1%/*}"
+}
 
 # Version comparision function.  Assumes Linux style version scheme.
 # $1 = version a
 # $2 = comparision op (gt, ge, eq, le, lt, ne)
 # $3 = version b
 vercmp() {
-    local _n1=(${1//./ }) _op=$2 _n2=(${3//./ }) _i _res
+    local _n1=${1//./ } _op=$2 _n2=${3//./ } _i _res
 
     for ((_i=0; ; _i++))
     do
@@ -152,7 +154,7 @@ vercmp() {
 # is_func <command>
 # Check whether $1 is a function.
 is_func() {
-    [[ $(type -t $1) = "function" ]]
+    [[ "$(type -t "$1")" = "function" ]]
 }
 
 # Function prints global variables in format name=value line by line.
@@ -160,10 +162,10 @@ is_func() {
 print_vars() {
     local _var _value
 
-    for _var in $@
+    for _var in "$@"
     do
-        _value=$(eval echo \$$_var)
-        [[ ${_value} ]] && echo "${_var}=\"${_value}\""
+        eval printf -v _value "%s" "\$$_var"
+        [[ ${_value} ]] && printf '%s="%s"\n' "$_var" "$_value"
     done
 }
 
@@ -204,7 +206,7 @@ convert_abs_rel() {
     __abssize=${#__absolute[@]}
     __cursize=${#__current[@]}
 
-    while [[ ${__absolute[__level]} == ${__current[__level]} ]]
+    while [[ "${__absolute[__level]}" == "${__current[__level]}" ]]
     do
         (( __level++ ))
         if (( __level > __abssize || __level > __cursize ))
@@ -234,7 +236,7 @@ convert_abs_rel() {
     echo "$__newpath"
 }
 
-if strstr "$(ln --help)" "--relative"; then
+if [[ "$(ln --help)" == *--relative* ]]; then
     ln_r() {
         ln -sfnr "${initdir}/$1" "${initdir}/$2"
     }
@@ -243,7 +245,7 @@ else
         local _source=$1
         local _dest=$2
         [[ -d "${_dest%/*}" ]] && _dest=$(readlink -f "${_dest%/*}")/${_dest##*/}
-        ln -sfn $(convert_abs_rel "${_dest}" "${_source}") "${initdir}/${_dest}"
+        ln -sfn -- "$(convert_abs_rel "${_dest}" "${_source}")" "${initdir}/${_dest}"
     }
 fi
 
@@ -254,44 +256,53 @@ get_persistent_dev() {
     [ -z "$_dev" ] && return
 
     for i in /dev/mapper/* /dev/disk/by-uuid/* /dev/disk/by-id/*; do
+        [[ $i == /dev/mapper/mpath* ]] && continue
         _tmp=$(udevadm info --query=name --name="$i" 2>/dev/null)
         if [ "$_tmp" = "$_dev" ]; then
-            echo $i
+            printf -- "%s" "$i"
             return
         fi
     done
 }
 
 # get_fs_env <device>
-# Get and set the ID_FS_TYPE and ID_FS_UUID variable from udev for a device.
+# Get and set the ID_FS_TYPE variable from udev for a device.
 # Example:
-# $ get_fs_env /dev/sda2; echo $ID_FS_TYPE; echo $ID_FS_UUID
+# $ get_fs_env /dev/sda2; echo $ID_FS_TYPE
 # ext4
-# 551a39aa-4ae9-4e70-a262-ef665cadb574
 get_fs_env() {
     local evalstr
     local found
 
     [[ $1 ]] || return
     unset ID_FS_TYPE
-    unset ID_FS_UUID
-    if evalstr=$(udevadm info --query=env --name=$1 \
+    if ID_FS_TYPE=$(udevadm info --query=env --name="$1" \
         | { while read line; do
-            strstr "$line" "DEVPATH" && found=1;
-            strstr "$line" "ID_FS_TYPE=" && { echo $line; exit 0;}
-            done; [[ $found ]] && exit 0; exit 1; }) ; then
-        eval $evalstr
-        [[ $ID_FS_TYPE ]] && return 0
-        return 1
+                    [[ "$line" == DEVPATH\=* ]] && found=1;
+                    if [[ "$line" == ID_FS_TYPE\=* ]]; then
+                        printf "%s" "${line#ID_FS_TYPE=}";
+                        exit 0;
+                    fi
+                done; [[ $found ]] && exit 0; exit 1; }) ; then
+        if [[ $ID_FS_TYPE ]]; then
+            printf "%s" "$ID_FS_TYPE"
+            return 0
+        fi
     fi
 
     # Fallback, if we don't have udev information
     if find_binary blkid >/dev/null; then
-        eval $(blkid -o udev $1 \
+        ID_FS_TYPE=$(blkid -u filesystem -o export -- "$1" \
             | while read line; do
-                strstr "$line" "ID_FS_TYPE=" && echo $line;
+                if [[ "$line" == TYPE\=* ]]; then
+                    printf "%s" "${line#TYPE=}";
+                    exit 0;
+                fi
                 done)
-        [[ $ID_FS_TYPE ]] && return 0
+        if [[ $ID_FS_TYPE ]]; then
+            printf "%s" "$ID_FS_TYPE"
+            return 0
+        fi
     fi
     return 1
 }
@@ -302,10 +313,9 @@ get_fs_env() {
 # $ get_maj_min /dev/sda2
 # 8:2
 get_maj_min() {
-    local _dev
-    _dev=$(stat -L -c '$((0x%t)):$((0x%T))' "$1" 2>/dev/null)
-    _dev=$(eval "echo $_dev")
-    echo $_dev
+    local _maj _min _majmin
+    _majmin="$(stat -L -c '%t:%T' "$1" 2>/dev/null)"
+    printf "%s" "$((0x${_majmin%:*})):$((0x${_majmin#*:}))"
 }
 
 # find_block_device <mountpoint>
@@ -319,94 +329,51 @@ get_maj_min() {
 # $ find_block_device /usr
 # 8:4
 find_block_device() {
-    local _x _mpt _majmin _dev _fs _maj _min _find_mpt
+    local _majmin _dev _majmin _find_mpt
     _find_mpt="$1"
     if [[ $use_fstab != yes ]]; then
-        while read _x; do
-            set -- $_x
-            _majmin="$3"
-            _mpt="$5"
-            [[ $8 = "-" ]] && shift
-            _fs="$8"
-            _dev="$9"
-            [[ $_mpt = $_find_mpt ]] || continue
-            [[ $_fs = nfs ]] && { echo $_dev; return 0;}
-            [[ $_fs = nfs3 ]] && { echo $_dev; return 0;}
-            [[ $_fs = nfs4 ]] && { echo $_dev; return 0;}
-            [[ $_fs = btrfs ]] && {
-                get_maj_min $_dev
-                return 0;
-            }
-            if [[ ${_majmin#0:} = $_majmin ]]; then
-                echo $_majmin
-                return 0 # we have a winner!
-            fi
-        done < /proc/self/mountinfo
+        [[ -d $_find_mpt/. ]]
+        findmnt -e -v -n -o 'MAJ:MIN,SOURCE' --target "$_find_mpt" | { \
+            while read _majmin _dev; do
+                if [[ -b $_dev ]]; then
+                    if ! [[ $_majmin ]] || [[ $_majmin == 0:* ]]; then
+                        _majmin=$(get_maj_min $_dev)
+                    fi
+                    if [[ $_majmin ]]; then
+                        echo $_majmin
+                    else
+                        echo $_dev
+                    fi
+                    return 0
+                fi
+                if [[ $_dev = *:* ]]; then
+                    echo $_dev
+                    return 0
+                fi
+            done; return 1; } && return 0
     fi
     # fall back to /etc/fstab
-    while read _dev _mpt _fs _x; do
-        [ "${_dev%%#*}" != "$_dev" ] && continue
 
-        if [[ $_mpt = $_find_mpt ]]; then
-            [[ $_fs = nfs ]] && { echo $_dev; return 0;}
-            [[ $_fs = nfs3 ]] && { echo $_dev; return 0;}
-            [[ $_fs = nfs4 ]] && { echo $_dev; return 0;}
-            [[ $_dev != ${_dev#UUID=} ]] && _dev=/dev/disk/by-uuid/${_dev#UUID=}
-            [[ $_dev != ${_dev#LABEL=} ]] && _dev=/dev/disk/by-label/${_dev#LABEL=}
-            [[ -b $_dev ]] || return 1 # oops, not a block device.
-            get_maj_min "$_dev" && return 0
-        fi
-    done < /etc/fstab
-
-    return 1
-}
-
-# find_dev_fstype <device>
-# Echo the filesystem type for a given device.
-# /proc/self/mountinfo is taken as the primary source of information
-# and /etc/fstab is used as a fallback.
-# No newline is appended!
-# Example:
-# $ find_dev_fstype /dev/sda2;echo
-# ext4
-find_dev_fstype() {
-    local _x _mpt _majmin _dev _fs _maj _min _find_dev
-    _find_dev="$1"
-    strstr "$_find_dev" "/dev" || _find_dev="/dev/block/$_find_dev"
-    while read _x; do
-        set -- $_x
-        _majmin="$3"
-        _mpt="$5"
-        [[ $8 = "-" ]] && shift
-        _fs="$8"
-        _dev="$9"
-        strstr "$_dev" "/dev" || continue
-        [[ $_dev -ef $_find_dev ]] || continue
-        [[ $_fs = "autofs" ]] && continue
-        echo -n $_fs;
-        return 0;
-    done < /proc/self/mountinfo
-
-    # fall back to /etc/fstab
-    while read _dev _mpt _fs _x; do
-        [ "${_dev%%#*}" != "$_dev" ] && continue
-        case "$_dev" in
-            LABEL=*)
-                _dev="$(echo $_dev | sed 's,/,\\x2f,g')"
-                _dev="/dev/disk/by-label/${_dev#LABEL=}"
-                ;;
-            UUID=*)
-                _dev="/dev/disk/by-uuid/${_dev#UUID=}"
-                ;;
-            PARTUUID=*)
-                _dev="/dev/disk/by-partuuid/${_dev#PARTUUID=}"
-                ;;
-        esac
-
-        [[ $_dev -ef $_find_dev ]] || continue
-        echo -n $_fs;
-        return 0;
-    done < /etc/fstab
+    findmnt -e --fstab -v -n -o 'MAJ:MIN,SOURCE' --target "$_find_mpt" | { \
+        while read _majmin _dev; do
+            if ! [[ $_dev ]]; then
+                _dev="$_majmin"
+                unset _majmin
+            fi
+            if [[ -b $_dev ]]; then
+                [[ $_majmin ]] || _majmin=$(get_maj_min $_dev)
+                if [[ $_majmin ]]; then
+                    echo $_majmin
+                else
+                    echo $_dev
+                fi
+                return 0
+            fi
+            if [[ $_dev = *:* ]]; then
+                echo $_dev
+                return 0
+            fi
+        done; return 1; } && return 0
 
     return 1
 }
@@ -420,30 +387,62 @@ find_dev_fstype() {
 # $ find_mp_fstype /;echo
 # ext4
 find_mp_fstype() {
-    local _x _mpt _majmin _dev _fs _maj _min _find_mpt
-    _find_mpt="$1"
-    while read _x; do
-        set -- $_x
-        _majmin="$3"
-        _mpt="$5"
-        [[ $8 = "-" ]] && shift
-        _fs="$8"
-        _dev="$9"
-        [[ $_mpt = $_find_mpt ]] || continue
-        [[ $_fs = "autofs" ]] && continue
-        echo -n $_fs;
-        return 0;
-    done < /proc/self/mountinfo
+    local _fs
 
-    # fall back to /etc/fstab
-    while read _dev _mpt _fs _x; do
-        [ "${_dev%%#*}" != "$_dev" ] && continue
-        [[ $_mpt = $_find_mpt ]] || continue
-        echo -n $_fs;
-        return 0;
-    done < /etc/fstab
+    if [[ $use_fstab != yes ]]; then
+        findmnt -e -v -n -o 'FSTYPE' --target "$1" | { \
+            while read _fs; do
+                [[ $_fs ]] || continue
+                [[ $_fs = "autofs" ]] && continue
+                echo -n $_fs
+                return 0
+            done; return 1; } && return 0
+    fi
+
+    findmnt --fstab -e -v -n -o 'FSTYPE' --target "$1" | { \
+        while read _fs; do
+            [[ $_fs ]] || continue
+            [[ $_fs = "autofs" ]] && continue
+            echo -n $_fs
+            return 0
+        done; return 1; } && return 0
 
     return 1
+}
+
+# find_dev_fstype <device>
+# Echo the filesystem type for a given device.
+# /proc/self/mountinfo is taken as the primary source of information
+# and /etc/fstab is used as a fallback.
+# No newline is appended!
+# Example:
+# $ find_dev_fstype /dev/sda2;echo
+# ext4
+find_dev_fstype() {
+    local _find_dev _fs
+    _find_dev="$1"
+    [[ "$_find_dev" = /dev* ]] || _find_dev="/dev/block/$_find_dev"
+
+    if [[ $use_fstab != yes ]]; then
+        findmnt -e -v -n -o 'FSTYPE' --source "$_find_dev" | { \
+            while read _fs; do
+                [[ $_fs ]] || continue
+                [[ $_fs = "autofs" ]] && continue
+                echo -n $_fs
+                return 0
+            done; return 1; } && return 0
+    fi
+
+    findmnt --fstab -e -v -n -o 'FSTYPE' --source "$_find_dev" | { \
+        while read _fs; do
+            [[ $_fs ]] || continue
+            [[ $_fs = "autofs" ]] && continue
+            echo -n $_fs
+            return 0
+        done; return 1; } && return 0
+
+    return 1
+
 }
 
 # finds the major:minor of the block device backing the root filesystem.
@@ -481,12 +480,12 @@ check_block_and_slaves() {
     "$1" $2 && return
     check_vol_slaves "$@" && return 0
     if [[ -f /sys/dev/block/$2/../dev ]]; then
-        check_block_and_slaves $1 $(cat "/sys/dev/block/$2/../dev") && return 0
+        check_block_and_slaves $1 $(<"/sys/dev/block/$2/../dev") && return 0
     fi
     [[ -d /sys/dev/block/$2/slaves ]] || return 1
     for _x in /sys/dev/block/$2/slaves/*/dev; do
         [[ -f $_x ]] || continue
-        check_block_and_slaves $1 $(cat "$_x") && return 0
+        check_block_and_slaves $1 $(<"$_x") && return 0
     done
     return 1
 }
@@ -495,16 +494,16 @@ check_block_and_slaves_all() {
     local _x _ret=1
     [[ -b /dev/block/$2 ]] || return 1 # Not a block device? So sorry.
     if "$1" $2; then
-          _ret=0
+        _ret=0
     fi
     check_vol_slaves "$@" && return 0
     if [[ -f /sys/dev/block/$2/../dev ]]; then
-        check_block_and_slaves_all $1 $(cat "/sys/dev/block/$2/../dev") && _ret=0
+        check_block_and_slaves_all $1 $(<"/sys/dev/block/$2/../dev") && _ret=0
     fi
     [[ -d /sys/dev/block/$2/slaves ]] || return 1
     for _x in /sys/dev/block/$2/slaves/*/dev; do
         [[ -f $_x ]] || continue
-        check_block_and_slaves_all $1 $(cat "$_x") && _ret=0
+        check_block_and_slaves_all $1 $(<"$_x") && _ret=0
     done
     return $_ret
 }
@@ -522,7 +521,7 @@ for_each_host_dev_and_slaves_all()
     for _dev in ${host_devs[@]}; do
         [[ -b "$_dev" ]] || continue
         if check_block_and_slaves_all $_func $(get_maj_min $_dev); then
-               _ret=0
+            _ret=0
         fi
     done
     return $_ret
@@ -677,7 +676,7 @@ else
     # We never overwrite the target if it exists.
     inst_simple() {
         [[ -f "$1" ]] || return 1
-        strstr "$1" "/" || return 1
+        [[ "$1" == */* ]] || return 1
         local _src=$1 _target="${2:-$1}"
 
         [[ -L $_src ]] && { inst_symlink $_src $_target; return $?; }
@@ -706,7 +705,7 @@ else
     # same as above, but specialized for symlinks
     inst_symlink() {
         local _src=$1 _target=${2:-$1} _realsrc
-        strstr "$1" "/" || return 1
+        [[ "$1" == */* ]] || return 1
         [[ -L $1 ]] || return 1
         [[ -L $initdir/$_target ]] && return 0
         _realsrc=$(readlink -f "$_src")
@@ -727,7 +726,7 @@ else
     # is referenced.
     inst_library() {
         local _src="$1" _dest=${2:-$1} _lib _reallib _symlink
-        strstr "$1" "/" || return 1
+        [[ "$1" == */* ]] || return 1
         [[ -e $initdir/$_dest ]] && return 0
         if [[ -L $_src ]]; then
             if [[ $DRACUT_FIPS_MODE ]]; then
@@ -779,7 +778,7 @@ else
                 continue
             fi
 
-            if [[ $_line =~ not\ found ]]; then
+            if [[ $_line == *not\ found* ]]; then
                 dfatal "Missing a shared library required by $_bin."
                 dfatal "Run \"ldd $_bin\" to find out what it is."
                 dfatal "$_line"
@@ -865,7 +864,7 @@ rev_lib_symlinks() {
 
     local fn="$1" orig="$(readlink -f "$1")" links=''
 
-    [[ ${fn} =~ .*\.so\..* ]] || return 1
+    [[ ${fn} == *.so.* ]] || return 1
 
     until [[ ${fn##*.} == so ]]; do
         fn="${fn%.*}"
@@ -1019,7 +1018,7 @@ inst_hook() {
         dfatal "Cannot install a hook ($3) that does not exist."
         dfatal "Aborting initrd creation."
         exit 1
-    elif ! strstr "$hookdirs" "$1"; then
+    elif ! [[ "$hookdirs" == *$1* ]]; then
         dfatal "No such hook type $1. Aborting initrd creation."
         exit 1
     fi
@@ -1137,6 +1136,7 @@ module_check() {
         _ret=$?
     else
         unset check depends install installkernel
+        check() { true; }
         . $_moddir/module-setup.sh
         is_func check || return 0
         [ $_forced -ne 0 ] && unset hostonly
@@ -1164,8 +1164,8 @@ module_check_mount() {
         _ret=$?
     else
         unset check depends install installkernel
+        check() { false; }
         . $_moddir/module-setup.sh
-        is_func check || return 1
         check 0
         _ret=$?
         unset check depends install installkernel
@@ -1188,8 +1188,8 @@ module_depends() {
         return $?
     else
         unset check depends install installkernel
+        depends() { true; }
         . $_moddir/module-setup.sh
-        is_func depends || return 0
         depends
         _ret=$?
         unset check depends install installkernel
@@ -1209,8 +1209,8 @@ module_install() {
         return $?
     else
         unset check depends install installkernel
+        install() { true; }
         . $_moddir/module-setup.sh
-        is_func install || return 0
         install
         _ret=$?
         unset check depends install installkernel
@@ -1230,8 +1230,8 @@ module_installkernel() {
         return $?
     else
         unset check depends install installkernel
+        installkernel() { true; }
         . $_moddir/module-setup.sh
-        is_func installkernel || return 0
         installkernel
         _ret=$?
         unset check depends install installkernel
@@ -1251,20 +1251,19 @@ check_mount() {
     [ "${#host_fs_types[*]}" -le 0 ] && return 1
 
     # If we are already scheduled to be loaded, no need to check again.
-    strstr " $mods_to_load " " $_mod " && return 0
-    strstr " $mods_checked_as_dep " " $_mod " && return 1
+    [[ " $mods_to_load " == *\ $_mod\ * ]] && return 0
+    [[ " $mods_checked_as_dep " == *\ $_mod\ * ]] && return 1
 
     # This should never happen, but...
     [[ -d $_moddir ]] || return 1
 
     [[ $2 ]] || mods_checked_as_dep+=" $_mod "
 
-    if strstr " $omit_dracutmodules " " $_mod "; then
-        dinfo "dracut module '$_mod' will not be installed, because it's in the list to be omitted!"
+    if [[ " $omit_dracutmodules " == *\ $_mod\ * ]]; then
         return 1
     fi
 
-    if strstr " $dracutmodules $add_dracutmodules $force_add_dracutmodules" " $_mod "; then
+    if [[ " $dracutmodules $add_dracutmodules $force_add_dracutmodules" == *\ $_mod\ * ]]; then
         module_check_mount $_mod; ret=$?
 
         # explicit module, so also accept ret=255
@@ -1283,9 +1282,9 @@ check_mount() {
 
     for _moddep in $(module_depends $_mod); do
         # handle deps as if they were manually added
-        strstr " $add_dracutmodules " " $_moddep " || \
+        [[ " $add_dracutmodules " == *\ $_moddep\ * ]] || \
             add_dracutmodules+=" $_moddep "
-        strstr " $force_add_dracutmodules " " $_moddep " || \
+        [[ " $force_add_dracutmodules " == *\ $_moddep\ * ]] || \
             force_add_dracutmodules+=" $_moddep "
         # if a module we depend on fail, fail also
         if ! check_module $_moddep; then
@@ -1294,7 +1293,7 @@ check_mount() {
         fi
     done
 
-    strstr " $mods_to_load " " $_mod " || \
+    [[ " $mods_to_load " == *\ $_mod\ * ]] || \
         mods_to_load+=" $_mod "
 
     return 0
@@ -1310,21 +1309,21 @@ check_module() {
     local _ret
     local _moddep
     # If we are already scheduled to be loaded, no need to check again.
-    strstr " $mods_to_load " " $_mod " && return 0
-    strstr " $mods_checked_as_dep " " $_mod " && return 1
+    [[ " $mods_to_load " == *\ $_mod\ * ]] && return 0
+    [[ " $mods_checked_as_dep " == *\ $_mod\ * ]] && return 1
 
     # This should never happen, but...
     [[ -d $_moddir ]] || return 1
 
     [[ $2 ]] || mods_checked_as_dep+=" $_mod "
 
-    if strstr " $omit_dracutmodules " " $_mod "; then
+    if [[ " $omit_dracutmodules " == *\ $_mod\ * ]]; then
         dinfo "dracut module '$_mod' will not be installed, because it's in the list to be omitted!"
         return 1
     fi
 
-    if strstr " $dracutmodules $add_dracutmodules $force_add_dracutmodules" " $_mod "; then
-        if strstr " $force_add_dracutmodules" " $_mod"; then
+    if [[ " $dracutmodules $add_dracutmodules $force_add_dracutmodules" == *\ $_mod\ * ]]; then
+        if [[ " $force_add_dracutmodules " == *\ $_mod\ * ]]; then
             module_check $_mod 1; ret=$?
         else
             module_check $_mod 0; ret=$?
@@ -1344,9 +1343,9 @@ check_module() {
 
     for _moddep in $(module_depends $_mod); do
         # handle deps as if they were manually added
-        strstr " $add_dracutmodules " " $_moddep " || \
+        [[ " $add_dracutmodules " == *\ $_moddep\ * ]] || \
             add_dracutmodules+=" $_moddep "
-        strstr " $force_add_dracutmodules " " $_moddep " || \
+        [[ " $force_add_dracutmodules " == *\ $_moddep\ * ]] || \
             force_add_dracutmodules+=" $_moddep "
         # if a module we depend on fail, fail also
         if ! check_module $_moddep; then
@@ -1355,7 +1354,7 @@ check_module() {
         fi
     done
 
-    strstr " $mods_to_load " " $_mod " || \
+    [[ " $mods_to_load " == *\ $_mod\ * ]] || \
         mods_to_load+=" $_mod "
 
     return 0
@@ -1378,8 +1377,8 @@ for_each_module_dir() {
     _modcheck="$add_dracutmodules $force_add_dracutmodules"
     [[ $dracutmodules != all ]] && _modcheck="$m $dracutmodules"
     for _mod in $_modcheck; do
-        strstr "$mods_to_load" "$_mod" && continue
-        strstr "$omit_dracutmodules" "$_mod" && continue
+        [[ " $mods_to_load " == *\ $_mod\ * ]] && continue
+        [[ " $omit_dracutmodules " == *\ $_mod\ * ]] && continue
         derror "dracut module '$_mod' cannot be found or installed."
     done
 }
@@ -1409,6 +1408,14 @@ install_kmod_with_fw() {
             dinfo "Omitting driver $_kmod"
             return 0
         fi
+    fi
+
+    if [[ $silent_omit_drivers ]]; then
+        local _kmod=${1##*/}
+        _kmod=${_kmod%.ko}
+        _kmod=${_kmod/-/_}
+        [[ "$_kmod" =~ $silent_omit_drivers ]] && return 0
+        [[ "${1##*/lib/modules/$kernel/}" =~ $silent_omit_drivers ]] && return 0
     fi
 
     inst_simple "$1" "/lib/modules/$kernel/${1##*/lib/modules/$kernel/}"
@@ -1461,6 +1468,7 @@ for_each_kmod_dep() {
 
 dracut_kernel_post() {
     local _moddirname=${srcmods%%/lib/modules/*}
+    local _pid
 
     if [[ $DRACUT_KERNEL_LAZY_HASHDIR ]] && [[ -f "$DRACUT_KERNEL_LAZY_HASHDIR/lazylist" ]]; then
         xargs -r modprobe -a ${_moddirname+-d ${_moddirname}/} \
@@ -1484,6 +1492,8 @@ dracut_kernel_post() {
                 done < "$DRACUT_KERNEL_LAZY_HASHDIR/lazylist.dep"
             fi
         ) &
+        _pid=$(jobs -p | while read a ; do printf ":$a";done)
+        _pid=${_pid##*:}
 
         if [[ $DRACUT_INSTALL ]]; then
             xargs -r modinfo -k $kernel -F firmware < "$DRACUT_KERNEL_LAZY_HASHDIR/lazylist.dep" \
@@ -1503,7 +1513,7 @@ dracut_kernel_post() {
             done
         fi
 
-        wait
+        wait $_pid
     fi
 
     for _f in modules.builtin.bin modules.builtin; do
@@ -1524,18 +1534,20 @@ dracut_kernel_post() {
         exit 1
     fi
 
-    [[ $DRACUT_KERNEL_LAZY_HASHDIR ]] && rm -fr "$DRACUT_KERNEL_LAZY_HASHDIR"
+    [[ $DRACUT_KERNEL_LAZY_HASHDIR ]] && rm -fr -- "$DRACUT_KERNEL_LAZY_HASHDIR"
 }
 
-module_is_host_only() (
+module_is_host_only() {
     local _mod=$1
     _mod=${_mod##*/}
     _mod=${_mod%.ko}
 
-    [[ "$add_drivers" =~ " ${_mod} " ]] && return 0
+    [[ " $add_drivers " == *\ ${_mod}\ * ]] && return 0
 
     # check if module is loaded
-    [[ -d $(echo /sys/module/${_mod//-/_}|{ read a b; echo $a; }) ]] && return 0
+    for i in /sys/module/${_mod//-/_}; do
+        [[ -d $i ]] && return 0
+    done
 
     # check if module is loadable on the current kernel
     # this covers the case, where a new module is introduced
@@ -1544,22 +1556,22 @@ module_is_host_only() (
     modinfo -F filename "$_mod" &>/dev/null || return 0
 
     return 1
-)
+}
 
-find_kernel_modules_by_path () (
+find_kernel_modules_by_path () {
     local _OLDIFS
 
-    [[ -f $srcmods/modules.dep ]] || return 0
+    [[ -f "$srcmods/modules.dep" ]] || return 0
 
     _OLDIFS=$IFS
     IFS=:
     while read a rest; do
         [[ $a = */$1/* ]] || continue
-        echo $srcmods/$a
-    done < $srcmods/modules.dep
+        printf "%s\n" "$srcmods/$a"
+    done < "$srcmods/modules.dep"
     IFS=$_OLDIFS
     return 0
-)
+}
 
 find_kernel_modules () {
     find_kernel_modules_by_path  drivers
@@ -1643,7 +1655,7 @@ instmods() {
             while read _mod; do
                 inst1mod "${_mod%.ko*}" || {
                     if [[ "$_check" == "yes" ]]; then
-                        [[ "$_silent" == "no" ]] && dfatal "Failed to install $_mod"
+                        [[ "$_silent" == "no" ]] && dfatal "Failed to install module $_mod"
                         return 1
                     fi
                 }
@@ -1652,7 +1664,7 @@ instmods() {
         while (($# > 0)); do  # filenames as arguments
             inst1mod ${1%.ko*} || {
                 if [[ "$_check" == "yes" ]]; then
-                    [[ "$_silent" == "no" ]] && dfatal "Failed to install $1"
+                    [[ "$_silent" == "no" ]] && dfatal "Failed to install module $1"
                     return 1
                 fi
             }
@@ -1665,7 +1677,40 @@ instmods() {
     # Capture all stderr from modprobe to _fderr. We could use {var}>...
     # redirections, but that would make dracut require bash4 at least.
     eval "( instmods_1 \"\$@\" ) ${_fderr}>&1" \
-    | while read line; do [[ "$line" =~ $_filter_not_found ]] || echo $line;done | derror
+        | while read line; do [[ "$line" =~ $_filter_not_found ]] || echo $line;done | derror
     _ret=$?
     return $_ret
+}
+# get_cpu_vendor
+# Only two values are returned: AMD or Intel
+get_cpu_vendor ()
+{
+    if grep -qE AMD /proc/cpuinfo; then
+        printf "AMD"
+    fi
+    if grep -qE Intel /proc/cpuinfo; then
+        printf "Intel"
+    fi
+}
+
+# get_host_ucode
+# Get the hosts' ucode file based on the /proc/cpuinfo
+get_ucode_file ()
+{
+    local family=`grep -E "cpu family" /proc/cpuinfo | head -1 | sed s/.*:\ //`
+    local model=`grep -E "model" /proc/cpuinfo |grep -v name | head -1 | sed s/.*:\ //`
+    local stepping=`grep -E "stepping" /proc/cpuinfo | head -1 | sed s/.*:\ //`
+
+    if [[ "$(get_cpu_vendor)" == "AMD" ]]; then
+        # If family greater or equal than 0x15
+        if [[ $family -ge 21 ]]; then
+            printf "microcode_amd_fam15h.bin"
+        else
+            printf "microcode_amd.bin"
+        fi
+    fi
+    if [[ "$(get_cpu_vendor)" == "Intel" ]]; then
+        # The /proc/cpuinfo are in decimal.
+        printf "%02x-%02x-%02x" ${family} ${model} ${stepping}
+    fi
 }

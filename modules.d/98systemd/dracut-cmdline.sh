@@ -2,8 +2,6 @@
 # -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
-export DRACUT_SYSTEMD=1
-export NEWROOT="/sysroot"
 [ -d $NEWROOT ] || mkdir -p -m 0755 $NEWROOT
 [ -d /run/initramfs ] || mkdir -p -m 0755 /run/initramfs
 [ -d /run/lock ] || mkdir -p -m 0755 /run/lock
@@ -58,6 +56,10 @@ case "$root" in
     block:PARTUUID=*|PARTUUID=*)
         root="${root#block:}"
         root="block:/dev/disk/by-partuuid/${root#PARTUUID=}"
+        rootok=1 ;;
+    block:PARTLABEL=*|PARTLABEL=*)
+        root="${root#block:}"
+        root="block:/dev/disk/by-partlabel/${root#PARTLABEL=}"
         rootok=1 ;;
     /dev/*)
         root="block:${root}"

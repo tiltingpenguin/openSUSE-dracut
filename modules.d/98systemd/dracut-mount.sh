@@ -26,12 +26,12 @@ while :; do
             usable_root "$NEWROOT" && break;
             warn "$NEWROOT has no proper rootfs layout, ignoring and removing offending mount hook"
             umount "$NEWROOT"
-            rm -f "$f"
+            rm -f -- "$f"
         fi
     done
 
     i=$(($i+1))
-    [ $i -gt 20 ] && emergency_shell "Can't mount root filesystem"
+    [ $i -gt 20 ] && action_on_fail "Can't mount root filesystem" && break
 done
 
 export -p > /dracut-state.sh

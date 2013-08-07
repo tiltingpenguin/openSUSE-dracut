@@ -17,14 +17,7 @@
 command -v getarg >/dev/null          || . /lib/dracut-lib.sh
 command -v ibft_to_cmdline >/dev/null || . /lib/net-lib.sh
 
-# Don't mix BOOTIF=macaddr from pxelinux and ip= lines
-getarg ip= >/dev/null && getarg BOOTIF= >/dev/null && \
-    die "Mixing BOOTIF and ip= lines is dangerous"
-
-# No more parsing stuff, BOOTIF says everything
-[ -n "$(getarg BOOTIF)" ] && return
-
-if [ -n "$netroot" ] && [ -z "$(getarg ip=)" ] ; then
+if [ -n "$netroot" ] && [ -z "$(getarg ip=)" ] && [ -z "$(getarg BOOTIF=)" ]; then
     # No ip= argument(s) for netroot provided, defaulting to DHCP
     return;
 fi
@@ -53,6 +46,12 @@ fi
 # XXX Would be nice if we could errorcheck ip addresses here as well
 for p in $(getargs ip=); do
     ip_to_var $p
+
+    # make first device specified the BOOTDEV
+    if [ -z "$BOOTDEV" ] && [ -n "$dev" ]; then
+        BOOTDEV="$dev"
+        [ -n "$NEEDBOOTDEV" ] && warn "Setting bootdev to '$BOOTDEV'"
+    fi
 
     # skip ibft since we did it above
     [ "$autoconf" = "ibft" ] && continue
@@ -112,6 +111,12 @@ for p in $(getargs ip=); do
 
 done
 
+# put BOOTIF in IFACES to make sure it comes up
+if BOOTIF="$(getarg BOOTIF=)"; then
+    BOOTDEV=$(fix_bootif $BOOTIF)
+    IFACES="$BOOTDEV $IFACES"
+fi
+
 # This ensures that BOOTDEV is always first in IFACES
 if [ -n "$BOOTDEV" ] && [ -n "$IFACES" ] ; then
     IFACES="${IFACES%$BOOTDEV*} ${IFACES#*$BOOTDEV}"
@@ -121,6 +126,3 @@ fi
 # Store BOOTDEV and IFACES for later use
 [ -n "$BOOTDEV" ] && echo $BOOTDEV > /tmp/net.bootdev
 [ -n "$IFACES" ]  && echo $IFACES > /tmp/net.ifaces
-
-# We need a ip= line for the configured bootdev=
-[ -n "$NEEDBOOTDEV" ] && [ -z "$BOOTDEVOK" ] && die "Bootdev Argument '$BOOTDEV' not found"

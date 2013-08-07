@@ -2,22 +2,14 @@
 # -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
-# pxelinux provides macaddr '-' separated, but we need ':'
-fix_bootif() {
-    local macaddr=${1}
-    local IFS='-'
-    macaddr=$(for i in ${macaddr} ; do echo -n $i:; done)
-    macaddr=${macaddr%:}
-    # strip hardware type field from pxelinux
-    [ -n "${macaddr%??:??:??:??:??:??}" ] && macaddr=${macaddr#??:}
-    # return macaddr with lowercase alpha characters expected by udev
-    echo $macaddr | sed 'y/ABCDEF/abcdef/'
-}
+getargbool 0 rd.neednet && NEEDNET=1
 
 # Don't continue if we don't need network
-if [ -z "$netroot" ] && [ ! -e "/tmp/net.ifaces" ] && ! getargbool 0 rd.neednet >/dev/null; then
+if [ -z "$netroot" ] && [ ! -e "/tmp/net.ifaces" ] && [ "$NEEDNET" != "1" ]; then
     return
 fi
+
+command -v fix_bootif >/dev/null || . /lib/net-lib.sh
 
 # Write udev rules
 {
@@ -25,23 +17,30 @@ fi
     if [ -e /tmp/bridge.info ]; then
         . /tmp/bridge.info
         IFACES="$IFACES ${ethnames%% *}"
+        MASTER_IFACES="$MASTER_IFACES $bridgename"
     fi
 
     # bond: attempt only the defined interface (override bridge defines)
-    if [ -e /tmp/bond.info ]; then
-        . /tmp/bond.info
+    for i in /tmp/bond.*.info; do
+        [ -e "$i" ] || continue
+        unset bondslaves
+        unset bondname
+        . "$i"
         # It is enough to fire up only one
         IFACES="$IFACES ${bondslaves%% *}"
-    fi
+        MASTER_IFACES="$MASTER_IFACES ${bondname}"
+    done
 
     if [ -e /tmp/team.info ]; then
         . /tmp/team.info
         IFACES="$IFACES ${teamslaves}"
+        MASTER_IFACES="$MASTER_IFACES ${teammaster}"
     fi
 
     if [ -e /tmp/vlan.info ]; then
         . /tmp/vlan.info
         IFACES="$IFACES $phydevice"
+        MASTER_IFACES="$MASTER_IFACES ${vlanname}"
     fi
 
     if [ -z "$IFACES" ]; then
@@ -55,27 +54,37 @@ fi
     ifup='/sbin/ifup $env{INTERFACE}'
     [ -z "$netroot" ] && ifup="$ifup -m"
 
-    # BOOTIF says everything, use only that one
-    BOOTIF=$(getarg 'BOOTIF=')
-    if [ -n "$BOOTIF" ] ; then
-        BOOTIF=$(fix_bootif "$BOOTIF")
-        printf 'ACTION=="add", SUBSYSTEM=="net", ATTR{address}=="%s", RUN+="%s"\n' "$BOOTIF" "/sbin/initqueue --onetime $ifup"
-        echo "[ -f /tmp/setup_net_${BOOTIF}.ok ]" >$hookdir/initqueue/finished/wait-${BOOTIF}.sh
+    runcmd="RUN+=\"/sbin/initqueue --onetime $ifup\""
 
-    # If we have to handle multiple interfaces, handle only them.
-    elif [ -n "$IFACES" ] ; then
-        for iface in $IFACES ; do
-            printf 'SUBSYSTEM=="net", ENV{INTERFACE}=="%s", RUN+="%s"\n' "$iface" "/sbin/initqueue --onetime $ifup"
-            if [ "$bootdev" = "$iface" ]; then
+    # We have some specific interfaces to handle
+    if [ -n "$IFACES" ]; then
+        echo 'SUBSYSTEM!="net", GOTO="net_end"'
+        echo 'ACTION=="remove", GOTO="net_end"'
+        for iface in $IFACES; do
+            case "$iface" in
+                ??:??:??:??:??:??)  # MAC address
+                    cond="ATTR{address}==\"$iface\"" ;;
+                ??-??-??-??-??-??)  # MAC address in BOOTIF form
+                    cond="ATTR{address}==\"$(fix_bootif $iface)\"" ;;
+                *)                  # an interface name
+                    cond="ENV{INTERFACE}==\"$iface\"" ;;
+            esac
+            # The GOTO prevents us from trying to ifup the same device twice
+            echo "$cond, $runcmd, GOTO=\"net_end\""
+        done
+        echo 'LABEL="net_end"'
+
+        for iface in $MASTER_IFACES; do
+            if [ "$bootdev" = "$iface" ] || [ "$NEEDNET" = "1" ]; then
                 echo "[ -f /tmp/setup_net_${iface}.ok ]" >$hookdir/initqueue/finished/wait-$iface.sh
             fi
         done
-
     # Default: We don't know the interface to use, handle all
     # Fixme: waiting for the interface as well.
     else
+        cond='ACTION=="add", SUBSYSTEM=="net"'
         # if you change the name of "91-default-net.rules", also change modules.d/80cms/cmssetup.sh
-        printf 'SUBSYSTEM=="net", RUN+="%s"\n' "/sbin/initqueue --onetime $ifup" > /etc/udev/rules.d/91-default-net.rules
+        echo "$cond, $runcmd" > /etc/udev/rules.d/91-default-net.rules
     fi
 
 # if you change the name of "90-net.rules", also change modules.d/80cms/cmssetup.sh

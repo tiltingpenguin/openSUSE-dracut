@@ -22,12 +22,15 @@ INITRAMFS TODO
 
 GENERATOR TODO
 
+- remove wait for swap devs, if no "resume=" is given on the kernel command line
 - add presets (predefined set of modules)
 - add interpreter/plugin-scripts to be sourced at the beginning or end (can use dracut-functions)
 - add mechanism for module specific command line options
 - pkg-config integration, to make it easy for other packages to use us.
 - default module specification could use some work
 - udev rule copying, as mentioned above, is a bit too hard-coded
+
+- dracut-install parse LD_SHOW_AUXV="" AT_PLATFORM for lib install
 
 CODE TODO
 

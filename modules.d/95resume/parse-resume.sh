@@ -17,6 +17,8 @@ case "$resume" in
         resume="/dev/disk/by-uuid/${resume#UUID=}" ;;
     PARTUUID=*) \
         resume="/dev/disk/by-partuuid/${resume#PARTUUID=}" ;;
+    PARTLABEL=*) \
+        resume="/dev/disk/by-partlabel/${resume#PARTLABEL=}" ;;
 esac
 
 if splash=$(getarg splash=); then
@@ -55,10 +57,10 @@ if [ -n "$resume" ]; then
             ${resume#/dev/};
     } >> /etc/udev/rules.d/99-resume.rules
 
-    printf '[ -e "%s" ] && { ln -s "%s" /dev/resume; rm "$job" "%s/initqueue/timeout/resume.sh"; }\n' \
+    printf '[ -e "%s" ] && { ln -s "%s" /dev/resume; rm -f -- "$job" "%s/initqueue/timeout/resume.sh"; }\n' \
         "$resume" "$resume" "$hookdir" >> $hookdir/initqueue/settled/resume.sh
 
-    printf 'warn "Cancelling resume operation. Device not found."; cancel_wait_for_dev /dev/resume; rm "$job" "%s/initqueue/settled/resume.sh";' \
+    printf 'warn "Cancelling resume operation. Device not found."; cancel_wait_for_dev /dev/resume; rm -f -- "$job" "%s/initqueue/settled/resume.sh";' \
         "$hookdir" >> $hookdir/initqueue/timeout/resume.sh
 
     wait_for_dev "/dev/resume"

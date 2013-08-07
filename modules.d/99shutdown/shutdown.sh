@@ -8,7 +8,7 @@
 # Harald Hoyer <harald@redhat.com>
 ACTION="$1"
 
-exec </dev/console >>/dev/console 2>>/dev/console
+[ -w /dev/console ] && exec </dev/console >>/dev/console 2>>/dev/console
 
 export TERM=linux
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -86,7 +86,7 @@ _check_shutdown() {
         [ -e "$__f" ] || continue
         ( . "$__f" $1 )
         if [ $? -eq 0 ]; then
-            rm -f $__f
+            rm -f -- $__f
             __s=0
         fi
     done

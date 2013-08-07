@@ -1,7 +1,7 @@
 #!/bin/bash
 TEST_DESCRIPTION="root filesystem on a ext3 filesystem"
 
-KVERSION=${KVERSION-$(uname -r)}
+KVERSION="${KVERSION-$(uname -r)}"
 
 # Uncomment this to debug failures
 #DEBUGFAIL="rd.shell"
@@ -12,11 +12,11 @@ test_run() {
 	-net none -kernel /boot/vmlinuz-$KVERSION \
 	-append "root=LABEL=dracut rw loglevel=77 systemd.log_level=debug systemd.log_target=console rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug init=/sbin/init $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
-    grep -m 1 -q dracut-root-block-success $TESTDIR/root.ext3 || return 1
+    grep -F -m 1 -q dracut-root-block-success $TESTDIR/root.ext3 || return 1
 }
 
 test_setup() {
-    rm -f $TESTDIR/root.ext3
+    rm -f -- $TESTDIR/root.ext3
     # Create the blank file to use as a root filesystem
     dd if=/dev/null of=$TESTDIR/root.ext3 bs=1M seek=80
 
@@ -36,6 +36,7 @@ test_setup() {
 	inst "$basedir/modules.d/40network/dhclient-script.sh" "/sbin/dhclient-script"
 	inst "$basedir/modules.d/40network/ifup.sh" "/sbin/ifup"
 	dracut_install grep
+        inst_simple /etc/os-release
 	inst ./test-init.sh /sbin/init
 	find_binary plymouth >/dev/null && dracut_install plymouth
 	(cd "$initdir"; mkdir -p dev sys proc etc var/run tmp )
@@ -61,7 +62,7 @@ test_setup() {
 	-d "piix ide-gd_mod ata_piix ext3 sd_mod" \
         --nomdadmconf \
 	-f $TESTDIR/initramfs.makeroot $KVERSION || return 1
-    rm -rf $TESTDIR/overlay
+    rm -rf -- $TESTDIR/overlay
     # Invoke KVM and/or QEMU to actually create the target filesystem.
 
     $testdir/run-qemu \
@@ -70,7 +71,7 @@ test_setup() {
 	-kernel "/boot/vmlinuz-$kernel" \
 	-append "root=/dev/fakeroot rw rootfstype=ext3 quiet console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.makeroot  || return 1
-    grep -m 1 -q dracut-root-block-created $TESTDIR/root.ext3 || return 1
+    grep -F -m 1 -q dracut-root-block-created $TESTDIR/root.ext3 || return 1
 
 
     (

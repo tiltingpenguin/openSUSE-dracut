@@ -1,5 +1,7 @@
-VERSION=027
-GITVERSION=$(shell [ -d .git ] && git rev-list  --abbrev-commit  -n 1 HEAD  |cut -b 1-8)
+-include dracut-version.sh
+
+VERSION = $(shell [ -d .git ] && git describe --abbrev=0 --tags 2>/dev/null || echo $(DRACUT_VERSION))
+GITVERSION = $(shell [ -d .git ] && { v=$$(git describe --tags 2>/dev/null); [ $${v\#*-} != $$v ] && echo -$${v\#*-}; } )
 
 -include Makefile.inc
 
@@ -27,6 +29,7 @@ man8pages = dracut.8 \
             modules.d/98systemd/dracut-cmdline.service.8 \
             modules.d/98systemd/dracut-initqueue.service.8 \
             modules.d/98systemd/dracut-mount.service.8 \
+            modules.d/98systemd/dracut-shutdown.service.8 \
             modules.d/98systemd/dracut-pre-mount.service.8 \
             modules.d/98systemd/dracut-pre-pivot.service.8 \
             modules.d/98systemd/dracut-pre-trigger.service.8 \
@@ -35,9 +38,9 @@ man8pages = dracut.8 \
 manpages = $(man1pages) $(man5pages) $(man7pages) $(man8pages)
 
 
-.PHONY: install clean archive rpm testimage test all check AUTHORS doc
+.PHONY: install clean archive rpm testimage test all check AUTHORS doc dracut-version.sh
 
-all: syncheck dracut-version.sh dracut-install
+all: dracut-version.sh dracut-install
 
 DRACUT_INSTALL_OBJECTS = \
         install/dracut-install.o \
@@ -79,7 +82,7 @@ dracut.html: dracut.asc $(manpages)
 		--stringparam html.stylesheet \
 		http://docs.fedoraproject.org/en-US/Common_Content/css/default.css \
 		http://docbook.sourceforge.net/release/xsl/current/xhtml/docbook.xsl dracut.xml
-	rm dracut.xml
+	rm -f -- dracut.xml
 
 install: dracut-version.sh
 	mkdir -p $(DESTDIR)$(pkglibdir)
@@ -109,7 +112,7 @@ ifneq ($(enable_documentation),no)
 endif
 	if [ -n "$(systemdsystemunitdir)" ]; then \
 		mkdir -p $(DESTDIR)$(systemdsystemunitdir); \
-		install -m 0644 dracut-shutdown.service $(DESTDIR)$(systemdsystemunitdir); \
+		ln -srf $(DESTDIR)$(pkglibdir)/modules.d/98systemd/dracut-shutdown.service $(DESTDIR)$(systemdsystemunitdir)/dracut-shutdown.service; \
 		mkdir -p $(DESTDIR)$(systemdsystemunitdir)/shutdown.target.wants; \
 		ln -s ../dracut-shutdown.service \
 		$(DESTDIR)$(systemdsystemunitdir)/shutdown.target.wants/dracut-shutdown.service; \
@@ -123,9 +126,9 @@ endif
 		    dracut-pre-trigger.service \
 		    dracut-pre-udev.service \
 		    ; do \
-			install -m 0644 modules.d/98systemd/$$i $(DESTDIR)$(systemdsystemunitdir); \
+			ln -srf $(DESTDIR)$(pkglibdir)/modules.d/98systemd/$$i $(DESTDIR)$(systemdsystemunitdir); \
 			ln -s ../$$i \
-			$(DESTDIR)$(systemdsystemunitdir)/initrd.target.wants/$i; \
+			$(DESTDIR)$(systemdsystemunitdir)/initrd.target.wants/$$i; \
 		done \
 	fi
 	if [ -f install/dracut-install ]; then \
@@ -136,9 +139,10 @@ endif
 	install -m 0755 51-dracut-rescue.install $(DESTDIR)${prefix}/lib/kernel/install.d/51-dracut-rescue.install
 	mkdir -p $(DESTDIR)${bashcompletiondir}
 	install -m 0644 dracut-bash-completion.sh $(DESTDIR)${bashcompletiondir}/dracut
+	install -m 0644 lsinitrd-bash-completion.sh $(DESTDIR)${bashcompletiondir}/lsinitrd
 
 dracut-version.sh:
-	@echo "DRACUT_VERSION=$(VERSION)-$(GITVERSION)" > dracut-version.sh
+	@echo "DRACUT_VERSION=$(VERSION)$(GITVERSION)" > dracut-version.sh
 
 clean:
 	$(RM) *~
@@ -147,22 +151,22 @@ clean:
 	$(RM) $(manpages:%=%.xml) dracut.xml
 	$(RM) test-*.img
 	$(RM) dracut-*.rpm dracut-*.tar.bz2
+	$(RM) dracut-version.sh
 	$(RM) dracut-install install/dracut-install $(DRACUT_INSTALL_OBJECTS)
 	$(RM) $(manpages) dracut.html
 	$(MAKE) -C test clean
 
-archive: dracut-$(VERSION)-$(GITVERSION).tar.bz2
-
 dist: dracut-$(VERSION).tar.bz2
 
 dracut-$(VERSION).tar.bz2: doc
+	@echo "DRACUT_VERSION=$(VERSION)" > dracut-version.sh
 	git archive --format=tar $(VERSION) --prefix=dracut-$(VERSION)/ > dracut-$(VERSION).tar
 	mkdir -p dracut-$(VERSION)
-	cp $(manpages) dracut.html dracut-$(VERSION)
-	tar -rf dracut-$(VERSION).tar dracut-$(VERSION)/*.[0-9] dracut-$(VERSION)/dracut.html
-	rm -fr dracut-$(VERSION).tar.bz2 dracut-$(VERSION)
+	for i in $(manpages) dracut.html dracut-version.sh; do [ "$${i%/*}" != "$$i" ] && mkdir -p "dracut-$(VERSION)/$${i%/*}"; cp "$$i" "dracut-$(VERSION)/$$i"; done
+	tar --owner=root --group=root -rf dracut-$(VERSION).tar $$(find dracut-$(VERSION) -type f)
+	rm -fr -- dracut-$(VERSION).tar.bz2 dracut-$(VERSION)
 	bzip2 -9 dracut-$(VERSION).tar
-	rm -f dracut-$(VERSION).tar
+	rm -f -- dracut-$(VERSION).tar
 
 rpm: dracut-$(VERSION).tar.bz2
 	rpmbuild=$$(mktemp -d -t rpmbuild-dracut.XXXXXX); src=$$(pwd); \
@@ -171,21 +175,21 @@ rpm: dracut-$(VERSION).tar.bz2
 	(cd "$$rpmbuild"; rpmbuild --define "_topdir $$PWD" --define "_sourcedir $$PWD" \
 	        --define "_specdir $$PWD" --define "_srcrpmdir $$PWD" \
 		--define "_rpmdir $$PWD" -ba dracut.spec; ) && \
-	( mv "$$rpmbuild"/$$(arch)/*.rpm .; mv "$$rpmbuild"/*.src.rpm .;rm -fr "$$rpmbuild"; ls *.rpm )
+	( mv "$$rpmbuild"/$$(arch)/*.rpm .; mv "$$rpmbuild"/*.src.rpm .;rm -fr -- "$$rpmbuild"; ls *.rpm )
 
 syncheck:
-	@ret=0;for i in dracut-initramfs-restore.sh dracut-logger.sh \
-                        modules.d/99base/init.sh modules.d/*/*.sh; do \
+	@ret=0;for i in dracut-initramfs-restore.sh modules.d/*/*.sh; do \
                 [ "$${i##*/}" = "module-setup.sh" ] && continue; \
                 read line < "$$i"; [ "$${line#*bash*}" != "$$line" ] && continue; \
-		dash -n "$$i" ; ret=$$(($$ret+$$?)); \
+		[ $$V ] && echo "posix syntax check: $$i"; bash --posix -n "$$i" ; ret=$$(($$ret+$$?)); \
+		[ $$V ] && echo "checking for [[: $$i"; if grep -Fq '[[ ' "$$i" ; then ret=$$(($$ret+1)); echo "$$i contains [["; fi \
 	done;exit $$ret
 	@ret=0;for i in *.sh mkinitrd-dracut.sh modules.d/*/*.sh \
 	                modules.d/*/module-setup.sh; do \
-		bash -n "$$i" ; ret=$$(($$ret+$$?)); \
+		[ $$V ] && echo "bash syntax check: $$i"; bash -n "$$i" ; ret=$$(($$ret+$$?)); \
 	done;exit $$ret
 
-check: all syncheck
+check: all syncheck rpm
 	@[ "$$EUID" == "0" ] || { echo "'check' must be run as root! Please use 'sudo'."; exit 1; }
 	@$(MAKE) -C test check
 

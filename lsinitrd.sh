@@ -22,29 +22,51 @@
 usage()
 {
     {
-        echo "Usage: ${0##*/} [-s] [<initramfs file> [<filename>]]"
+        echo "Usage: ${0##*/} [options] [<initramfs file> [<filename> [<filename> [...] ]]]"
+        echo "Usage: ${0##*/} [options] -k <kernel version>"
         echo
-        echo "-h, --help     print a help message and exit."
-        echo "-s, --size     sort the contents of the initramfs by size."
+        echo "-h, --help                  print a help message and exit."
+        echo "-s, --size                  sort the contents of the initramfs by size."
+        echo "-f, --file <filename>       print the contents of <filename>."
+        echo "-k, --kver <kernel version> inspect the initramfs of <kernel version>."
         echo
     } >&2
 }
 
-[[ $# -le 2 ]] || { usage ; exit 1 ; }
-
 sorted=0
-while getopts "s" opt; do
-    case $opt in
-        s)  sorted=1;;
-        h)  usage; exit 0;;
-        \?) usage; exit 1;;
+declare -A filenames
+
+unset POSIXLY_CORRECT
+TEMP=$(getopt \
+    -o "shf:k:" \
+    --long kver: \
+    --long file: \
+    --long help \
+    --long size \
+    -- "$@")
+
+if (( $? != 0 )); then
+    usage
+    exit 1
+fi
+
+eval set -- "$TEMP"
+
+while (($# > 0)); do
+    case $1 in
+        -k|--kver)  KERNEL_VERSION="$2"; shift;;
+        -f|--file)  filenames[${2#/}]=1; shift;;
+        -s|--size)  sorted=1;;
+        -h|--help)  usage; exit 0;;
+        --)         shift;break;;
+        *)          usage; exit 1;;
     esac
+    shift
 done
-shift $((OPTIND-1))
 
-KERNEL_VERSION="$(uname -r)"
+[[ $KERNEL_VERSION ]] || KERNEL_VERSION="$(uname -r)"
 
-if [[ "$1" ]]; then
+if [[ $1 ]]; then
     image="$1"
     if ! [[ -f "$image" ]]; then
         {
@@ -57,13 +79,20 @@ if [[ "$1" ]]; then
 else
     [[ -f /etc/machine-id ]] && read MACHINE_ID < /etc/machine-id
 
-    if [[ $MACHINE_ID ]] && [[ -d /boot/${MACHINE_ID} || -L /boot/${MACHINE_ID} ]] ; then
+    if [[ -d /boot/loader/entries || -L /boot/loader/entries ]] \
+        && [[ $MACHINE_ID ]] \
+        && [[ -d /boot/${MACHINE_ID} || -L /boot/${MACHINE_ID} ]] ; then
         image="/boot/${MACHINE_ID}/${KERNEL_VERSION}/initrd"
     else
         image="/boot/initramfs-${KERNEL_VERSION}.img"
     fi
 fi
 
+shift
+while (($# > 0)); do
+    filenames[${1#/}]=1;
+    shift
+done
 
 if ! [[ -f "$image" ]]; then
     {
@@ -74,37 +103,50 @@ if ! [[ -f "$image" ]]; then
     exit 1
 fi
 
-CAT=zcat
-FILE_T=$(file --dereference "$image")
+read -N 6 bin < "$image"
+case $bin in
+    $'\x1f\x8b'*)
+        CAT="zcat";;
+    BZh*)
+        CAT="bzcat";;
+    070701)
+        CAT="cat";;
+    *)
+        CAT="xzcat";
+        if echo "test"|xz|xzcat --single-stream >/dev/null 2>&1; then
+            CAT="xzcat --single-stream"
+        fi
+        ;;
+esac
 
-if echo "test"|xz|xz -dc --single-stream >/dev/null 2>&1; then
-    XZ_SINGLE_STREAM="--single-stream"
-fi
+ret=0
 
-if [[ "$FILE_T" =~ :\ gzip\ compressed\ data ]]; then
-    CAT=zcat
-elif [[ "$FILE_T" =~ :\ xz\ compressed\ data ]]; then
-    CAT="xzcat $XZ_SINGLE_STREAM"
-elif [[ "$FILE_T" =~ :\ XZ\ compressed\ data ]]; then
-    CAT="xzcat $XZ_SINGLE_STREAM"
-elif [[ "$FILE_T" =~ :\ LZMA ]]; then
-    CAT="xzcat $XZ_SINGLE_STREAM"
-elif [[ "$FILE_T" =~ :\ data ]]; then
-    CAT="xzcat $XZ_SINGLE_STREAM"
-fi
-
-if [[ $# -eq 2 ]]; then
-    $CAT $image | cpio --extract --verbose --quiet --to-stdout ${2#/} 2>/dev/null
-    exit $?
-fi
-
-echo "$image: $(du -h $image | while read a b; do echo $a;done)"
-echo "========================================================================"
-$CAT "$image" | cpio --extract --verbose --quiet --to-stdout '*lib/dracut/dracut-*' 2>/dev/null
-echo "========================================================================"
-if [ "$sorted" -eq 1 ]; then
-    $CAT "$image" | cpio --extract --verbose --quiet --list | sort -n -k5
+if (( ${#filenames[@]} > 0 )); then
+    (( ${#filenames[@]} == 1 )) && nofileinfo=1
+    for f in ${!filenames[@]}; do
+        [[ $nofileinfo ]] || echo "initramfs:/$f"
+        [[ $nofileinfo ]] || echo "========================================================================"
+        $CAT -- $image | cpio --extract --verbose --quiet --to-stdout $f 2>/dev/null
+        ((ret+=$?))
+        [[ $nofileinfo ]] || echo "========================================================================"
+        [[ $nofileinfo ]] || echo
+    done
 else
-    $CAT "$image" | cpio --extract --verbose --quiet --list | sort -k9
+    echo "Image: $image: $(du -h $image | while read a b; do echo $a;done)"
+    echo "========================================================================"
+    version=$($CAT -- "$image" | cpio --extract --verbose --quiet --to-stdout -- '*lib/dracut/dracut-*' 2>/dev/null)
+    ((ret+=$?))
+    echo "$version with dracut modules:"
+    $CAT -- "$image" | cpio --extract --verbose --quiet --to-stdout -- 'usr/lib/dracut/modules.txt' 2>/dev/null
+    ((ret+=$?))
+    echo "========================================================================"
+    if [ "$sorted" -eq 1 ]; then
+        $CAT -- "$image" | cpio --extract --verbose --quiet --list | sort -n -k5
+    else
+        $CAT -- "$image" | cpio --extract --verbose --quiet --list | sort -k9
+    fi
+    ((ret+=$?))
+    echo "========================================================================"
 fi
-echo "========================================================================"
+
+exit $ret

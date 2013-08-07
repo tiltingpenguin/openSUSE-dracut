@@ -30,7 +30,7 @@ while :; do
     check_finished && break
 
     if [ -f $hookdir/initqueue/work ]; then
-        rm $hookdir/initqueue/work
+        rm -f -- "$hookdir/initqueue/work"
     fi
 
     for job in $hookdir/initqueue/*.sh; do
@@ -62,7 +62,7 @@ while :; do
     fi
 
     main_loop=$(($main_loop+1))
-    [ $main_loop -gt $RDRETRY ] && emergency_shell "Could not boot."
+    [ $main_loop -gt $RDRETRY ] && action_on_fail "Could not boot." && break
 done
 
 unset job

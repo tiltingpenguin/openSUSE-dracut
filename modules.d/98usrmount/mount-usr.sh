@@ -42,7 +42,7 @@ fsck_usr()
             warn "*** Warning -- the system did not shut down cleanly. "
             warn "*** Dropping you to a shell; the system will continue"
             warn "*** when you leave the shell."
-            emergency_shell
+            action_on_fail
         fi
         _fsckoptions="$AUTOFSCK_OPT $_fsckoptions"
     fi
@@ -61,14 +61,14 @@ mount_usr()
                 LABEL=*)
                     _dev="$(echo $_dev | sed 's,/,\\x2f,g')"
                     _dev="/dev/disk/by-label/${_dev#LABEL=}"
-		    ;;
+                    ;;
                 UUID=*)
                     _dev="${_dev#block:}"
                     _dev="/dev/disk/by-uuid/${_dev#UUID=}"
                     ;;
             esac
             if strstr "$_opts" "subvol=" && \
-                [ "${root#block:}" -ef $_dev ]
+                [ "${root#block:}" -ef $_dev ] && \
                 [ -n "$rflags" ]; then
                 # for btrfs subvolumes we have to mount /usr with the same rflags
                 rflags=$(filtersubvol "$rflags")
@@ -105,7 +105,7 @@ mount_usr()
             warn "Mounting /usr to $NEWROOT/usr failed"
             warn "*** Dropping you to a shell; the system will continue"
             warn "*** when you leave the shell."
-            emergency_shell
+            action_on_fail
         fi
     fi
 }

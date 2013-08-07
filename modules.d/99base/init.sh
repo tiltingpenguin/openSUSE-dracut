@@ -37,13 +37,6 @@ fi
 RD_DEBUG=""
 . /lib/dracut-lib.sh
 
-if [ -x $systemdutildir/systemd-timestamp ]; then
-    RD_TIMESTAMP=$($systemdutildir/systemd-timestamp)
-else
-    read RD_TIMESTAMP _tmp < /proc/uptime
-    unset _tmp
-fi
-
 setdebug
 
 if ! ismounted /dev; then
@@ -53,6 +46,15 @@ fi
 if ! ismounted /dev; then
     echo "Cannot mount devtmpfs on /dev! Compile the kernel with CONFIG_DEVTMPFS!"
     exit 1
+fi
+
+# setup system time
+if [ -f /etc/adjtime ]; then
+    if strstr "$(cat /etc/adjtime)" LOCAL; then
+        hwclock --hctosys --localtime
+    else
+        hwclock --hctosys --utc
+    fi
 fi
 
 # prepare the /dev directory
@@ -76,10 +78,24 @@ if ! ismounted /run; then
     mount -t tmpfs -o mode=0755,nosuid,nodev,strictatime tmpfs /newrun >/dev/null 
     cp -a /run/* /newrun >/dev/null 2>&1
     mount --move /newrun /run
-    rm -fr /newrun
+    rm -fr -- /newrun
 fi
 
-trap "emergency_shell Signal caught!" 0
+if command -v kmod >/dev/null 2>/dev/null; then
+    kmod static-nodes --format=tmpfiles 2>/dev/null | \
+        while read type file mode a a a majmin; do
+        case $type in
+            d)
+                mkdir -m $mode -p $file
+                ;;
+            c)
+                mknod -m $mode $file $type ${majmin%:*} ${majmin#*:}
+                ;;
+        esac
+    done
+fi
+
+trap "action_on_fail Signal caught!" 0
 
 [ -d /run/initramfs ] || mkdir -p -m 0755 /run/initramfs
 [ -d /run/log ] || mkdir -p -m 0755 /run/log
@@ -104,7 +120,7 @@ else
 fi
 
 [ -f /etc/initrd-release ] && . /etc/initrd-release
-[ -n "$VERSION" ] && info "dracut-$VERSION"
+[ -n "$VERSION_ID" ] && info "$NAME-$VERSION_ID"
 
 source_conf /etc/conf.d
 
@@ -165,7 +181,7 @@ while :; do
     check_finished && break
 
     if [ -f $hookdir/initqueue/work ]; then
-        rm $hookdir/initqueue/work
+        rm -f -- $hookdir/initqueue/work
     fi
 
     for job in $hookdir/initqueue/*.sh; do
@@ -199,7 +215,7 @@ while :; do
 
     main_loop=$(($main_loop+1))
     [ $main_loop -gt $RDRETRY ] \
-        && { flock -s 9 ; emergency_shell "Could not boot."; } 9>/.console_lock
+        && { flock -s 9 ; action_on_fail "Could not boot." && break; } 9>/.console_lock
 done
 unset job
 unset queuetriggered
@@ -228,13 +244,13 @@ while :; do
             usable_root "$NEWROOT" && break;
             warn "$NEWROOT has no proper rootfs layout, ignoring and removing offending mount hook"
             umount "$NEWROOT"
-            rm -f "$f"
+            rm -f -- "$f"
         fi
     done
 
     i=$(($i+1))
     [ $i -gt 20 ] \
-        && { flock -s 9 ; emergency_shell "Can't mount root filesystem"; } 9>/.console_lock
+        && { flock -s 9 ; action_on_fail "Can't mount root filesystem" && break; } 9>/.console_lock
 done
 
 {
@@ -268,7 +284,7 @@ done
 [ "$INIT" ] || {
     echo "Cannot find init!"
     echo "Please check to make sure you passed a valid root filesystem!"
-    emergency_shell
+    action_on_fail
 }
 
 if [ $UDEVVERSION -lt 168 ]; then
@@ -276,8 +292,8 @@ if [ $UDEVVERSION -lt 168 ]; then
     udevadm control --stop-exec-queue
 
     HARD=""
-    while pidof systemd-udevd >/dev/null 2>&1; do
-        for pid in $(pidof systemd-udevd); do
+    while pidof udevd >/dev/null 2>&1; do
+        for pid in $(pidof udevd); do
             kill $HARD $pid >/dev/null 2>&1
         done
         HARD="-9"
@@ -308,7 +324,7 @@ for i in $(export -p); do
     esac
 done
 . /tmp/export.orig 2>/dev/null || :
-rm -f /tmp/export.orig
+rm -f -- /tmp/export.orig
 
 initargs=""
 read CLINE </proc/cmdline
@@ -347,7 +363,7 @@ fi
 wait_for_loginit
 
 # remove helper symlink
-[ -h /dev/root ] && rm -f /dev/root
+[ -h /dev/root ] && rm -f -- /dev/root
 
 getarg rd.break -d rdbreak && emergency_shell -n switch_root "Break before switch_root"
 info "Switching root"
@@ -370,13 +386,13 @@ if [ -f /etc/capsdrop ]; then
 	warn "Command:"
 	warn capsh --drop=$CAPS_INIT_DROP -- -c exec switch_root "$NEWROOT" "$INIT" $initargs
 	warn "failed."
-	emergency_shell
+	action_on_fail
     }
 else
     unset RD_DEBUG
     exec $SWITCH_ROOT "$NEWROOT" "$INIT" $initargs || {
 	warn "Something went very badly wrong in the initramfs.  Please "
 	warn "file a bug against dracut."
-	emergency_shell
+	action_on_fail
     }
 fi

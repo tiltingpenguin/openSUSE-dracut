@@ -4,7 +4,7 @@ set -x
 for x in 64-lvm.rules 70-mdadm.rules 99-mount-rules; do
     > "/etc/udev/rules.d/$x"
 done
-rm /etc/lvm/lvm.conf
+rm -f -- /etc/lvm/lvm.conf
 udevadm control --reload
 # save a partition at the beginning for future flagging purposes
 sfdisk -C 2560 -H 2 -S 32 -L /dev/sda <<EOF
@@ -48,7 +48,7 @@ cryptsetup luksClose /dev/mapper/dracut_sda4 && \
 {
     echo "dracut-root-block-created"
     for i in /dev/sda[234]; do
-	udevadm info --query=env --name=$i|grep 'ID_FS_UUID='
+	udevadm info --query=env --name=$i|grep -F 'ID_FS_UUID='
     done
 } >/dev/sda1
 poweroff -f

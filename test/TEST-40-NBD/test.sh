@@ -64,7 +64,7 @@ client_test() {
         -append "$cmdline $DEBUGFAIL rd.auto rd.info rd.retry=10 ro console=ttyS0,115200n81  selinux=0  " \
         -initrd $TESTDIR/initramfs.testing
 
-    if [[ $? -ne 0 ]] || ! grep -m 1 -q nbd-OK $TESTDIR/flag.img; then
+    if [[ $? -ne 0 ]] || ! grep -F -m 1 -q nbd-OK $TESTDIR/flag.img; then
         echo "CLIENT TEST END: $test_name [FAILED - BAD EXIT]"
         return 1
     fi
@@ -181,7 +181,7 @@ client_run() {
 
     if [[ -s server.pid ]]; then
         sudo kill -TERM $(cat $TESTDIR/server.pid)
-        rm -f $TESTDIR/server.pid
+        rm -f -- $TESTDIR/server.pid
     fi
 
 }
@@ -205,6 +205,7 @@ make_encrypted_root() {
         done
         dracut_install -o ${_terminfodir}/l/linux
         inst ./client-init.sh /sbin/init
+        inst_simple /etc/os-release
         find_binary plymouth >/dev/null && dracut_install plymouth
         cp -a /etc/ld.so.conf* $initdir/etc
         sudo ldconfig -r "$initdir"
@@ -228,7 +229,7 @@ make_encrypted_root() {
         -m "dash crypt lvm mdraid udev-rules base rootfs-block kernel-modules" \
         -d "piix ide-gd_mod ata_piix ext2 ext3 sd_mod" \
         -f $TESTDIR/initramfs.makeroot $KVERSION || return 1
-    rm -rf $TESTDIR/overlay
+    rm -rf -- $TESTDIR/overlay
 
     # Invoke KVM and/or QEMU to actually create the target filesystem.
     $testdir/run-qemu \
@@ -239,8 +240,8 @@ make_encrypted_root() {
         -kernel "/boot/vmlinuz-$kernel" \
         -append "root=/dev/fakeroot rw quiet console=ttyS0,115200n81 selinux=0" \
         -initrd $TESTDIR/initramfs.makeroot  || return 1
-    grep -m 1 -q dracut-root-block-created $TESTDIR/flag.img || return 1
-    grep -a -m 1 ID_FS_UUID $TESTDIR/flag.img > $TESTDIR/luks.uuid
+    grep -F -m 1 -q dracut-root-block-created $TESTDIR/flag.img || return 1
+    grep -F -a -m 1 ID_FS_UUID $TESTDIR/flag.img > $TESTDIR/luks.uuid
 }
 
 make_client_root() {
@@ -262,6 +263,7 @@ make_client_root() {
         done
         dracut_install -o ${_terminfodir}/l/linux
         inst ./client-init.sh /sbin/init
+        inst_simple /etc/os-release
         inst /etc/nsswitch.conf /etc/nsswitch.conf
         inst /etc/passwd /etc/passwd
         inst /etc/group /etc/group
@@ -274,7 +276,7 @@ make_client_root() {
     )
 
     sudo umount $TESTDIR/mnt
-    rm -fr $TESTDIR/mnt
+    rm -fr -- $TESTDIR/mnt
 }
 
 make_server_root() {
@@ -303,6 +305,7 @@ make_server_root() {
         type -P dhcpd >/dev/null && dracut_install dhcpd
         [ -x /usr/sbin/dhcpd3 ] && inst /usr/sbin/dhcpd3 /usr/sbin/dhcpd
         inst ./server-init.sh /sbin/init
+        inst_simple /etc/os-release
         inst ./hosts /etc/hosts
         inst ./dhcpd.conf /etc/dhcpd.conf
         inst /etc/nsswitch.conf /etc/nsswitch.conf
@@ -318,7 +321,7 @@ make_server_root() {
     )
 
     sudo umount $TESTDIR/mnt
-    rm -fr $TESTDIR/mnt
+    rm -fr -- $TESTDIR/mnt
 }
 
 test_setup() {
@@ -356,14 +359,14 @@ test_setup() {
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
         -o "plymouth" \
         -a "debug watchdog" \
-        -d "af_packet piix ide-gd_mod ata_piix ext2 ext3 sd_mod e1000 i6300esbwdt" \
+        -d "af_packet piix ide-gd_mod ata_piix ext2 ext3 sd_mod e1000 i6300esb ib700wdt" \
         -f $TESTDIR/initramfs.testing $KVERSION || return 1
 }
 
 kill_server() {
     if [[ -s $TESTDIR/server.pid ]]; then
         sudo kill -TERM $(cat $TESTDIR/server.pid)
-        rm -f $TESTDIR/server.pid
+        rm -f -- $TESTDIR/server.pid
     fi
 }
 

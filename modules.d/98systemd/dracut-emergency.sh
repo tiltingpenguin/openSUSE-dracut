@@ -10,7 +10,7 @@ type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
 
 source_conf /etc/conf.d
 
-[ -x /bin/plymouth ] && /bin/plymouth quit
+type plymouth >/dev/null 2>&1 && plymouth quit
 
 export _rdshell_name="dracut" action="Boot" hook="emergency"
 
@@ -19,12 +19,12 @@ source_hook "$hook"
 
 if getargbool 1 rd.shell -d -y rdshell || getarg rd.break -d rdbreak; then
     echo
-    sosreport
+    rdsosreport
     echo
     echo
     echo 'Entering emergency mode. Exit the shell to continue.'
     echo 'Type "journalctl" to view system logs.'
-    echo 'You might want to save "/run/initramfs/sosreport.txt" to a USB stick or /boot'
+    echo 'You might want to save "/run/initramfs/rdsosreport.txt" to a USB stick or /boot'
     echo 'after mounting them and attach it to a bug report.'
     echo
     echo
@@ -36,6 +36,6 @@ else
     exit 1
 fi
 
-/bin/rm -f /.console_lock
+/bin/rm -f -- /.console_lock
 
 exit 0

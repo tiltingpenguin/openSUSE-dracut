@@ -2,16 +2,13 @@
 
 # i18n
 i18n_vars="/etc/sysconfig/keyboard:KEYTABLE-KEYMAP /etc/sysconfig/i18n:SYSFONT-FONT,FONTACM-FONT_MAP,FONT_UNIMAP"
-omit_drivers+=' .*/fs/ocfs/.*  i2o_scsi'
+i18n_default_font="latarcyrheb-sun16"
 stdloglvl=3
-logfile=/var/log/dracut.log
-fileloglvl=6
+sysloglvl=5
 install_items+=" vi /etc/virc ps grep cat rm "
 prefix="/"
 systemdutildir=/usr/lib/systemd
 systemdsystemunitdir=/usr/lib/systemd/system
 systemdsystemconfdir=/etc/systemd/system
 udevdir=/usr/lib/udev
-add_dracutmodules+=" systemd "
 hostonly="yes"
-dracut_rescue_image="yes"

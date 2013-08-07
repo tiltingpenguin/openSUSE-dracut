@@ -17,7 +17,7 @@ client_run() {
 	-net none -kernel /boot/vmlinuz-$KVERSION \
 	-append "$@ root=LABEL=root rw quiet rd.retry=5 rd.debug console=ttyS0,115200n81 selinux=0 rd.info $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
-    if ! grep -m 1 -q dracut-root-block-success $TESTDIR/root.ext2; then
+    if ! grep -F -m 1 -q dracut-root-block-success $TESTDIR/root.ext2; then
 	echo "CLIENT TEST END: $@ [FAIL]"
 	return 1;
     fi
@@ -47,9 +47,9 @@ test_setup() {
 #   return 1
 
     # Create the blank file to use as a root filesystem
-    rm -f $TESTDIR/root.ext2
-    rm -f $TESTDIR/disk1
-    rm -f $TESTDIR/disk2
+    rm -f -- $TESTDIR/root.ext2
+    rm -f -- $TESTDIR/disk1
+    rm -f -- $TESTDIR/disk2
     dd if=/dev/null of=$TESTDIR/root.ext2 bs=1M seek=1
     dd if=/dev/null of=$TESTDIR/disk1 bs=1M seek=80
     dd if=/dev/null of=$TESTDIR/disk2 bs=1M seek=80
@@ -92,7 +92,7 @@ test_setup() {
 	-m "dash lvm mdraid dmraid udev-rules base rootfs-block kernel-modules" \
 	-d "piix ide-gd_mod ata_piix ext2 sd_mod dm-multipath dm-crypt dm-round-robin faulty linear multipath raid0 raid10 raid1 raid456" \
 	-f $TESTDIR/initramfs.makeroot $KVERSION || return 1
-    rm -rf $TESTDIR/overlay
+    rm -rf -- $TESTDIR/overlay
     # Invoke KVM and/or QEMU to actually create the target filesystem.
     $testdir/run-qemu \
 	-hda $TESTDIR/root.ext2 \
@@ -102,7 +102,7 @@ test_setup() {
 	-kernel "/boot/vmlinuz-$kernel" \
 	-append "root=/dev/dracut/root rw rootfstype=ext2 quiet console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.makeroot  || return 1
-    grep -m 1 -q dracut-root-block-created $TESTDIR/root.ext2 || return 1
+    grep -F -m 1 -q dracut-root-block-created $TESTDIR/root.ext2 || return 1
     (
 	export initdir=$TESTDIR/overlay
 	. $basedir/dracut-functions.sh

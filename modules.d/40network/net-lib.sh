@@ -14,6 +14,11 @@ iface_for_remote_addr() {
     echo $5
 }
 
+iface_for_ip() {
+    set -- $(ip -o addr show to $1)
+    echo $2
+}
+
 iface_for_mac() {
     local interface="" mac="$(echo $1 | sed 'y/ABCDEF/abcdef/')"
     for interface in /sys/class/net/*; do
@@ -32,6 +37,45 @@ iface_has_link() {
     echo $(($flags|0x41)) > $interface/flags # 0x41: IFF_UP|IFF_RUNNING
     [ "$(cat $interface/carrier)" = 1 ] || return 1
     # XXX Do we need to reset the flags here? anaconda never bothered..
+}
+
+find_iface_with_link() {
+    local iface_path="" iface=""
+    for iface_path in /sys/class/net/*; do
+        iface=${iface_path##*/}
+        str_starts "$iface" "lo" && continue
+        if iface_has_link $iface; then
+            echo "$iface"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# get the iface name for the given identifier - either a MAC, IP, or iface name
+iface_name() {
+    case $1 in
+        ??:??:??:??:??:??|??-??-??-??-??-??) iface_for_mac $1 ;;
+        *:*:*|*.*.*.*) iface_for_ip $1 ;;
+        *) echo $1 ;;
+    esac
+}
+
+# list the configured interfaces
+configured_ifaces() {
+    local IFACES="" iface_id="" rv=1
+    [ -e "/tmp/net.ifaces" ] && read IFACES < /tmp/net.ifaces
+    if { pidof udevd || pidof systemd-udevd; } > /dev/null; then
+        for iface_id in $IFACES; do
+            echo $(iface_name $iface_id)
+            rv=0
+        done
+    else
+        warn "configured_ifaces called before udev is running"
+        echo $IFACES
+        [ -n "$IFACES" ] && rv=0
+    fi
+    return $rv
 }
 
 all_ifaces_up() {
@@ -61,7 +105,7 @@ ifdown() {
     ip link set $netif down
     ip addr flush dev $netif
     echo "#empty" > /etc/resolv.conf
-    rm -f /tmp/net.$netif.did-setup
+    rm -f -- /tmp/net.$netif.did-setup
     # TODO: send "offline" uevent?
 }
 
@@ -134,9 +178,21 @@ set_ifname() {
         strstr "$n" "$mac" && echo ${n%%:*} && return
     done
     # otherwise, pick a new name and use that
-    while [ -e /sys/class/$name$num ]; do num=$(($num+1)); done
+    while [ -e /sys/class/net/$name$num ]; do num=$(($num+1)); done
     echo "ifname=$name$num:$mac" >> /etc/cmdline.d/45-ifname.conf
     echo "$name$num"
+}
+
+# pxelinux provides macaddr '-' separated, but we need ':'
+fix_bootif() {
+    local macaddr=${1}
+    local IFS='-'
+    macaddr=$(for i in ${macaddr} ; do echo -n $i:; done)
+    macaddr=${macaddr%:}
+    # strip hardware type field from pxelinux
+    [ -n "${macaddr%??:??:??:??:??:??}" ] && macaddr=${macaddr#??:}
+    # return macaddr with lowercase alpha characters expected by udev
+    echo $macaddr | sed 'y/ABCDEF/abcdef/'
 }
 
 ibft_to_cmdline() {
@@ -149,16 +205,33 @@ ibft_to_cmdline() {
             mac=$(read a < ${iface}/mac; echo $a)
             [ -z "$mac" ] && continue
             dev=$(set_ifname ibft $mac)
-            dhcp=$(read a < ${iface}/dhcp; echo $a)
+            [ -e ${iface}/dhcp ] && dhcp=$(read a < ${iface}/dhcp; echo $a)
+            if [ -e ${iface}/vlan ]; then
+               vlan=$(read a < ${iface}/vlan; echo $a)
+                echo "vlan=$vlan:$dev"
+            fi
+
             if [ -n "$dhcp" ]; then
                 echo "ip=$dev:dhcp"
+            elif [ -e ${iface}/ip-addr ]; then
+                [ -e ${iface}/ip-addr ] && ip=$(read a < ${iface}/ip-addr; echo $a)
+                [ -e ${iface}/gateway ] && gw=$(read a < ${iface}/gateway; echo $a)
+                [ -e ${iface}/subnet-mask ] && mask=$(read a < ${iface}/subnet-mask; echo $a)
+                [ -e ${iface}/hostname ] && hostname=$(read a < ${iface}/hostname; echo $a)
+                if [ -n "$ip" ] && [ -n "$mask" ]; then
+                    echo "ip=$ip::$gw:$mask:$hostname:$dev:none"
+                else
+                    warn "${iface} does not contain a valid iBFT configuration"
+                    warn "ip-addr=$ip"
+                    warn "gateway=$gw"
+                    warn "subnet-mask=$mask"
+                    warn "hostname=$hostname"
+                fi
             else
-                ip=$(read a < ${iface}/ip-addr; echo $a)
-                gw=$(read a < ${iface}/gateway; echo $a)
-                mask=$(read a < ${iface}/subnet-mask; echo $a)
-                hostname=$(read a < ${iface}/hostname; echo $a)
-                echo "ip=$ip::$gw:$mask:$hostname:$dev:none"
+                info "${iface} does not contain a valid iBFT configuration"
+                ls -l ${iface} | vinfo
             fi
+
             echo $mac > /tmp/net.${dev}.has_ibft_config
         done
     ) >> /etc/cmdline.d/40-ibft.conf
@@ -282,7 +355,10 @@ ip_to_var() {
             fi
 	    ;;
     esac
-    # anaconda-style argument cluster
+
+    # ip=<ipv4-address> means anaconda-style static config argument cluster:
+    # ip=<ip> gateway=<gw> netmask=<nm> hostname=<host> mtu=<mtu>
+    # ksdevice={link|bootif|ibft|<MAC>|<ifname>}
     if strstr "$autoconf" "*.*.*.*"; then
         ip="$autoconf"
         gw=$(getarg gateway=)
@@ -291,9 +367,12 @@ ip_to_var() {
         dev=$(getarg ksdevice=)
         autoconf="none"
         mtu=$(getarg mtu=)
+
+        # handle special values for ksdevice
         case "$dev" in
-            # ignore fancy values for ksdevice=XXX
-            link|bootif|BOOTIF|ibft|*:*:*:*:*:*) dev="" ;;
+            bootif|BOOTIF) dev=$(fix_bootif $(getarg BOOTIF=)) ;;
+            link) dev="" ;; # FIXME: do something useful with this
+            ibft) dev="" ;; # ignore - ibft is handled elsewhere
         esac
     fi
 }
@@ -360,9 +439,25 @@ wait_for_route_ok() {
     return 1
 }
 
+wait_for_ipv6_auto() {
+    local cnt=0
+    local li
+    while [ $cnt -lt 400 ]; do
+        li=$(ip -6 addr show dev $1)
+        strstr "$li" "dynamic" && return 0
+        sleep 0.1
+        cnt=$(($cnt+1))
+    done
+    return 1
+}
+
 linkup() {
     wait_for_if_link $1 2>/dev/null\
      && ip link set $1 up 2>/dev/null\
      && wait_for_if_up $1 2>/dev/null
 }
 
+type hostname >/dev/null 2>&1 || \
+hostname() {
+	cat /proc/sys/kernel/hostname
+}

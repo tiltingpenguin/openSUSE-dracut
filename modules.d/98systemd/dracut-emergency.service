@@ -13,12 +13,15 @@ DefaultDependencies=no
 After=systemd-vconsole-setup.service
 Wants=systemd-vconsole-setup.service
 Conflicts=emergency.service emergency.target
+ConditionKernelCommandLine=!action_on_fail=continue
 
 [Service]
 Environment=HOME=/
+Environment=DRACUT_SYSTEMD=1
+Environment=NEWROOT=/sysroot
 WorkingDirectory=/
 ExecStart=/bin/dracut-emergency
-ExecStopPost=-/bin/rm -f /.console_lock
+ExecStopPost=-/bin/rm -f -- /.console_lock
 Type=oneshot
 StandardInput=tty-force
 StandardOutput=inherit

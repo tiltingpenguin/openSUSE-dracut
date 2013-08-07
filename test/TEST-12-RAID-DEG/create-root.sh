@@ -6,7 +6,7 @@ trap 'poweroff -f' EXIT
 for x in 64-lvm.rules 70-mdadm.rules 99-mount-rules; do
     > "/etc/udev/rules.d/$x"
 done
-rm /etc/lvm/lvm.conf
+rm -f -- /etc/lvm/lvm.conf
 udevadm control --reload
 # save a partition at the beginning for future flagging purposes
 sfdisk -C 1280 -H 2 -S 32 -L /dev/sda <<EOF
@@ -39,7 +39,7 @@ udevadm settle
 cryptsetup luksClose /dev/mapper/dracut_crypt_test
 udevadm settle
 mdadm -W /dev/md0 || :
-mdadm --detail --export /dev/md0 |grep MD_UUID > /tmp/mduuid
+mdadm --detail --export /dev/md0 |grep -F MD_UUID > /tmp/mduuid
 . /tmp/mduuid
 eval $(udevadm info --query=env --name=/dev/md0|while read line; do [ "$line" != "${line#*ID_FS_UUID*}" ] && echo $line; done;)
 { echo "dracut-root-block-created"; echo MD_UUID=$MD_UUID;  echo "ID_FS_UUID=$ID_FS_UUID";} > /dev/sda1

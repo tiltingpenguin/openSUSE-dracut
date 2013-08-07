@@ -62,6 +62,10 @@ static int dracut_install(const char *src, const char *dst, bool isdir, bool res
 static size_t dir_len(char const *file)
 {
         size_t length;
+
+        if(!file)
+                return 0;
+
         /* Strip the basename and any redundant slashes before it.  */
         for (length = strlen(file)-1; 0 < length; length--)
                 if (file[length] == '/' && file[length-1] != '/')
@@ -73,20 +77,23 @@ static char *convert_abs_rel(const char *from, const char *target)
 {
         /* we use the 4*MAXPATHLEN, which should not overrun */
         char relative_from[MAXPATHLEN * 4];
-        char *realtarget = NULL;
-        char *p, *q;
+        _cleanup_free_ char *realtarget = NULL;
+        _cleanup_free_ char *target_dir_p = NULL, *realpath_p = NULL;
         const char *realfrom = from;
-        int level = 0, fromlevel = 0, targetlevel = 0;
-        int l, i, rl;
-        int dirlen;
+        size_t level = 0, fromlevel = 0, targetlevel = 0;
+        int l;
+        size_t i, rl, dirlen;
+        int ret;
 
-        p = strdup(target);
-        dirlen = dir_len(p);
-        p[dirlen] = '\0';
-        q = realpath(p, NULL);
+        target_dir_p = strdup(target);
+        if (!target_dir_p)
+                return strdup(from);
 
-        if (q == NULL) {
-                free(p);
+        dirlen = dir_len(target_dir_p);
+        target_dir_p[dirlen] = '\0';
+        realpath_p = realpath(target_dir_p, NULL);
+
+        if (realpath_p == NULL) {
                 log_warning("convert_abs_rel(): target '%s' directory has no realpath.", target);
                 return strdup(from);
         }
@@ -95,11 +102,13 @@ static char *convert_abs_rel(const char *from, const char *target)
          * character - need to skip all leading /'s */
         rl = strlen(target);
         for (i = dirlen+1; i < rl; ++i)
-            if (p[i] != '/')
+            if (target_dir_p[i] != '/')
                 break;
-        asprintf(&realtarget, "%s/%s", q, &p[i]);
-        free(p);
-        free(q);
+        ret = asprintf(&realtarget, "%s/%s", realpath_p, &target_dir_p[i]);
+        if (ret < 0) {
+                log_error("Out of memory!");
+                exit(EXIT_FAILURE);
+        }
 
         /* now calculate the relative path from <from> to <target> and
            store it in <relative_from>
@@ -121,8 +130,6 @@ static char *convert_abs_rel(const char *from, const char *target)
         for (level = 0, i = 0; realtarget[i] && (realtarget[i] == realfrom[i]); i++)
                 if (realtarget[i] == '/')
                         level++;
-
-        free(realtarget);
 
         /* add "../" to the relative_from path, until the common pathname is
            reached */
@@ -155,17 +162,15 @@ static char *convert_abs_rel(const char *from, const char *target)
 static int ln_r(const char *src, const char *dst)
 {
         int ret;
-        const char *points_to = convert_abs_rel(src, dst);
+        _cleanup_free_ const char *points_to = convert_abs_rel(src, dst);
+
         log_info("ln -s '%s' '%s'", points_to, dst);
         ret = symlink(points_to, dst);
 
         if (ret != 0) {
                 log_error("ERROR: ln -s '%s' '%s': %m", points_to, dst);
-                free((char *)points_to);
                 return 1;
         }
-
-        free((char *)points_to);
 
         return 0;
 }
@@ -186,11 +191,11 @@ static bool use_clone = true;
 static int cp(const char *src, const char *dst)
 {
         int pid;
-        int ret;
+        int ret = 0;
 
         if (use_clone) {
                 struct stat sb;
-                int dest_desc, source_desc;
+                _cleanup_close_ int dest_desc = -1, source_desc = -1;
 
                 if (lstat(src, &sb) != 0)
                         goto normal_copy;
@@ -207,20 +212,24 @@ static int cp(const char *src, const char *dst)
                          (sb.st_mode) & (S_ISUID | S_ISGID | S_ISVTX | S_IRWXU | S_IRWXG | S_IRWXO));
 
                 if (dest_desc < 0) {
-                        close(source_desc);
                         goto normal_copy;
                 }
 
                 ret = clone_file(dest_desc, source_desc);
-                close(source_desc);
+
                 if (ret == 0) {
+                        struct timeval tv[2];
                         if (fchown(dest_desc, sb.st_uid, sb.st_gid) != 0)
-                                fchown(dest_desc, -1, sb.st_gid);
-                        close(dest_desc);
+                                fchown(dest_desc, (__uid_t)-1, sb.st_gid);
+                        tv[0].tv_sec = sb.st_atime;
+                        tv[0].tv_usec = 0;
+                        tv[1].tv_sec = sb.st_mtime;
+                        tv[1].tv_usec = 0;
+                        futimes(dest_desc, tv);
                         return ret;
                 }
                 close(dest_desc);
-
+                dest_desc = -1;
                 /* clone did not work, remove the file */
                 unlink(dst);
                 /* do not try clone again */
@@ -230,15 +239,82 @@ static int cp(const char *src, const char *dst)
  normal_copy:
         pid = fork();
         if (pid == 0) {
-                execlp("cp", "cp", "--reflink=auto", "--sparse=auto", "--preserve=mode", "-fL", src, dst, NULL);
+                execlp("cp", "cp", "--reflink=auto", "--sparse=auto", "--preserve=mode,timestamps", "-fL", src, dst, NULL);
                 _exit(EXIT_FAILURE);
         }
 
         while (waitpid(pid, &ret, 0) < 0) {
                 if (errno != EINTR) {
                         ret = -1;
+                        log_error("Failed: cp --reflink=auto --sparse=auto --preserve=mode,timestamps -fL %s %s", src, dst);
                         break;
                 }
+        }
+        log_debug("cp ret = %d", ret);
+        return ret;
+}
+
+static int library_install(const char *src, const char *lib)
+{
+        _cleanup_free_ char *p = NULL;
+        _cleanup_free_ char *pdir = NULL, *ppdir = NULL, *clib = NULL;
+        char *q;
+        int r, ret = 0;
+
+        p = strdup(lib);
+
+        r = dracut_install(p, p, false, false, true);
+        if (r != 0)
+                log_error("ERROR: failed to install '%s' for '%s'", p, src);
+        else
+                log_debug("Lib install: '%s'", p);
+        ret += r;
+
+        /* also install lib.so for lib.so.* files */
+        q = strstr(p, ".so.");
+        if (q) {
+                q[3] = '\0';
+
+                /* ignore errors for base lib symlink */
+                if (dracut_install(p, p, false, false, true) == 0)
+                        log_debug("Lib install: '%s'", p);
+        }
+
+        /* Also try to install the same library from one directory above.
+           This fixes the case, where only the HWCAP lib would be installed
+           # ldconfig -p|fgrep libc.so
+           libc.so.6 (libc6,64bit, hwcap: 0x0000001000000000, OS ABI: Linux 2.6.32) => /lib64/power6/libc.so.6
+           libc.so.6 (libc6,64bit, hwcap: 0x0000000000000200, OS ABI: Linux 2.6.32) => /lib64/power6x/libc.so.6
+           libc.so.6 (libc6,64bit, OS ABI: Linux 2.6.32) => /lib64/libc.so.6
+        */
+
+        free(p);
+        p = strdup(lib);
+
+        pdir = dirname(p);
+        if (!pdir)
+                return ret;
+
+        pdir = strdup(pdir);
+        ppdir = dirname(pdir);
+        if (!ppdir)
+                return ret;
+
+        ppdir = strdup(ppdir);
+
+        strcpy(p, lib);
+
+        clib = strjoin(ppdir, "/", basename(p), NULL);
+        if (dracut_install(clib, clib, false, false, true) == 0)
+                log_debug("Lib install: '%s'", clib);
+        /* also install lib.so for lib.so.* files */
+        q = strstr(clib, ".so.");
+        if (q) {
+                q[3] = '\0';
+
+                /* ignore errors for base lib symlink */
+                if (dracut_install(clib, clib, false, false, true) == 0)
+                        log_debug("Lib install: '%s'", p);
         }
 
         return ret;
@@ -248,17 +324,19 @@ static int resolve_deps(const char *src)
 {
         int ret = 0;
 
-        char *buf = malloc(LINE_MAX);
+        _cleanup_free_ char *buf = malloc(LINE_MAX);
         size_t linesize = LINE_MAX;
-        FILE *fptr;
-        char *cmd;
+        _cleanup_pclose_ FILE *fptr = NULL;
+        _cleanup_free_ char *cmd = NULL;
 
         if (strstr(src, ".so") == 0) {
-                int fd;
+                _cleanup_close_ int fd = -1;
                 fd = open(src, O_RDONLY | O_CLOEXEC);
+                if (fd < 0)
+                        return -errno;
+
                 read(fd, buf, LINE_MAX);
                 buf[LINE_MAX - 1] = '\0';
-                close(fd);
                 if (buf[0] == '#' && buf[1] == '!') {
                         /* we have a shebang */
                         char *p, *q;
@@ -274,7 +352,14 @@ static int resolve_deps(const char *src)
         }
 
         /* run ldd */
-        asprintf(&cmd, "ldd %s 2>&1", src);
+        ret = asprintf(&cmd, "ldd %s 2>&1", src);
+        if (ret < 0) {
+                log_error("Out of memory!");
+                exit(EXIT_FAILURE);
+        }
+
+        ret = 0;
+
         fptr = popen(cmd, "r");
 
         while (!feof(fptr)) {
@@ -284,6 +369,12 @@ static int resolve_deps(const char *src)
                         continue;
 
                 log_debug("ldd: '%s'", buf);
+
+                if (strstr(buf, "you do not have execution permission")) {
+                        log_error("%s", buf);
+                        ret+=1;
+                        break;
+                }
 
                 if (strstr(buf, "not a dynamic executable"))
                         break;
@@ -300,31 +391,15 @@ static int resolve_deps(const char *src)
                 if (strstr(buf, destrootdir))
                         break;
 
-                p = strstr(buf, "/");
+                p = strchr(buf, '/');
                 if (p) {
-                        int r;
                         for (q = p; *q && *q != ' ' && *q != '\n'; q++) ;
                         *q = '\0';
-                        r = dracut_install(p, p, false, false, true);
-                        if (r != 0)
-                                log_error("ERROR: failed to install '%s' for '%s'", p, src);
-                        else
-                                log_debug("Lib install: '%s'", p);
-                        ret += r;
 
-                        /* also install lib.so for lib.so.* files */
-                        q = strstr(p, ".so.");
-                        if (q) {
-                                q += 3;
-                                *q = '\0';
+                        ret += library_install(src, p);
 
-                                /* ignore errors for base lib symlink */
-                                if (dracut_install(p, p, false, false, true) == 0)
-                                        log_debug("Lib install: '%s'", p);
-                        }
                 }
         }
-        pclose(fptr);
 
         return ret;
 }
@@ -332,10 +407,15 @@ static int resolve_deps(const char *src)
 /* Install ".<filename>.hmac" file for FIPS self-checks */
 static int hmac_install(const char *src, const char *dst, const char *hmacpath)
 {
-        char *srcpath = strdup(src);
-        char *dstpath = strdup(dst);
-        char *srchmacname = NULL;
-        char *dsthmacname = NULL;
+        _cleanup_free_ char *srcpath = strdup(src);
+        _cleanup_free_ char *dstpath = strdup(dst);
+        _cleanup_free_ char *srchmacname = NULL;
+        _cleanup_free_ char *dsthmacname = NULL;
+        int ret;
+
+        if (!(srcpath && dstpath))
+                return -ENOMEM;
+
         size_t dlen = dir_len(src);
 
         if (endswith(src, ".hmac"))
@@ -344,35 +424,51 @@ static int hmac_install(const char *src, const char *dst, const char *hmacpath)
 	if (!hmacpath) {
                 hmac_install(src, dst, "/lib/fipscheck");
                 hmac_install(src, dst, "/lib64/fipscheck");
+                hmac_install(src, dst, "/lib/hmaccalc");
+                hmac_install(src, dst, "/lib64/hmaccalc");
         }
 
         srcpath[dlen] = '\0';
         dstpath[dir_len(dst)] = '\0';
         if (hmacpath) {
-                asprintf(&srchmacname, "%s/%s.hmac", hmacpath, &src[dlen + 1]);
-                asprintf(&dsthmacname, "%s/%s.hmac", hmacpath, &src[dlen + 1]);
+                ret = asprintf(&srchmacname, "%s/%s.hmac", hmacpath, &src[dlen + 1]);
+                if (ret < 0) {
+                        log_error("Out of memory!");
+                        exit(EXIT_FAILURE);
+                }
+
+                ret = asprintf(&dsthmacname, "%s/%s.hmac", hmacpath, &src[dlen + 1]);
+                if (ret < 0) {
+                        log_error("Out of memory!");
+                        exit(EXIT_FAILURE);
+                }
         } else {
-                asprintf(&srchmacname, "%s/.%s.hmac", srcpath, &src[dlen + 1]);
-                asprintf(&dsthmacname, "%s/.%s.hmac", dstpath, &src[dlen + 1]);
+                ret = asprintf(&srchmacname, "%s/.%s.hmac", srcpath, &src[dlen + 1]);
+                if (ret < 0) {
+                        log_error("Out of memory!");
+                        exit(EXIT_FAILURE);
+                }
+
+                ret = asprintf(&dsthmacname, "%s/.%s.hmac", dstpath, &src[dlen + 1]);
+                if (ret < 0) {
+                        log_error("Out of memory!");
+                        exit(EXIT_FAILURE);
+                }
         }
         log_debug("hmac cp '%s' '%s')", srchmacname, dsthmacname);
         dracut_install(srchmacname, dsthmacname, false, false, true);
-        free(dsthmacname);
-        free(srchmacname);
-        free(srcpath);
-        free(dstpath);
         return 0;
 }
 
 static int dracut_install(const char *src, const char *dst, bool isdir, bool resolvedeps, bool hashdst)
 {
         struct stat sb, db;
-        char *dname = NULL;
-        char *fulldstpath = NULL;
-        char *fulldstdir = NULL;
+        _cleanup_free_ char *fulldstpath = NULL;
+        _cleanup_free_ char *fulldstdir = NULL;
         int ret;
         bool src_exists = true;
-        char *i, *existing;
+        char *i = NULL;
+        char *existing;
 
         log_debug("dracut_install('%s', '%s')", src, dst);
 
@@ -405,9 +501,16 @@ static int dracut_install(const char *src, const char *dst, bool isdir, bool res
         }
 
         i = strdup(dst);
+        if (!i)
+                return -ENOMEM;
+
         hashmap_put(items, i, i);
 
-        asprintf(&fulldstpath, "%s%s", destrootdir, dst);
+        ret = asprintf(&fulldstpath, "%s%s", destrootdir, dst);
+        if (ret < 0) {
+                log_error("Out of memory!");
+                exit(EXIT_FAILURE);
+        }
 
         ret = stat(fulldstpath, &sb);
 
@@ -423,7 +526,6 @@ static int dracut_install(const char *src, const char *dst, bool isdir, bool res
                 } else
                         log_debug("'%s' already exists", fulldstpath);
 
-                free(fulldstpath);
                 /* dst does already exist */
                 return ret;
         }
@@ -435,6 +537,8 @@ static int dracut_install(const char *src, const char *dst, bool isdir, bool res
         ret = stat(fulldstdir, &db);
 
         if (ret < 0) {
+                _cleanup_free_ char *dname = NULL;
+
                 if (errno != ENOENT) {
                         log_error("ERROR: stat '%s': %m", fulldstdir);
                         return 1;
@@ -442,35 +546,34 @@ static int dracut_install(const char *src, const char *dst, bool isdir, bool res
                 /* create destination directory */
                 log_debug("dest dir '%s' does not exist", fulldstdir);
                 dname = strdup(dst);
+                if (!dname)
+                        return 1;
+
                 dname[dir_len(dname)] = '\0';
                 ret = dracut_install(dname, dname, true, false, true);
 
-                free(dname);
-
                 if (ret != 0) {
                         log_error("ERROR: failed to create directory '%s'", fulldstdir);
-                        free(fulldstdir);
                         return 1;
                 }
         }
 
-        free(fulldstdir);
-
         if (isdir && !src_exists) {
                 log_info("mkdir '%s'", fulldstpath);
-                return mkdir(fulldstpath, 0755);
+                ret = mkdir(fulldstpath, 0755);
+                return ret;
         }
 
         /* ready to install src */
 
         if (S_ISDIR(sb.st_mode)) {
                 log_info("mkdir '%s'", fulldstpath);
-                return mkdir(fulldstpath, sb.st_mode | S_IWUSR);
+                ret = mkdir(fulldstpath, sb.st_mode | S_IWUSR);
+                return ret;
         }
 
         if (S_ISLNK(sb.st_mode)) {
-                char *abspath;
-                char *absdestpath = NULL;
+                _cleanup_free_ char *abspath = NULL;
 
                 abspath = realpath(src, NULL);
 
@@ -488,15 +591,17 @@ static int dracut_install(const char *src, const char *dst, bool isdir, bool res
                 }
 
                 if (lstat(fulldstpath, &sb) != 0) {
+                        _cleanup_free_ char *absdestpath = NULL;
 
-                        asprintf(&absdestpath, "%s%s", destrootdir, abspath);
+                        ret = asprintf(&absdestpath, "%s%s", destrootdir, abspath);
+                        if (ret < 0) {
+                                log_error("Out of memory!");
+                                exit(EXIT_FAILURE);
+                        }
 
                         ln_r(absdestpath, fulldstpath);
-
-                        free(absdestpath);
                 }
 
-                free(abspath);
                 if (arg_hmac) {
                         /* copy .hmac files also */
                         hmac_install(src, dst, NULL);
@@ -514,8 +619,12 @@ static int dracut_install(const char *src, const char *dst, bool isdir, bool res
                 }
         }
 
+        log_debug("dracut_install ret = %d", ret);
         log_info("cp '%s' '%s'", src, fulldstpath);
         ret += cp(src, fulldstpath);
+
+        log_debug("dracut_install ret = %d", ret);
+
         return ret;
 }
 
@@ -526,49 +635,49 @@ static void item_free(char *i)
 }
 
 static void usage(int status)
-{
-        /*                                                                     */
-        printf("\
-Usage: %s -D DESTROOTDIR [OPTION]... -a SOURCE...\n\
-   or: %s -D DESTROOTDIR [OPTION]... SOURCE DEST\n\
-\n\
-Install SOURCE to DEST in DESTROOTDIR with all needed dependencies.\n\
-\n\
-  -D --destrootdir    Install all files to DESTROOTDIR as the root\n\
-  -a --all            Install all SOURCE arguments to DESTROOTDIR\n\
-  -o --optional       If SOURCE does not exist, do not fail\n\
-  -d --dir            SOURCE is a directory\n\
-  -l --ldd            Also install shebang executables and libraries\n\
-  -R --resolvelazy    Only install shebang executables and libraries for all SOURCE files\n\
-  -H --fips           Also install all '.SOURCE.hmac' files\n\
-  -v --verbose        Show more output\n\
-     --debug          Show debug output\n\
-     --version        Show package version\n\
-  -h --help           Show this help\n\
-\n\
-Example:\n\
-# mkdir -p /var/tmp/test-root\n\
-# %s -D /var/tmp/test-root --ldd -a sh tr\n\
-# tree /var/tmp/test-root\n\
-/var/tmp/test-root\n\
-|-- lib64 -> usr/lib64\n\
-`-- usr\n\
-    |-- bin\n\
-    |   |-- bash\n\
-    |   |-- sh -> bash\n\
-    |   `-- tr\n\
-    `-- lib64\n\
-        |-- ld-2.15.90.so\n\
-        |-- ld-linux-x86-64.so.2 -> ld-2.15.90.so\n\
-        |-- libc-2.15.90.so\n\
-        |-- libc.so\n\
-        |-- libc.so.6 -> libc-2.15.90.so\n\
-        |-- libdl-2.15.90.so\n\
-        |-- libdl.so -> libdl-2.15.90.so\n\
-        |-- libdl.so.2 -> libdl-2.15.90.so\n\
-        |-- libtinfo.so.5 -> libtinfo.so.5.9\n\
-        `-- libtinfo.so.5.9\n\
-", program_invocation_short_name, program_invocation_short_name, program_invocation_short_name);
+{        
+             /*                                                                     */
+        printf("Usage: %s -D DESTROOTDIR [OPTION]... -a SOURCE...\n"
+               "or: %s -D DESTROOTDIR [OPTION]... SOURCE DEST\n"
+               "\n"
+               "Install SOURCE to DEST in DESTROOTDIR with all needed dependencies.\n"
+               "\n"
+               "  -D --destrootdir    Install all files to DESTROOTDIR as the root\n"
+               "  -a --all            Install all SOURCE arguments to DESTROOTDIR\n"
+               "  -o --optional       If SOURCE does not exist, do not fail\n"
+               "  -d --dir            SOURCE is a directory\n"
+               "  -l --ldd            Also install shebang executables and libraries\n"
+               "  -R --resolvelazy    Only install shebang executables and libraries\n"
+               "                      for all SOURCE files\n"
+               "  -H --fips           Also install all '.SOURCE.hmac' files\n"
+               "  -v --verbose        Show more output\n"
+               "     --debug          Show debug output\n"
+               "     --version        Show package version\n"
+               "  -h --help           Show this help\n"
+               "\n"
+               "Example:\n"
+               "# mkdir -p /var/tmp/test-root\n"
+               "# %s -D /var/tmp/test-root --ldd -a sh tr\n"
+               "# tree /var/tmp/test-root\n"
+               "/var/tmp/test-root\n"
+               "|-- lib64 -> usr/lib64\n"
+               "`-- usr\n"
+               "    |-- bin\n"
+               "    |   |-- bash\n"
+               "    |   |-- sh -> bash\n"
+               "    |   `-- tr\n"
+               "    `-- lib64\n"
+               "        |-- ld-2.15.90.so\n"
+               "        |-- ld-linux-x86-64.so.2 -> ld-2.15.90.so\n"
+               "        |-- libc-2.15.90.so\n"
+               "        |-- libc.so\n"
+               "        |-- libc.so.6 -> libc-2.15.90.so\n"
+               "        |-- libdl-2.15.90.so\n"
+               "        |-- libdl.so -> libdl-2.15.90.so\n"
+               "        |-- libdl.so.2 -> libdl-2.15.90.so\n"
+               "        |-- libtinfo.so.5 -> libtinfo.so.5.9\n"
+               "        `-- libtinfo.so.5.9\n"
+               , program_invocation_short_name, program_invocation_short_name, program_invocation_short_name);
         exit(status);
 }
 
@@ -581,7 +690,7 @@ static int parse_argv(int argc, char *argv[])
                 ARG_DEBUG
         };
 
-        static const struct option const options[] = {
+        static struct option const options[] = {
                 {"help", no_argument, NULL, 'h'},
                 {"version", no_argument, NULL, ARG_VERSION},
                 {"dir", no_argument, NULL, 'd'},
@@ -596,7 +705,7 @@ static int parse_argv(int argc, char *argv[])
                 {NULL, 0, NULL, 0}
         };
 
-        while ((c = getopt_long(argc, argv, "adhloD:DHILR", options, NULL)) != -1) {
+        while ((c = getopt_long(argc, argv, "adhloD:HR", options, NULL)) != -1) {
                 switch (c) {
                 case ARG_VERSION:
                         puts(PROGRAM_VERSION_STRING);
@@ -647,7 +756,7 @@ static int parse_argv(int argc, char *argv[])
 static int resolve_lazy(int argc, char **argv)
 {
         int i;
-        int destrootdirlen = strlen(destrootdir);
+        size_t destrootdirlen = strlen(destrootdir);
         int ret = 0;
         char *item;
         for (i = 0; i < argc; i++) {
@@ -677,10 +786,12 @@ static int resolve_lazy(int argc, char **argv)
 
 static char *find_binary(const char *src)
 {
-        char *path;
+        _cleanup_free_ char *path = NULL;
         char *p, *q;
         bool end = false;
         char *newsrc = NULL;
+        int ret;
+
         path = getenv("PATH");
 
         if (path == NULL) {
@@ -689,6 +800,12 @@ static char *find_binary(const char *src)
         }
         path = strdup(path);
         p = path;
+
+        if (path == NULL) {
+                log_error("Out of memory!");
+                exit(EXIT_FAILURE);
+        }
+
         log_debug("PATH=%s", path);
 
         do {
@@ -701,7 +818,12 @@ static char *find_binary(const char *src)
                 else
                         *q = '\0';
 
-                asprintf(&newsrc, "%s/%s", p, src);
+                ret = asprintf(&newsrc, "%s/%s", p, src);
+                if (ret < 0) {
+                        log_error("Out of memory!");
+                        exit(EXIT_FAILURE);
+                }
+
                 p = q + 1;
 
                 if (stat(newsrc, &sb) != 0) {
@@ -715,15 +837,15 @@ static char *find_binary(const char *src)
 
         } while (!end);
 
-        free(path);
         if (newsrc)
                 log_debug("find_binary(%s) == %s", src, newsrc);
+
         return newsrc;
 }
 
 static int install_one(const char *src, const char *dst)
 {
-        int r = 0;
+        int r = EXIT_SUCCESS;
         int ret;
 
         if (strchr(src, '/') == NULL) {
@@ -752,29 +874,27 @@ static int install_one(const char *src, const char *dst)
 
 static int install_all(int argc, char **argv)
 {
-        int r = 0;
+        int r = EXIT_SUCCESS;
         int i;
         for (i = 0; i < argc; i++) {
                 int ret;
                 log_debug("Handle '%s'", argv[i]);
 
                 if (strchr(argv[i], '/') == NULL) {
-                        char *newsrc = find_binary(argv[i]);
+                        _cleanup_free_ char *newsrc = find_binary(argv[i]);
                         if (newsrc) {
                                 log_debug("dracut_install '%s'", newsrc);
                                 ret = dracut_install(newsrc, newsrc, arg_createdir, arg_resolvedeps, true);
                                 if (ret == 0) {
                                         log_debug("dracut_install '%s' OK", newsrc);
                                 }
-                                free(newsrc);
                         } else {
                                 ret = -1;
                         }
 
                 } else {
-                        char *dest = strdup(argv[i]);
+                        _cleanup_free_ char *dest = strdup(argv[i]);
                         ret = dracut_install(argv[i], dest, arg_createdir, arg_resolvedeps, true);
-                        free(dest);
                 }
 
                 if ((ret != 0) && (!arg_optional)) {

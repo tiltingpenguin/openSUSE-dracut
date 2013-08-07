@@ -56,7 +56,26 @@ install() {
     if ! dracut_module_included "systemd"; then
         inst_hook cleanup 30 "$moddir/crypt-cleanup.sh"
     fi
-    [[ $hostonly ]]  && inst_simple /etc/crypttab
+
+    if [[ $hostonly ]] && [[ -f /etc/cryptab ]]; then
+        # filter /etc/crypttab for the devices we need
+        while read _mapper _dev _rest; do
+            [[ $_mapper = \#* ]] && continue
+            [[ $_dev ]] || continue
+
+            [[ $_dev == UUID=* ]] && \
+                _dev="/dev/disk/by-uuid/${_dev#UUID=}"
+
+            for _hdev in "${!host_fs_types[@]}"; do
+                [[ ${host_fs_types[$_hdev]} == "crypto_LUKS" ]] || continue
+                if [[ $_hdev -ef $_dev ]] || [[ /dev/block/$_hdev -ef $_dev ]]; then
+                    echo "$_mapper $_dev $_rest"
+                    break
+                fi
+            done
+        done < /etc/crypttab > $initdir/etc/crypttab
+    fi
+
     inst_simple "$moddir/crypt-lib.sh" "/lib/dracut-crypt-lib.sh"
 
     dracut_install -o \

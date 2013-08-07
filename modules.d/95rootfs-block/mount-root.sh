@@ -68,7 +68,7 @@ mount_root() {
                 warn "*** Warning -- the system did not shut down cleanly. "
                 warn "*** Dropping you to a shell; the system will continue"
                 warn "*** when you leave the shell."
-                emergency_shell
+                action_on_fail
             fi
             fsckoptions="$AUTOFSCK_OPT $fsckoptions"
         fi
@@ -115,7 +115,6 @@ mount_root() {
         umount "$NEWROOT"
         fsck_single "${root#block:}" "$rootfs" "$rflags" "$fsckoptions"
         _ret=$?
-        [ $_ret -ne 255 ] && echo $_ret >/run/initramfs/root-fsck
         ran_fsck=1
     fi
 
@@ -130,8 +129,8 @@ mount_root() {
     fi
 
     if ! getargbool 0 rd.skipfsck; then
-        [ -f "$NEWROOT"/forcefsck ] && rm -f "$NEWROOT"/forcefsck 2>/dev/null
-        [ -f "$NEWROOT"/.autofsck ] && rm -f "$NEWROOT"/.autofsck 2>/dev/null
+        [ -f "$NEWROOT"/forcefsck ] && rm -f -- "$NEWROOT"/forcefsck 2>/dev/null
+        [ -f "$NEWROOT"/.autofsck ] && rm -f -- "$NEWROOT"/.autofsck 2>/dev/null
     fi
 }
 

@@ -3,7 +3,6 @@
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
 check() {
-    local _rootdev _activated
     # No point trying to support lvm if the binaries are missing
     type -P lvm >/dev/null || return 1
 
@@ -25,6 +24,8 @@ depends() {
 
 install() {
     local _i
+    local _needthin
+    local _activated
     inst lvm
 
     check_lvm() {
@@ -33,12 +34,16 @@ install() {
         eval $(udevadm info --query=property --name=$1 | egrep '(DM_VG_NAME|DM_LV_NAME|DM_UDEV_DISABLE_DISK_RULES_FLAG)=')
         [[ "$DM_UDEV_DISABLE_DISK_RULES_FLAG" = "1" ]] && return 1
         [[ ${DM_VG_NAME} ]] && [[ ${DM_LV_NAME} ]] || return 1
-        if ! strstr " ${_activated[*]} " " ${DM_VG_NAME}/${DM_LV_NAME} "; then
+        if ! [[ " ${_activated[*]} " == *\ ${DM_VG_NAME}/${DM_LV_NAME}\ * ]]; then
             if ! [[ $kernel_only ]]; then
                 echo " rd.lvm.lv=${DM_VG_NAME}/${DM_LV_NAME} " >> "${initdir}/etc/cmdline.d/90lvm.conf"
             fi
             push _activated "${DM_VG_NAME}/${DM_LV_NAME}"
         fi
+        if ! [[ $_needthin ]]; then
+            [[ $(lvs --noheadings -o segtype ${DM_VG_NAME} 2>/dev/null) == *thin* ]] && _needthin=1
+        fi
+
         return 0
     }
 
@@ -60,10 +65,17 @@ install() {
     # Gentoo ebuild for LVM2 prior to 2.02.63-r1 doesn't install above rules
     # files, but provides the one below:
     inst_rules 64-device-mapper.rules
+    # debian udev rules
+    inst_rules 56-lvm.rules 60-persistent-storage-lvm.rules
 
     inst_script "$moddir/lvm_scan.sh" /sbin/lvm_scan
     inst_hook cmdline 30 "$moddir/parse-lvm.sh"
 
     inst_libdir_file "libdevmapper-event-lvm*.so"
+
+    if [[ $_needthin ]]; then
+        dracut_install -o thin_dump thin_restore thin_check
+    fi
+
 }
 
