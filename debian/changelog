@@ -1,6 +1,7 @@
 dracut (031-1) UNRELEASED; urgency=low
 
   * new upstream
+  * update debian patches
 
  -- Thomas Lange <lange@debian.org>  Thu, 08 Aug 2013 20:34:39 +0200
 
