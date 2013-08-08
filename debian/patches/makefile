@@ -1,13 +1,13 @@
 Index: dracut/Makefile
 ===================================================================
---- dracut.orig/Makefile	2013-02-01 15:23:16.072974664 +0100
-+++ dracut/Makefile	2013-02-06 16:41:34.089974388 +0100
-@@ -35,7 +35,7 @@
+--- dracut.orig/Makefile	2013-08-08 11:12:36.046706016 +0200
++++ dracut/Makefile	2013-08-08 22:37:32.407949928 +0200
+@@ -40,7 +40,7 @@
  
- .PHONY: install clean archive rpm testimage test all check AUTHORS doc
+ .PHONY: install clean archive rpm testimage test all check AUTHORS doc dracut-version.sh
  
--all: syncheck dracut-version.sh dracut-install
-+all: syncheck dracut-version.sh
+-all: dracut-version.sh dracut-install
++all: dracut-version.sh
  
  DRACUT_INSTALL_OBJECTS = \
          install/dracut-install.o \

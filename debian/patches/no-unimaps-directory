@@ -1,13 +1,13 @@
 Index: dracut/modules.d/10i18n/module-setup.sh
 ===================================================================
---- dracut.orig/modules.d/10i18n/module-setup.sh	2013-03-27 13:41:43.000000000 +0100
-+++ dracut/modules.d/10i18n/module-setup.sh	2013-03-28 19:36:46.123833771 +0100
-@@ -13,7 +13,7 @@
+--- dracut.orig/modules.d/10i18n/module-setup.sh	2013-08-08 12:11:35.494601117 +0200
++++ dracut/modules.d/10i18n/module-setup.sh	2013-08-08 22:48:52.527929842 +0200
+@@ -22,7 +22,7 @@
+     fi
  
- install() {
      dracut_install -o $systemdutildir/systemd-vconsole-setup
 -    KBDSUBDIRS=consolefonts,consoletrans,keymaps,unimaps
 +    KBDSUBDIRS=consolefonts,consoletrans,keymaps
-     DEFAULT_FONT=LatArCyrHeb-16
+     DEFAULT_FONT="${i18n_default_font:-LatArCyrHeb-16}"
      I18N_CONF="/etc/locale.conf"
      VCONFIG_CONF="/etc/vconsole.conf"
