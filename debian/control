@@ -28,7 +28,7 @@ Description: A new initramfs infrastructure
 
 Package: dracut-network
 Architecture: all
-Recommends: nfs-common, open-iscsi, nbd-client
+Recommends: nfs-common, open-iscsi, nbd-client, curl
 Depends: dracut, iputils-arping, isc-dhcp-client, ${misc:Depends}
 Description: A new initramfs infrastucture
  Unlike existing initramfs's, this is an attempt at having as little as
