@@ -4,6 +4,7 @@ usr/lib/dracut/dracut-functions
 usr/lib/dracut/dracut-functions.sh
 usr/lib/dracut/dracut-logger.sh
 usr/lib/dracut/dracut-initramfs-restore
+usr/lib/dracut/dracut-install
 usr/bin/lsinitrd
 usr/share/bash-completion/completions/dracut etc/bash_completion.d
 etc/dracut.conf                 etc
