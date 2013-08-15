@@ -10,6 +10,7 @@ Homepage: http://www.kernel.org/pub/linux/utils/boot/dracut/dracut.html
 
 Package: dracut
 Architecture: any
+Multi-Arch: foreign
 Recommends: cryptsetup, dmsetup, dmraid, lvm2, mdadm
 Suggests: dracut-network
 Depends: cpio, module-init-tools, udev, kpartx, kbd, util-linux (>= 2.20), ${shlibs:Depends}, ${misc:Depends}
