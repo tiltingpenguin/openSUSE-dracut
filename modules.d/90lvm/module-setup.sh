@@ -22,32 +22,43 @@ depends() {
     return 0
 }
 
-install() {
-    local _i
-    local _needthin
+get_host_lvs() {
     local _activated
+    declare -A _activated
+
+    for dev in "${!host_fs_types[@]}"; do
+        [ -e /sys/block/${dev#/dev/}/dm/name ] || continue
+        [ -e /sys/block/${dev#/dev/}/dm/uuid ] || continue
+        uuid=$(</sys/block/${dev#/dev/}/dm/uuid)
+        [[ "${uuid#LVM-}" == "$uuid" ]] && continue
+        dev=$(</sys/block/${dev#/dev/}/dm/name)
+        eval $(dmsetup splitname --nameprefixes --noheadings --rows "$dev" 2>/dev/null)
+        [[ ${DM_VG_NAME} ]] && [[ ${DM_LV_NAME} ]] || return 1
+        if ! [[ ${_activated[${DM_VG_NAME}/${DM_LV_NAME}]} ]]; then
+            printf "%s\n" "${DM_VG_NAME}/${DM_LV_NAME} "
+            _activated["${DM_VG_NAME}/${DM_LV_NAME}"]=1
+        fi
+    done
+}
+
+cmdline() {
+    get_host_lvs | while read line; do
+        printf " rd.lvm.lv=$line"
+    done
+}
+
+install() {
+    local _i _needthin
+
     inst lvm
 
-    check_lvm() {
-        local DM_VG_NAME DM_LV_NAME DM_UDEV_DISABLE_DISK_RULES_FLAG
-
-        eval $(udevadm info --query=property --name=$1 | egrep '(DM_VG_NAME|DM_LV_NAME|DM_UDEV_DISABLE_DISK_RULES_FLAG)=')
-        [[ "$DM_UDEV_DISABLE_DISK_RULES_FLAG" = "1" ]] && return 1
-        [[ ${DM_VG_NAME} ]] && [[ ${DM_LV_NAME} ]] || return 1
-        if ! [[ " ${_activated[*]} " == *\ ${DM_VG_NAME}/${DM_LV_NAME}\ * ]]; then
-            if ! [[ $kernel_only ]]; then
-                echo " rd.lvm.lv=${DM_VG_NAME}/${DM_LV_NAME} " >> "${initdir}/etc/cmdline.d/90lvm.conf"
-            fi
-            push _activated "${DM_VG_NAME}/${DM_LV_NAME}"
-        fi
+    get_host_lvs | while read line; do
+        printf "%s" " rd.lvm.lv=$line"
         if ! [[ $_needthin ]]; then
-            [[ $(lvs --noheadings -o segtype ${DM_VG_NAME} 2>/dev/null) == *thin* ]] && _needthin=1
+            [[ "$(lvs --noheadings -o segtype ${line%%/*} 2>/dev/null)" == *thin* ]] && _needthin=1
         fi
-
-        return 0
-    }
-
-    for_each_host_dev_fs check_lvm
+    done >> "${initdir}/etc/cmdline.d/90lvm.conf"
+    echo >> "${initdir}/etc/cmdline.d/90lvm.conf"
 
     inst_rules "$moddir/64-lvm.rules"
 
@@ -59,6 +70,16 @@ install() {
             sed -i -e 's/\(^[[:space:]]*\)locking_type[[:space:]]*=[[:space:]]*[[:digit:]]/\1locking_type = 4/' ${initdir}/etc/lvm/lvm.conf
             sed -i -e 's/\(^[[:space:]]*\)use_lvmetad[[:space:]]*=[[:space:]]*[[:digit:]]/\1use_lvmetad = 0/' ${initdir}/etc/lvm/lvm.conf
         fi
+    fi
+
+    if ! [[ -e ${initdir}/etc/lvm/lvm.conf ]]; then
+        mkdir -p "${initdir}/etc/lvm"
+        {
+            echo 'global {'
+            echo 'locking_type = 4'
+            echo 'use_lvmetad = 0'
+            echo '}'
+        } > "${initdir}/etc/lvm/lvm.conf"
     fi
 
     inst_rules 11-dm-lvm.rules
@@ -74,7 +95,7 @@ install() {
     inst_libdir_file "libdevmapper-event-lvm*.so"
 
     if [[ $_needthin ]]; then
-        dracut_install -o thin_dump thin_restore thin_check
+        inst_multiple -o thin_dump thin_restore thin_check thin_repair
     fi
 
 }

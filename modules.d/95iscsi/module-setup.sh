@@ -36,7 +36,8 @@ depends() {
 installkernel() {
     local _arch=$(uname -m)
 
-    instmods iscsi_tcp iscsi_ibft crc32c bnx2i iscsi_boot_sysfs qla4xxx cxgb3i cxgb4i be2iscsi
+    instmods bnx2i qla4xxx cxgb3i cxgb4i be2iscsi
+    hostonly="" instmods iscsi_tcp iscsi_ibft crc32c iscsi_boot_sysfs
     iscsi_module_filter() {
         local _funcs='iscsi_register_transport'
         # subfunctions inherit following FDs
@@ -75,8 +76,8 @@ installkernel() {
 }
 
 install() {
-    dracut_install umount iscsistart hostname iscsi-iname
-    dracut_install -o iscsiuio
+    inst_multiple umount iscsistart hostname iscsi-iname
+    inst_multiple -o iscsiuio
     inst_hook cmdline 90 "$moddir/parse-iscsiroot.sh"
     inst_hook cleanup 90 "$moddir/cleanup-iscsi.sh"
     inst "$moddir/iscsiroot.sh" "/sbin/iscsiroot"

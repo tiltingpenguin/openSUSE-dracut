@@ -23,42 +23,49 @@ depends() {
     return 0
 }
 
+cmdline() {
+    local _activated
+    declare -A _activated
+
+    for dev in "${!host_fs_types[@]}"; do
+        local holder DEVPATH DM_NAME majmin
+        [[ "${host_fs_types[$dev]}" != *_raid_member ]] && continue
+
+        majmin=$(get_maj_min $dev)
+        DEVPATH=$(
+            for i in /sys/block/*; do
+                [[ -e "$i/dev" ]] || continue
+                if [[ $a == $(<"$i/dev") ]]; then
+                    printf "%s" "$i"
+                    break
+                fi
+            done
+        )
+
+        for holder in "$DEVPATH"/holders/*; do
+            [[ -e "$holder" ]] || continue
+            dev="/dev/${holder##*/}"
+            DM_NAME="$(dmsetup info -c --noheadings -o name "$dev" 2>/dev/null)"
+            [[ ${DM_NAME} ]] && break
+        done
+
+        [[ ${DM_NAME} ]] || continue
+
+        if ! [[ ${_activated[${DM_NAME}]} ]]; then
+            printf "%s" " rd.dm.uuid=${DM_NAME}"
+            _activated["${DM_NAME}"]=1
+        fi
+    done
+}
+
 install() {
     local _i
 
-    check_dmraid() {
-        local dev=$1 fs=$2 holder DEVPATH DM_NAME
-        [[ "$fs" != *_raid_member ]] && return 1
+    cmdline >> "${initdir}/etc/cmdline.d/90dmraid.conf"
+    echo >> "${initdir}/etc/cmdline.d/90dmraid.conf"
 
-        DEVPATH=$(udevadm info --query=property --name=$dev \
-            | while read line; do
-                [[ ${line#DEVPATH} = $line ]] && continue
-                eval "$line"
-                echo $DEVPATH
-                break
-                done)
-        for holder in /sys/$DEVPATH/holders/*; do
-            [[ -e $holder ]] || continue
-            DM_NAME=$(udevadm info --query=property --path=$holder \
-                | while read line; do
-                    [[ ${line#DM_NAME} = $line ]] && continue
-                    eval "$line"
-                    echo $DM_NAME
-                    break
-                    done)
-        done
-
-        [[ ${DM_NAME} ]] || return 1
-        if ! [[ $kernel_only ]]; then
-            echo " rd.dm.uuid=${DM_NAME} " >> "${initdir}/etc/cmdline.d/90dmraid.conf"
-        fi
-        return 0
-    }
-
-    for_each_host_dev_fs check_dmraid
-
-    dracut_install dmraid
-    dracut_install -o kpartx
+    inst_multiple dmraid
+    inst_multiple -o kpartx
     inst $(command -v partx) /sbin/partx
 
     inst "$moddir/dmraid.sh" /sbin/dmraid_scan

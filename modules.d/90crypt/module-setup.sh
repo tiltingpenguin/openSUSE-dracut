@@ -26,29 +26,30 @@ installkernel() {
     instmods dm_crypt =crypto
 }
 
+cmdline() {
+    local dev UUID
+    for dev in "${!host_fs_types[@]}"; do
+        [[ "${host_fs_types[$dev]}" != "crypto_LUKS" ]] && continue
+
+        UUID=$(
+            blkid -u crypto -o export $dev \
+                | while read line; do
+                [[ ${line#UUID} = $line ]] && continue
+                printf "%s" "${line#UUID=}"
+                break
+            done
+        )
+        [[ ${UUID} ]] || continue
+        printf "%s" " rd.luks.uuid=luks-${UUID}"
+    done
+}
+
 install() {
 
-    check_crypt() {
-        local dev=$1 fs=$2
+    cmdline >> "${initdir}/etc/cmdline.d/90crypt.conf"
+    echo >> "${initdir}/etc/cmdline.d/90crypt.conf"
 
-        [[ $fs = "crypto_LUKS" ]] || return 1
-        ID_FS_UUID=$(udevadm info --query=property --name=$dev \
-            | while read line; do
-                [[ ${line#ID_FS_UUID} = $line ]] && continue
-                eval "$line"
-                echo $ID_FS_UUID
-                break
-                done)
-        [[ ${ID_FS_UUID} ]] || return 1
-        if ! [[ $kernel_only ]]; then
-            echo " rd.luks.uuid=luks-${ID_FS_UUID} " >> "${initdir}/etc/cmdline.d/90crypt.conf"
-        fi
-        return 0
-    }
-
-    for_each_host_dev_fs check_crypt
-
-    dracut_install cryptsetup rmdir readlink umount
+    inst_multiple cryptsetup rmdir readlink umount
     inst_script "$moddir"/cryptroot-ask.sh /sbin/cryptroot-ask
     inst_script "$moddir"/probe-keydev.sh /sbin/probe-keydev
     inst_hook cmdline 10 "$moddir/parse-keydev.sh"
@@ -57,7 +58,7 @@ install() {
         inst_hook cleanup 30 "$moddir/crypt-cleanup.sh"
     fi
 
-    if [[ $hostonly ]] && [[ -f /etc/cryptab ]]; then
+    if [[ $hostonly ]] && [[ -f /etc/crypttab ]]; then
         # filter /etc/crypttab for the devices we need
         while read _mapper _dev _rest; do
             [[ $_mapper = \#* ]] && continue
@@ -78,8 +79,7 @@ install() {
 
     inst_simple "$moddir/crypt-lib.sh" "/lib/dracut-crypt-lib.sh"
 
-    dracut_install -o \
-        $systemdutildir/system-generators/systemd-cryptsetup-generator \
+    inst_multiple -o \
         $systemdutildir/system-generators/systemd-cryptsetup-generator \
         $systemdutildir/systemd-cryptsetup \
         $systemdsystemunitdir/systemd-ask-password-console.path \

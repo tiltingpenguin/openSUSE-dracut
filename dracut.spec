@@ -21,8 +21,8 @@ Group: System/Base
 %endif
 
 # The entire source code is GPLv2+
-# except install/* which is LGPLv2.1+
-License: GPLv2+ and LGPLv2.1+
+# except install/* which is LGPLv2+
+License: GPLv2+ and LGPLv2+
 
 URL: https://dracut.wiki.kernel.org/
 
@@ -121,6 +121,7 @@ Summary: dracut modules to build a dracut initramfs with network support
 Requires: %{name} = %{version}-%{release}
 Requires: iputils
 Requires: iproute
+Requires: dhclient
 Obsoletes: dracut-generic < 008
 Provides:  dracut-generic = %{version}-%{release}
 
@@ -318,6 +319,7 @@ rm -rf -- $RPM_BUILD_ROOT
 %else
 %{dracutlibdir}/modules.d/00bootchart
 %endif
+%{dracutlibdir}/modules.d/00bash
 %{dracutlibdir}/modules.d/03modsign
 %{dracutlibdir}/modules.d/03rescue
 %{dracutlibdir}/modules.d/04watchdog

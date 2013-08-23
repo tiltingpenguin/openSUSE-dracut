@@ -69,7 +69,7 @@ installkernel() {
 
 install() {
     local _f
-    dracut_install -o  \
+    inst_multiple -o  \
         dmsetup \
         kpartx \
         mpath_wait \
@@ -87,7 +87,7 @@ install() {
     inst_libdir_file "libmultipath*" "multipath/*"
 
     if dracut_module_included "systemd"; then
-        dracut_install \
+        inst_multiple \
             $systemdsystemunitdir/multipathd.service
         mkdir -p "${initdir}${systemdsystemconfdir}/sysinit.target.wants"
         ln -rfs "${initdir}${systemdsystemunitdir}/multipathd.service" "${initdir}${systemdsystemconfdir}/sysinit.target.wants/multipathd.service"
@@ -95,6 +95,9 @@ install() {
         inst_hook pre-trigger 02 "$moddir/multipathd.sh"
         inst_hook cleanup   02 "$moddir/multipathd-stop.sh"
     fi
+
+    inst_hook cleanup   80 "$moddir/multipathd-needshutdown.sh"
+
     inst_rules 40-multipath.rules 62-multipath.rules 65-multipath.rules 66-kpartx.rules
 }
 

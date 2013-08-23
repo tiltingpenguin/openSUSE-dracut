@@ -14,31 +14,20 @@ depends() {
 install() {
     local _d
 
-    dracut_install mount mknod mkdir sleep chroot \
+    inst_multiple mount mknod mkdir sleep chroot \
         sed ls flock cp mv dmesg rm ln rmmod mkfifo umount readlink setsid
     inst $(command -v modprobe) /sbin/modprobe
 
-    dracut_install -o findmnt less kmod
+    inst_multiple -o findmnt less kmod
 
     if [ ! -e "${initdir}/bin/sh" ]; then
-        dracut_install bash
+        inst_multiple bash
         (ln -s bash "${initdir}/bin/sh" || :)
     fi
 
     #add common users in /etc/passwd, it will be used by nfs/ssh currently
     egrep '^root:' "$initdir/etc/passwd" 2>/dev/null || echo  'root:x:0:0::/root:/bin/sh' >> "$initdir/etc/passwd"
     egrep '^nobody:' /etc/passwd >> "$initdir/etc/passwd"
-
-    # install /etc/adjtime and time zone data
-    if [[ $hostonly ]]; then
-        dracut_install -o /etc/adjtime \
-                          /etc/localtime
-
-        # Our init.sh script needs hwclock to set system time
-        if ! dracut_module_included "systemd"; then
-            dracut_install -o hwclock
-        fi
-    fi
 
     # install our scripts and hooks
     inst_script "$moddir/init.sh" "/init"
@@ -52,18 +41,17 @@ install() {
 
     mkdir -p ${initdir}/tmp
 
-    dracut_install switch_root || dfatal "Failed to install switch_root"
-
     inst_simple "$moddir/dracut-lib.sh" "/lib/dracut-lib.sh"
 
     if ! dracut_module_included "systemd"; then
+        inst_multiple switch_root || dfatal "Failed to install switch_root"
         inst_hook cmdline 10 "$moddir/parse-root-opts.sh"
     fi
 
     mkdir -p "${initdir}/var"
 
     if ! dracut_module_included "systemd"; then
-        dracut_install -o $systemdutildir/systemd-timestamp
+        inst_multiple -o $systemdutildir/systemd-timestamp
     fi
 
     if [[ $realinitpath ]]; then

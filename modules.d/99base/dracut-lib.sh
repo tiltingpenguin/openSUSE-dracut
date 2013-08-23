@@ -28,6 +28,45 @@ str_ends() {
     [ "${1%*$2}" != "$1" ]
 }
 
+if [ -z "$DRACUT_SYSTEMD" ]; then
+
+    warn() {
+        check_quiet
+        echo "<28>dracut Warning: $*" > /dev/kmsg
+        echo "dracut Warning: $*" >&2
+    }
+
+    info() {
+        check_quiet
+        echo "<30>dracut: $*" > /dev/kmsg
+        [ "$DRACUT_QUIET" != "yes" ] && \
+            echo "dracut: $*"
+    }
+
+else
+
+    warn() {
+        echo "Warning: $*" >&2
+    }
+
+    info() {
+        echo "$*"
+    }
+
+fi
+
+vwarn() {
+    while read line; do
+        warn $line;
+    done
+}
+
+vinfo() {
+    while read line; do
+        info $line;
+    done
+}
+
 # replaces all occurrences of 'search' in 'str' with 'replacement'
 #
 # str_replace str search replacement
@@ -56,7 +95,7 @@ killall_proc_mountpoint() {
         esac
         [ -e "/proc/$_pid/exe" ] || continue
         [ -e "/proc/$_pid/root" ] || continue
-        strstr "$(ls -l -- '/proc/$_pid' '/proc/$_pid/fd' 2>/dev/null)" "$1" && kill -9 "$_pid"
+        strstr "$(ls -l -- "/proc/$_pid" "/proc/$_pid/fd" 2>/dev/null)" "$1" && kill -9 "$_pid"
     done
 }
 
@@ -407,44 +446,6 @@ check_quiet() {
     fi
 }
 
-if [ -z "$DRACUT_SYSTEMD" ]; then
-
-    warn() {
-        check_quiet
-        echo "<28>dracut Warning: $*" > /dev/kmsg
-        echo "dracut Warning: $*" >&2
-    }
-
-    info() {
-        check_quiet
-        echo "<30>dracut: $*" > /dev/kmsg
-        [ "$DRACUT_QUIET" != "yes" ] && \
-            echo "dracut: $*"
-    }
-
-else
-
-    warn() {
-        echo "Warning: $*" >&2
-    }
-
-    info() {
-        echo "$*"
-    }
-
-fi
-
-vwarn() {
-    while read line; do
-        warn $line;
-    done
-}
-
-vinfo() {
-    while read line; do
-        info $line;
-    done
-}
 
 check_occurances() {
     # Count the number of times the character $ch occurs in $str
@@ -1030,24 +1031,16 @@ emergency_shell()
 
 action_on_fail()
 {
-    local _action=$(getarg rd.action_on_fail= -d action_on_fail=)
-    case "$_action" in
-        continue)
-            [ "$1" = "-n" ] && shift 2
-            [ "$1" = "--shutdown" ] && shift 2
-            warn "$*"
-            warn "Not dropping to emergency shell, because 'action_on_fail=continue' was set on the kernel command line."
-            return 0
-            ;;
-        shell)
-            emergency_shell $@
-            return 1
-            ;;
-        *)
-            emergency_shell $@
-            return 1
-            ;;
-    esac
+    if [ -f "$initdir/lib/dracut/no-emergency-shell" ]; then
+        [ "$1" = "-n" ] && shift 2
+        [ "$1" = "--shutdown" ] && shift 2
+        warn "$*"
+        warn "Not dropping to emergency shell, because $initdir/lib/dracut/no-emergency-shell exists."
+        return 0
+    fi
+
+    emergency_shell $@
+    return 1
 }
 
 # Retain the values of these variables but ensure that they are unexported

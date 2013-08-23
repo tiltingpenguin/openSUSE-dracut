@@ -34,13 +34,13 @@ _dracut() {
                               --local --hostonly --no-hostonly --fstab --help --bzip2 --lzma
                               --xz --no-compress --gzip --list-modules --show-modules --keep
                               --printsize --regenerate-all --noimageifnotneeded --early-microcode
-                              --no-early-microcode'
+                              --no-early-microcode --print-cmdline'
 
                        [ARG]='-a -m -o -d -I -k -c -L --kver --add --force-add --add-drivers
                               --omit-drivers --modules --omit --drivers --filesystems --install
                               --fwdir --libdirs --fscks --add-fstab --mount --device --nofscks
                               --kmoddir --conf --confdir --tmpdir --stdlog --compress --prefix
-                              --kernel-cmdline --sshkey'
+                              --kernel-cmdline --sshkey --persistent-policy'
         )
 
         if __contains_word "$prev" ${OPTS[ARG]}; then
@@ -55,6 +55,9 @@ _dracut() {
                         ;;
                         -a|-m|-o|--add|--modules|--omit)
                                 comps=$(dracut --list-modules 2>/dev/null)
+                        ;;
+                        --persistent-policy)
+                                comps=$(cd /dev/disk/; echo *)
                         ;;
                         --kver)
                                 comps=$(cd /lib/modules; echo [0-9]*)

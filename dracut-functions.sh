@@ -55,13 +55,20 @@ if ! [[ $dracutbasedir ]]; then
     dracutbasedir="$(readlink -f $dracutbasedir)"
 fi
 
-if ! [[ $DRACUT_INSTALL ]]; then
-    DRACUT_INSTALL=$(find_binary dracut-install)
-fi
-
-if ! [[ $DRACUT_INSTALL ]] && [[ -x $dracutbasedir/dracut-install ]]; then
-    DRACUT_INSTALL=$dracutbasedir/dracut-install
-fi
+ldconfig_paths()
+{
+    local a i
+    declare -A a
+    for i in $(
+        ldconfig -pN 2>/dev/null | while read a b c d; do
+            [[ "$c" != "=>" ]] && continue
+            printf "%s\n" ${d%/*};
+        done
+    ); do
+        a["$i"]=1;
+    done;
+    printf "%s\n" ${!a[@]}
+}
 
 # Detect lib paths
 if ! [[ $libdirs ]] ; then
@@ -73,6 +80,9 @@ if ! [[ $libdirs ]] ; then
         libdirs+=" /lib"
         [[ -d /usr/lib ]] && libdirs+=" /usr/lib"
     fi
+
+    libdirs+="$(ldconfig_paths)"
+
     export libdirs
 fi
 
@@ -81,9 +91,37 @@ if ! [[ $kernel ]]; then
     export kernel
 fi
 
+# Version comparision function.  Assumes Linux style version scheme.
+# $1 = version a
+# $2 = comparision op (gt, ge, eq, le, lt, ne)
+# $3 = version b
+vercmp() {
+    local _n1=(${1//./ }) _op=$2 _n2=(${3//./ }) _i _res
+
+    for ((_i=0; ; _i++))
+    do
+        if [[ ! ${_n1[_i]}${_n2[_i]} ]]; then _res=0
+        elif ((${_n1[_i]:-0} > ${_n2[_i]:-0})); then _res=1
+        elif ((${_n1[_i]:-0} < ${_n2[_i]:-0})); then _res=2
+        else continue
+        fi
+        break
+    done
+
+    case $_op in
+        gt) ((_res == 1));;
+        ge) ((_res != 2));;
+        eq) ((_res == 0));;
+        le) ((_res != 1));;
+        lt) ((_res == 2));;
+        ne) ((_res != 0));;
+    esac
+}
+
 srcmods="/lib/modules/$kernel/"
+
 [[ $drivers_dir ]] && {
-    if vercmp "$(modprobe --version | cut -d' ' -f3)" lt 3.7; then
+    if ! command -v kmod &>/dev/null && vercmp "$(modprobe --version | cut -d' ' -f3)" lt 3.7; then
         dfatal 'To use --kmoddir option module-init-tools >= 3.7 is required.'
         exit 1
     fi
@@ -115,40 +153,13 @@ dracut_need_initqueue() {
 }
 
 dracut_module_included() {
-    [[ "$mods_to_load $modules_loaded" == *$@* ]]
+    [[ " $mods_to_load $modules_loaded " == *\ $*\ * ]]
 }
 
 # Create all subdirectories for given path without creating the last element.
 # $1 = path
 mksubdirs() {
     [[ -e ${1%/*} ]] || mkdir -m 0755 -p -- "${1%/*}"
-}
-
-# Version comparision function.  Assumes Linux style version scheme.
-# $1 = version a
-# $2 = comparision op (gt, ge, eq, le, lt, ne)
-# $3 = version b
-vercmp() {
-    local _n1=${1//./ } _op=$2 _n2=${3//./ } _i _res
-
-    for ((_i=0; ; _i++))
-    do
-        if [[ ! ${_n1[_i]}${_n2[_i]} ]]; then _res=0
-        elif ((${_n1[_i]:-0} > ${_n2[_i]:-0})); then _res=1
-        elif ((${_n1[_i]:-0} < ${_n2[_i]:-0})); then _res=2
-        else continue
-        fi
-        break
-    done
-
-    case $_op in
-        gt) ((_res == 1));;
-        ge) ((_res != 2));;
-        eq) ((_res == 0));;
-        le) ((_res != 1));;
-        lt) ((_res == 2));;
-        ne) ((_res != 0));;
-    esac
 }
 
 # is_func <command>
@@ -179,7 +190,7 @@ normalize_path() {
     shopt -q -s extglob
     set -- "${1//+(\/)//}"
     shopt -q -u extglob
-    echo "${1%/}"
+    printf "%s\n" "${1%/}"
 }
 
 # convert_abs_rel <from> <to>
@@ -195,10 +206,10 @@ convert_abs_rel() {
     set -- "$(normalize_path "$1")" "$(normalize_path "$2")"
 
     # corner case #1 - self looping link
-    [[ "$1" == "$2" ]] && { echo "${1##*/}"; return; }
+    [[ "$1" == "$2" ]] && { printf "%s\n" "${1##*/}"; return; }
 
     # corner case #2 - own dir link
-    [[ "${1%/*}" == "$2" ]] && { echo "."; return; }
+    [[ "${1%/*}" == "$2" ]] && { printf ".\n"; return; }
 
     IFS="/" __current=($1)
     IFS="/" __absolute=($2)
@@ -233,7 +244,7 @@ convert_abs_rel() {
         __newpath=$__newpath${__absolute[__i]}
     done
 
-    echo "$__newpath"
+    printf "%s\n" "$__newpath"
 }
 
 if [[ "$(ln --help)" == *--relative* ]]; then
@@ -249,26 +260,10 @@ else
     }
 fi
 
-get_persistent_dev() {
-    local i _tmp _dev
-
-    _dev=$(udevadm info --query=name --name="$1" 2>/dev/null)
-    [ -z "$_dev" ] && return
-
-    for i in /dev/mapper/* /dev/disk/by-uuid/* /dev/disk/by-id/*; do
-        [[ $i == /dev/mapper/mpath* ]] && continue
-        _tmp=$(udevadm info --query=name --name="$i" 2>/dev/null)
-        if [ "$_tmp" = "$_dev" ]; then
-            printf -- "%s" "$i"
-            return
-        fi
-    done
-}
-
 # get_fs_env <device>
-# Get and set the ID_FS_TYPE variable from udev for a device.
+# Get and the ID_FS_TYPE variable from udev for a device.
 # Example:
-# $ get_fs_env /dev/sda2; echo $ID_FS_TYPE
+# $ get_fs_env /dev/sda2
 # ext4
 get_fs_env() {
     local evalstr
@@ -276,33 +271,16 @@ get_fs_env() {
 
     [[ $1 ]] || return
     unset ID_FS_TYPE
-    if ID_FS_TYPE=$(udevadm info --query=env --name="$1" \
-        | { while read line; do
-                    [[ "$line" == DEVPATH\=* ]] && found=1;
-                    if [[ "$line" == ID_FS_TYPE\=* ]]; then
-                        printf "%s" "${line#ID_FS_TYPE=}";
-                        exit 0;
-                    fi
-                done; [[ $found ]] && exit 0; exit 1; }) ; then
-        if [[ $ID_FS_TYPE ]]; then
-            printf "%s" "$ID_FS_TYPE"
-            return 0
-        fi
-    fi
-
-    # Fallback, if we don't have udev information
-    if find_binary blkid >/dev/null; then
-        ID_FS_TYPE=$(blkid -u filesystem -o export -- "$1" \
-            | while read line; do
-                if [[ "$line" == TYPE\=* ]]; then
-                    printf "%s" "${line#TYPE=}";
-                    exit 0;
-                fi
-                done)
-        if [[ $ID_FS_TYPE ]]; then
-            printf "%s" "$ID_FS_TYPE"
-            return 0
-        fi
+    ID_FS_TYPE=$(blkid -u filesystem -o export -- "$1" \
+        | while read line; do
+            if [[ "$line" == TYPE\=* ]]; then
+                printf "%s" "${line#TYPE=}";
+                exit 0;
+            fi
+            done)
+    if [[ $ID_FS_TYPE ]]; then
+        printf "%s" "$ID_FS_TYPE"
+        return 0
     fi
     return 1
 }
@@ -316,6 +294,49 @@ get_maj_min() {
     local _maj _min _majmin
     _majmin="$(stat -L -c '%t:%T' "$1" 2>/dev/null)"
     printf "%s" "$((0x${_majmin%:*})):$((0x${_majmin#*:}))"
+}
+
+# get a persistent path from a device
+get_persistent_dev() {
+    local i _tmp _dev
+
+    _dev=$(get_maj_min "$1")
+    [ -z "$_dev" ] && return
+
+    for i in \
+        /dev/mapper/* \
+        /dev/disk/${persistent_policy:-by-uuid}/* \
+        /dev/disk/by-uuid/* \
+        /dev/disk/by-label/* \
+        /dev/disk/by-partuuid/* \
+        /dev/disk/by-partlabel/* \
+        /dev/disk/by-id/* \
+        /dev/disk/by-path/* \
+        ; do
+        [[ $i == /dev/mapper/control ]] && continue
+        [[ $i == /dev/mapper/mpath* ]] && continue
+        _tmp=$(get_maj_min "$i")
+        if [ "$_tmp" = "$_dev" ]; then
+            printf -- "%s" "$i"
+            return
+        fi
+    done
+}
+
+shorten_persistent_dev() {
+    local dev="$1"
+    case "$dev" in
+        /dev/disk/by-uuid/*)
+            printf "%s" "UUID=${dev##*/}";;
+        /dev/disk/by-label/*)
+            printf "%s" "LABEL=${dev##*/}";;
+        /dev/disk/by-partuuid/*)
+            printf "%s" "PARTUUID=${dev##*/}";;
+        /dev/disk/by-partlabel/*)
+            printf "%s" "PARTLABEL=${dev##*/}";;
+        *)
+            printf "%s" "$dev";;
+    esac
 }
 
 # find_block_device <mountpoint>
@@ -340,14 +361,14 @@ find_block_device() {
                         _majmin=$(get_maj_min $_dev)
                     fi
                     if [[ $_majmin ]]; then
-                        echo $_majmin
+                        printf "%s\n" "$_majmin"
                     else
-                        echo $_dev
+                        printf "%s\n" "$_dev"
                     fi
                     return 0
                 fi
                 if [[ $_dev = *:* ]]; then
-                    echo $_dev
+                    printf "%s\n" "$_dev"
                     return 0
                 fi
             done; return 1; } && return 0
@@ -363,14 +384,14 @@ find_block_device() {
             if [[ -b $_dev ]]; then
                 [[ $_majmin ]] || _majmin=$(get_maj_min $_dev)
                 if [[ $_majmin ]]; then
-                    echo $_majmin
+                    printf "%s\n" "$_majmin"
                 else
-                    echo $_dev
+                    printf "%s\n" "$_dev"
                 fi
                 return 0
             fi
             if [[ $_dev = *:* ]]; then
-                echo $_dev
+                printf "%s\n" "$_dev"
                 return 0
             fi
         done; return 1; } && return 0
@@ -394,7 +415,7 @@ find_mp_fstype() {
             while read _fs; do
                 [[ $_fs ]] || continue
                 [[ $_fs = "autofs" ]] && continue
-                echo -n $_fs
+                printf "%s" "$_fs"
                 return 0
             done; return 1; } && return 0
     fi
@@ -403,7 +424,7 @@ find_mp_fstype() {
         while read _fs; do
             [[ $_fs ]] || continue
             [[ $_fs = "autofs" ]] && continue
-            echo -n $_fs
+            printf "%s" "$_fs"
             return 0
         done; return 1; } && return 0
 
@@ -421,14 +442,16 @@ find_mp_fstype() {
 find_dev_fstype() {
     local _find_dev _fs
     _find_dev="$1"
-    [[ "$_find_dev" = /dev* ]] || _find_dev="/dev/block/$_find_dev"
+    if ! [[ "$_find_dev" = /dev* ]]; then
+        [[ -b "/dev/block/$_find_dev" ]] && _find_dev="/dev/block/$_find_dev"
+    fi
 
     if [[ $use_fstab != yes ]]; then
         findmnt -e -v -n -o 'FSTYPE' --source "$_find_dev" | { \
             while read _fs; do
                 [[ $_fs ]] || continue
                 [[ $_fs = "autofs" ]] && continue
-                echo -n $_fs
+                printf "%s" "$_fs"
                 return 0
             done; return 1; } && return 0
     fi
@@ -437,13 +460,50 @@ find_dev_fstype() {
         while read _fs; do
             [[ $_fs ]] || continue
             [[ $_fs = "autofs" ]] && continue
-            echo -n $_fs
+            printf "%s" "$_fs"
             return 0
         done; return 1; } && return 0
 
     return 1
-
 }
+
+# find_mp_fsopts <mountpoint>
+# Echo the filesystem options for a given mountpoint.
+# /proc/self/mountinfo is taken as the primary source of information
+# and /etc/fstab is used as a fallback.
+# No newline is appended!
+# Example:
+# $ find_mp_fsopts /;echo
+# rw,relatime,discard,data=ordered
+find_mp_fsopts() {
+    if [[ $use_fstab != yes ]]; then
+        findmnt -e -v -n -o 'OPTIONS' --target "$1" 2>/dev/null && return 0
+    fi
+
+    findmnt --fstab -e -v -n -o 'OPTIONS' --target "$1"
+}
+
+# find_dev_fsopts <device>
+# Echo the filesystem options for a given device.
+# /proc/self/mountinfo is taken as the primary source of information
+# and /etc/fstab is used as a fallback.
+# Example:
+# $ find_dev_fsopts /dev/sda2
+# rw,relatime,discard,data=ordered
+find_dev_fsopts() {
+    local _find_dev _opts
+    _find_dev="$1"
+    if ! [[ "$_find_dev" = /dev* ]]; then
+        [[ -b "/dev/block/$_find_dev" ]] && _find_dev="/dev/block/$_find_dev"
+    fi
+
+    if [[ $use_fstab != yes ]]; then
+        findmnt -e -v -n -o 'OPTIONS' --source "$_find_dev" 2>/dev/null && return 0
+    fi
+
+    findmnt --fstab -e -v -n -o 'OPTIONS' --source "$_find_dev"
+}
+
 
 # finds the major:minor of the block device backing the root filesystem.
 find_root_block_device() { find_block_device /; }
@@ -467,7 +527,7 @@ for_each_host_dev_fs()
 
 host_fs_all()
 {
-    echo "${host_fs_types[@]}"
+    printf "%s\n" "${host_fs_types[@]}"
 }
 
 # Walk all the slave relationships for a given block device.
@@ -550,11 +610,12 @@ for_each_host_dev_and_slaves()
 check_vol_slaves() {
     local _lv _vg _pv
     for i in /dev/mapper/*; do
+        [[ $i == /dev/mapper/control ]] && continue
         _lv=$(get_maj_min $i)
         if [[ $_lv = $2 ]]; then
             _vg=$(lvm lvs --noheadings -o vg_name $i 2>/dev/null)
             # strip space
-            _vg=$(echo $_vg)
+            _vg=$(printf "%s\n" "$_vg")
             if [[ $_vg ]]; then
                 for _pv in $(lvm vgs --noheadings -o pv_name "$_vg" 2>/dev/null)
                 do
@@ -586,268 +647,77 @@ fs_get_option() {
     done
 }
 
-if [[ $DRACUT_INSTALL ]]; then
-    [[ $DRACUT_RESOLVE_LAZY ]] || export DRACUT_RESOLVE_DEPS=1
-    inst_dir() {
-        [[ -e ${initdir}/"$1" ]] && return 0  # already there
-        $DRACUT_INSTALL ${initdir+-D "$initdir"} -d "$@"
-        (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} -d "$@" || :
-    }
 
-    inst() {
-        [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
-        #dinfo "$DRACUT_INSTALL -l $@"
-        $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l} ${DRACUT_FIPS_MODE+-H} "$@"
-        (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l} ${DRACUT_FIPS_MODE+-H} "$@" || :
-    }
-
-    inst_simple() {
-        [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
-        [[ -e $1 ]] || return 1  # no source
-        $DRACUT_INSTALL ${initdir+-D "$initdir"} "$@"
-        (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} "$@" || :
-    }
-
-    inst_symlink() {
-        [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
-        [[ -L $1 ]] || return 1
-        $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
-        (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
-    }
-
-    dracut_install() {
-        local ret
-        #dinfo "initdir=$initdir $DRACUT_INSTALL -l $@"
-        $DRACUT_INSTALL ${initdir+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
-        ret=$?
-        (($ret != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
-        return $ret
-    }
-
-    inst_library() {
-        [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
-        [[ -e $1 ]] || return 1  # no source
-        $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
-        (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
-    }
-
-    inst_binary() {
-        $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
-        (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
-    }
-
-    inst_script() {
-        $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
-        (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
-    }
-
-else
-
-    # Install a directory, keeping symlinks as on the original system.
-    # Example: if /lib points to /lib64 on the host, "inst_dir /lib/file"
-    # will create ${initdir}/lib64, ${initdir}/lib64/file,
-    # and a symlink ${initdir}/lib -> lib64.
-    inst_dir() {
-        [[ -e ${initdir}/"$1" ]] && return 0  # already there
-
-        local _dir="$1" _part="${1%/*}" _file
-        while [[ "$_part" != "${_part%/*}" ]] && ! [[ -e "${initdir}/${_part}" ]]; do
-            _dir="$_part $_dir"
-            _part=${_part%/*}
-        done
-
-        # iterate over parent directories
-        for _file in $_dir; do
-            [[ -e "${initdir}/$_file" ]] && continue
-            if [[ -L $_file ]]; then
-                inst_symlink "$_file"
-            else
-            # create directory
-                mkdir -m 0755 -p "${initdir}/$_file" || return 1
-                [[ -e "$_file" ]] && chmod --reference="$_file" "${initdir}/$_file"
-                chmod u+w "${initdir}/$_file"
-            fi
-        done
-    }
-
-    # $1 = file to copy to ramdisk
-    # $2 (optional) Name for the file on the ramdisk
-    # Location of the image dir is assumed to be $initdir
-    # We never overwrite the target if it exists.
-    inst_simple() {
-        [[ -f "$1" ]] || return 1
-        [[ "$1" == */* ]] || return 1
-        local _src=$1 _target="${2:-$1}"
-
-        [[ -L $_src ]] && { inst_symlink $_src $_target; return $?; }
-
-        if ! [[ -d ${initdir}/$_target ]]; then
-            [[ -e ${initdir}/$_target ]] && return 0
-            [[ -L ${initdir}/$_target ]] && return 0
-            [[ -d "${initdir}/${_target%/*}" ]] || inst_dir "${_target%/*}"
-        fi
-        if [[ $DRACUT_FIPS_MODE ]]; then
-            # install checksum files also
-            if [[ -e "${_src%/*}/.${_src##*/}.hmac" ]]; then
-                inst "${_src%/*}/.${_src##*/}.hmac" "${_target%/*}/.${_target##*/}.hmac"
-            fi
-            if [[ -e "/lib/fipscheck/${_src##*/}.hmac" ]]; then
-                inst "/lib/fipscheck/${_src##*/}.hmac" "/lib/fipscheck/${_target##*/}.hmac"
-            fi
-            if [[ -e "/lib64/fipscheck/${_src##*/}.hmac" ]]; then
-                inst "/lib64/fipscheck/${_src##*/}.hmac" "/lib64/fipscheck/${_target##*/}.hmac"
-            fi
-        fi
-        ddebug "Installing $_src"
-        cp --reflink=auto --sparse=auto -pfL "$_src" "${initdir}/$_target"
-    }
-
-    # same as above, but specialized for symlinks
-    inst_symlink() {
-        local _src=$1 _target=${2:-$1} _realsrc
-        [[ "$1" == */* ]] || return 1
-        [[ -L $1 ]] || return 1
-        [[ -L $initdir/$_target ]] && return 0
-        _realsrc=$(readlink -f "$_src")
-        if ! [[ -e $initdir/$_realsrc ]]; then
-            if [[ -d $_realsrc ]]; then
-                inst_dir "$_realsrc"
-            else
-                inst "$_realsrc"
-            fi
-        fi
-        [[ ! -e $initdir/${_target%/*} ]] && inst_dir "${_target%/*}"
-
-        ln_r "${_realsrc}" "${_target}"
-    }
-
-    # Same as above, but specialized to handle dynamic libraries.
-    # It handles making symlinks according to how the original library
-    # is referenced.
-    inst_library() {
-        local _src="$1" _dest=${2:-$1} _lib _reallib _symlink
-        [[ "$1" == */* ]] || return 1
-        [[ -e $initdir/$_dest ]] && return 0
-        if [[ -L $_src ]]; then
-            if [[ $DRACUT_FIPS_MODE ]]; then
-                # install checksum files also
-                if [[ -e "${_src%/*}/.${_src##*/}.hmac" ]]; then
-                    inst "${_src%/*}/.${_src##*/}.hmac" "${_dest%/*}/.${_dest##*/}.hmac"
-                fi
-                if [[ -e "/lib/fipscheck/${_src##*/}.hmac" ]]; then
-                    inst "/lib/fipscheck/${_src##*/}.hmac" "/lib/fipscheck/${_dest##*/}.hmac"
-                fi
-                if [[ -e "/lib64/fipscheck/${_src##*/}.hmac" ]]; then
-                    inst "/lib64/fipscheck/${_src##*/}.hmac" "/lib64/fipscheck/${_dest##*/}.hmac"
-                fi
-            fi
-            _reallib=$(readlink -f "$_src")
-            inst_simple "$_reallib" "$_reallib"
-            inst_dir "${_dest%/*}"
-            ln_r "${_reallib}" "${_dest}"
-        else
-            inst_simple "$_src" "$_dest"
-        fi
-
-        # Create additional symlinks.  See rev_symlinks description.
-        for _symlink in $(rev_lib_symlinks $_src) $(rev_lib_symlinks $_reallib); do
-            [[ ! -e $initdir/$_symlink ]] && {
-                ddebug "Creating extra symlink: $_symlink"
-                inst_symlink $_symlink
-            }
-        done
-    }
-
-    # Same as above, but specialized to install binary executables.
-    # Install binary executable, and all shared library dependencies, if any.
-    inst_binary() {
-        local _bin _target
-        _bin=$(find_binary "$1") || return 1
-        _target=${2:-$_bin}
-        [[ -e $initdir/$_target ]] && return 0
-        local _file _line
-        local _so_regex='([^ ]*/lib[^/]*/[^ ]*\.so[^ ]*)'
-        # I love bash!
-        LC_ALL=C ldd "$_bin" 2>/dev/null | while read _line; do
-            [[ $_line = 'not a dynamic executable' ]] && break
-
-            if [[ $_line =~ $_so_regex ]]; then
-                _file=${BASH_REMATCH[1]}
-                [[ -e ${initdir}/$_file ]] && continue
-                inst_library "$_file"
-                continue
-            fi
-
-            if [[ $_line == *not\ found* ]]; then
-                dfatal "Missing a shared library required by $_bin."
-                dfatal "Run \"ldd $_bin\" to find out what it is."
-                dfatal "$_line"
-                dfatal "dracut cannot create an initrd."
-                exit 1
-            fi
-        done
-        inst_simple "$_bin" "$_target"
-    }
-
-    # same as above, except for shell scripts.
-    # If your shell script does not start with shebang, it is not a shell script.
-    inst_script() {
-        local _bin
-        _bin=$(find_binary "$1") || return 1
-        shift
-        local _line _shebang_regex
-        read -r -n 80 _line <"$_bin"
-        # If debug is set, clean unprintable chars to prevent messing up the term
-        [[ $debug ]] && _line=$(echo -n "$_line" | tr -c -d '[:print:][:space:]')
-        _shebang_regex='(#! *)(/[^ ]+).*'
-        [[ $_line =~ $_shebang_regex ]] || return 1
-        inst "${BASH_REMATCH[2]}" && inst_simple "$_bin" "$@"
-    }
-
-    # general purpose installation function
-    # Same args as above.
-    inst() {
-        local _x
-
-        case $# in
-            1) ;;
-            2) [[ ! $initdir && -d $2 ]] && export initdir=$2
-                [[ $initdir = $2 ]] && set $1;;
-            3) [[ -z $initdir ]] && export initdir=$2
-                set $1 $3;;
-            *) dfatal "inst only takes 1 or 2 or 3 arguments"
-                exit 1;;
-        esac
-        for _x in inst_symlink inst_script inst_binary inst_simple; do
-            $_x "$@" && return 0
-        done
-        return 1
-    }
-
-    # dracut_install [-o ] <file> [<file> ... ]
-    # Install <file> to the initramfs image
-    # -o optionally install the <file> and don't fail, if it is not there
-    dracut_install() {
-        local _optional=no
-        if [[ $1 = '-o' ]]; then
-            _optional=yes
-            shift
-        fi
-        while (($# > 0)); do
-            if ! inst "$1" ; then
-                if [[ $_optional = yes ]]; then
-                    dinfo "Skipping program $1 as it cannot be found and is" \
-                        "flagged to be optional"
-                else
-                    dfatal "Failed to install $1"
-                    exit 1
-                fi
-            fi
-            shift
-        done
-    }
-
+if ! [[ $DRACUT_INSTALL ]]; then
+    DRACUT_INSTALL=$(find_binary dracut-install)
 fi
+
+if ! [[ $DRACUT_INSTALL ]] && [[ -x $dracutbasedir/dracut-install ]]; then
+    DRACUT_INSTALL=$dracutbasedir/dracut-install
+fi
+
+if ! [[ -x $DRACUT_INSTALL ]]; then
+    dfatal "dracut-install not found!"
+    exit 10
+fi
+
+[[ $DRACUT_RESOLVE_LAZY ]] || export DRACUT_RESOLVE_DEPS=1
+inst_dir() {
+    [[ -e ${initdir}/"$1" ]] && return 0  # already there
+    $DRACUT_INSTALL ${initdir+-D "$initdir"} -d "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} -d "$@" || :
+}
+
+inst() {
+    [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
+        #dinfo "$DRACUT_INSTALL -l $@"
+    $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l} ${DRACUT_FIPS_MODE+-H} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l} ${DRACUT_FIPS_MODE+-H} "$@" || :
+}
+
+inst_simple() {
+    [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
+    [[ -e $1 ]] || return 1  # no source
+    $DRACUT_INSTALL ${initdir+-D "$initdir"} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} "$@" || :
+}
+
+inst_symlink() {
+    [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
+    [[ -L $1 ]] || return 1
+    $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
+}
+
+inst_multiple() {
+    local ret
+        #dinfo "initdir=$initdir $DRACUT_INSTALL -l $@"
+    $DRACUT_INSTALL ${initdir+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
+    ret=$?
+    (($ret != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
+    return $ret
+}
+
+dracut_install() {
+    inst_multiple "$@"
+}
+
+inst_library() {
+    [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
+    [[ -e $1 ]] || return 1  # no source
+    $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
+}
+
+inst_binary() {
+    $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
+}
+
+inst_script() {
+    $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
+}
 
 # find symlinks linked to given library file
 # $1 = library file
@@ -890,7 +760,7 @@ inst_rule_programs() {
                 }
             fi
 
-            [[ $_bin ]] && dracut_install "$_bin"
+            [[ $_bin ]] && inst_binary "$_bin"
         done
     fi
     if grep -qE 'RUN[+=]=?"[^ "]+' "$1"; then
@@ -905,7 +775,7 @@ inst_rule_programs() {
                 }
             fi
 
-            [[ $_bin ]] && dracut_install "$_bin"
+            [[ $_bin ]] && inst_binary "$_bin"
         done
     fi
     if grep -qE 'IMPORT\{program\}==?"[^ "]+' "$1"; then
@@ -1079,7 +949,7 @@ inst_libdir_file() {
             done
         done
     fi
-    [[ $_files ]] && dracut_install $_files
+    [[ $_files ]] && inst_multiple $_files
 }
 
 
@@ -1135,14 +1005,14 @@ module_check() {
         $_moddir/check $hostonly
         _ret=$?
     else
-        unset check depends install installkernel
+        unset check depends cmdline install installkernel
         check() { true; }
         . $_moddir/module-setup.sh
         is_func check || return 0
         [ $_forced -ne 0 ] && unset hostonly
         check $hostonly
         _ret=$?
-        unset check depends install installkernel
+        unset check depends cmdline install installkernel
     fi
     hostonly=$_hostonly
     return $_ret
@@ -1163,12 +1033,12 @@ module_check_mount() {
         mount_needs=1 $_moddir/check 0
         _ret=$?
     else
-        unset check depends install installkernel
+        unset check depends cmdline install installkernel
         check() { false; }
         . $_moddir/module-setup.sh
         check 0
         _ret=$?
-        unset check depends install installkernel
+        unset check depends cmdline install installkernel
     fi
     unset mount_needs
     return $_ret
@@ -1187,12 +1057,33 @@ module_depends() {
         $_moddir/check -d
         return $?
     else
-        unset check depends install installkernel
+        unset check depends cmdline install installkernel
         depends() { true; }
         . $_moddir/module-setup.sh
         depends
         _ret=$?
-        unset check depends install installkernel
+        unset check depends cmdline install installkernel
+        return $_ret
+    fi
+}
+
+# module_cmdline <dracut module>
+# execute the cmdline() function of module-setup.sh of <dracut module>
+# or the "cmdline" script, if module-setup.sh is not found
+module_cmdline() {
+    local _moddir=$(echo ${dracutbasedir}/modules.d/??${1})
+    local _ret
+    [[ -d $_moddir ]] || return 1
+    if [[ ! -f $_moddir/module-setup.sh ]]; then
+        [[ -x $_moddir/cmdline ]] && . "$_moddir/cmdline"
+        return $?
+    else
+        unset check depends cmdline install installkernel
+        cmdline() { true; }
+        . $_moddir/module-setup.sh
+        cmdline
+        _ret=$?
+        unset check depends cmdline install installkernel
         return $_ret
     fi
 }
@@ -1208,12 +1099,12 @@ module_install() {
         [[ -x $_moddir/install ]] && . "$_moddir/install"
         return $?
     else
-        unset check depends install installkernel
+        unset check depends cmdline install installkernel
         install() { true; }
         . $_moddir/module-setup.sh
         install
         _ret=$?
-        unset check depends install installkernel
+        unset check depends cmdline install installkernel
         return $_ret
     fi
 }
@@ -1229,12 +1120,12 @@ module_installkernel() {
         [[ -x $_moddir/installkernel ]] && . "$_moddir/installkernel"
         return $?
     else
-        unset check depends install installkernel
+        unset check depends cmdline install installkernel
         installkernel() { true; }
         . $_moddir/module-setup.sh
         installkernel
         _ret=$?
-        unset check depends install installkernel
+        unset check depends cmdline install installkernel
         return $_ret
     fi
 }
@@ -1617,7 +1508,8 @@ instmods() {
                     return $_ret
                 fi
 
-                if [[ $omit_drivers ]] && [[ "$1" =~ $omit_drivers ]]; then
+                _mod=${_mod/-/_}
+                if [[ $omit_drivers ]] && [[ "$_mod" =~ $omit_drivers ]]; then
                     dinfo "Omitting driver ${_mod##$srcmods}"
                     return 0
                 fi
