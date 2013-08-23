@@ -11,6 +11,7 @@ usr/share/bash-completion/completions/lsinitrd etc/bash_completion.d
 debian/kernel                   etc
 etc/dracut.conf                 etc
 modules.d/00dash		usr/lib/dracut/modules.d
+modules.d/00bash		usr/lib/dracut/modules.d
 modules.d/00bootchart		usr/lib/dracut/modules.d
 modules.d/00systemd-bootchart	usr/lib/dracut/modules.d
 modules.d/01fips		usr/lib/dracut/modules.d
