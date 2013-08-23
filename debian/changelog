@@ -1,3 +1,14 @@
+dracut (032-1) unstable; urgency=low
+
+  * new upstream
+  * add bash completion for lsinitrd
+  * add bash module
+  * postinst.d/dracut: remove code since dracut now handles multiarch lib
+    dirs
+  * refresh patches
+
+ -- Thomas Lange <lange@debian.org>  Fri, 23 Aug 2013 13:18:38 +0200
+
 dracut (031-2) unstable; urgency=low
 
   * control: move arch from all to any,
