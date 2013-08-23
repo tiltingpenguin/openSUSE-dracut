@@ -6,7 +6,8 @@ usr/lib/dracut/dracut-functions.sh
 usr/lib/dracut/dracut-initramfs-restore
 usr/lib/dracut/dracut-install
 usr/lib/dracut/dracut-logger.sh
-usr/share/bash-completion/completions/dracut etc/bash_completion.d
+usr/share/bash-completion/completions/dracut   etc/bash_completion.d
+usr/share/bash-completion/completions/lsinitrd etc/bash_completion.d
 debian/kernel                   etc
 etc/dracut.conf                 etc
 modules.d/00dash		usr/lib/dracut/modules.d
