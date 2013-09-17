@@ -296,6 +296,23 @@ get_maj_min() {
     printf "%s" "$((0x${_majmin%:*})):$((0x${_majmin#*:}))"
 }
 
+
+# get_devpath_block <device>
+# get the DEVPATH in /sys of a block device
+get_devpath_block() {
+    local _majmin _i
+    _majmin=$(get_maj_min "$1")
+
+    for _i in /sys/block/*/dev /sys/block/*/*/dev; do
+        [[ -e "$_i" ]] || continue
+        if [[ "$_majmin" == "$(<"$_i")" ]]; then
+            printf "%s" "${_i%/dev}"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # get a persistent path from a device
 get_persistent_dev() {
     local i _tmp _dev
@@ -313,6 +330,7 @@ get_persistent_dev() {
         /dev/disk/by-id/* \
         /dev/disk/by-path/* \
         ; do
+        [[ -e "$i" ]] || continue
         [[ $i == /dev/mapper/control ]] && continue
         [[ $i == /dev/mapper/mpath* ]] && continue
         _tmp=$(get_maj_min "$i")
@@ -323,19 +341,43 @@ get_persistent_dev() {
     done
 }
 
+expand_persistent_dev() {
+    local _dev=$1
+
+    case "$_dev" in
+        LABEL=*)
+            _dev="/dev/disk/by-label/${_dev#LABEL=}"
+            ;;
+        UUID=*)
+            _dev="${_dev#UUID=}"
+            _dev="${_dev,,}"
+            _dev="/dev/disk/by-uuid/${_dev}"
+            ;;
+        PARTUUID=*)
+            _dev="${_dev#PARTUUID=}"
+            _dev="${_dev,,}"
+            _dev="/dev/disk/by-partuuid/${_dev}"
+            ;;
+        PARTLABEL=*)
+            _dev="/dev/disk/by-partlabel/${_dev#PARTLABEL=}"
+            ;;
+    esac
+    printf "%s" "$_dev"
+}
+
 shorten_persistent_dev() {
-    local dev="$1"
-    case "$dev" in
+    local _dev="$1"
+    case "$_dev" in
         /dev/disk/by-uuid/*)
-            printf "%s" "UUID=${dev##*/}";;
+            printf "%s" "UUID=${_dev##*/}";;
         /dev/disk/by-label/*)
-            printf "%s" "LABEL=${dev##*/}";;
+            printf "%s" "LABEL=${_dev##*/}";;
         /dev/disk/by-partuuid/*)
-            printf "%s" "PARTUUID=${dev##*/}";;
+            printf "%s" "PARTUUID=${_dev##*/}";;
         /dev/disk/by-partlabel/*)
-            printf "%s" "PARTLABEL=${dev##*/}";;
+            printf "%s" "PARTLABEL=${_dev##*/}";;
         *)
-            printf "%s" "$dev";;
+            printf "%s" "$_dev";;
     esac
 }
 
@@ -664,37 +706,37 @@ fi
 [[ $DRACUT_RESOLVE_LAZY ]] || export DRACUT_RESOLVE_DEPS=1
 inst_dir() {
     [[ -e ${initdir}/"$1" ]] && return 0  # already there
-    $DRACUT_INSTALL ${initdir+-D "$initdir"} -d "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} -d "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} -d "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} -d "$@" || :
 }
 
 inst() {
     [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
         #dinfo "$DRACUT_INSTALL -l $@"
-    $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l} ${DRACUT_FIPS_MODE+-H} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l} ${DRACUT_FIPS_MODE+-H} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l} ${DRACUT_FIPS_MODE:+-H} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l} ${DRACUT_FIPS_MODE:+-H} "$@" || :
 }
 
 inst_simple() {
     [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
     [[ -e $1 ]] || return 1  # no source
-    $DRACUT_INSTALL ${initdir+-D "$initdir"} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} "$@" || :
 }
 
 inst_symlink() {
     [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
     [[ -L $1 ]] || return 1
-    $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@" || :
 }
 
 inst_multiple() {
     local ret
         #dinfo "initdir=$initdir $DRACUT_INSTALL -l $@"
-    $DRACUT_INSTALL ${initdir+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@"
     ret=$?
-    (($ret != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
+    (($ret != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@" || :
     return $ret
 }
 
@@ -705,18 +747,18 @@ dracut_install() {
 inst_library() {
     [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
     [[ -e $1 ]] || return 1  # no source
-    $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@" || :
 }
 
 inst_binary() {
-    $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@" || :
 }
 
 inst_script() {
-    $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir+-D "$initdir"} ${DRACUT_RESOLVE_DEPS+-l}  ${DRACUT_FIPS_MODE+-H} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@" || :
 }
 
 # find symlinks linked to given library file
@@ -830,8 +872,8 @@ inst_rules() {
     inst_dir "$_target"
     for _rule in "$@"; do
         if [ "${_rule#/}" = "$_rule" ]; then
-            for r in ${udevdir}/rules.d /etc/udev/rules.d; do
-                if [[ -f $r/$_rule ]]; then
+            for r in ${udevdir}/rules.d ${hostonly:+/etc/udev/rules.d}; do
+                if [[ -e $r/$_rule ]]; then
                     _found="$r/$_rule"
                     inst_rule_programs "$_found"
                     inst_rule_group_owner "$_found"
@@ -1260,6 +1302,9 @@ for_each_module_dir() {
     local _func
     _func=$1
     for _moddir in "$dracutbasedir/modules.d"/[0-9][0-9]*; do
+        [[ -d $_moddir ]] || continue;
+        [[ -e $_moddir/install || -e $_moddir/installkernel || \
+            -e $_moddir/module-setup.sh ]] || continue
         _mod=${_moddir##*/}; _mod=${_mod#[0-9][0-9]}
         $_func $_mod 1
     done
@@ -1362,7 +1407,7 @@ dracut_kernel_post() {
     local _pid
 
     if [[ $DRACUT_KERNEL_LAZY_HASHDIR ]] && [[ -f "$DRACUT_KERNEL_LAZY_HASHDIR/lazylist" ]]; then
-        xargs -r modprobe -a ${_moddirname+-d ${_moddirname}/} \
+        xargs -r modprobe -a ${_moddirname:+-d ${_moddirname}/} \
             --ignore-install --show-depends --set-version $kernel \
             < "$DRACUT_KERNEL_LAZY_HASHDIR/lazylist" 2>/dev/null \
             | sort -u \
@@ -1373,7 +1418,7 @@ dracut_kernel_post() {
 
         (
             if [[ $DRACUT_INSTALL ]] && [[ -z $_moddirname ]]; then
-                xargs -r $DRACUT_INSTALL ${initdir+-D "$initdir"} -a < "$DRACUT_KERNEL_LAZY_HASHDIR/lazylist.dep"
+                xargs -r $DRACUT_INSTALL ${initdir:+-D "$initdir"} -a < "$DRACUT_KERNEL_LAZY_HASHDIR/lazylist.dep"
             else
                 while read _modpath; do
                     local _destpath=$_modpath
@@ -1392,7 +1437,7 @@ dracut_kernel_post() {
                 for _fwdir in $fw_dir; do
                     echo $_fwdir/$line;
                 done;
-            done | xargs -r $DRACUT_INSTALL ${initdir+-D "$initdir"} -a -o
+            done | xargs -r $DRACUT_INSTALL ${initdir:+-D "$initdir"} -a -o
         else
             for _fw in $(xargs -r modinfo -k $kernel -F firmware < "$DRACUT_KERNEL_LAZY_HASHDIR/lazylist.dep"); do
                 for _fwdir in $fw_dir; do
@@ -1428,23 +1473,41 @@ dracut_kernel_post() {
     [[ $DRACUT_KERNEL_LAZY_HASHDIR ]] && rm -fr -- "$DRACUT_KERNEL_LAZY_HASHDIR"
 }
 
+[[ "$kernel_current" ]] || export kernel_current=$(uname -r)
+
 module_is_host_only() {
     local _mod=$1
+    local _modenc a i
     _mod=${_mod##*/}
     _mod=${_mod%.ko}
+    _modenc=${_mod//-/_}
 
     [[ " $add_drivers " == *\ ${_mod}\ * ]] && return 0
 
     # check if module is loaded
-    for i in /sys/module/${_mod//-/_}; do
-        [[ -d $i ]] && return 0
-    done
+    [[ ${host_modules["$_modenc"]} ]] && return 0
 
-    # check if module is loadable on the current kernel
-    # this covers the case, where a new module is introduced
-    # or a module was renamed
-    # or a module changed from builtin to a module
-    modinfo -F filename "$_mod" &>/dev/null || return 0
+    [[ "$kernel_current" ]] || export kernel_current=$(uname -r)
+
+    if [[ "$kernel_current" != "$kernel" ]]; then
+        # check if module is loadable on the current kernel
+        # this covers the case, where a new module is introduced
+        # or a module was renamed
+        # or a module changed from builtin to a module
+        if [[ -d /lib/modules/$kernel_current ]]; then
+            # if the modinfo can be parsed, but the module
+            # is not loaded, then we can safely return 1
+            modinfo -F filename "$_mod" &>/dev/null && return 1
+        fi
+
+        # Finally check all modalias, if we install for a kernel
+        # different from the current one
+        for a in $(modinfo -k $kernel -F alias $_mod 2>/dev/null); do
+            for i in "${!host_modalias[@]}"; do
+                [[ $i == $a ]]  && return 0
+            done
+        done
+    fi
 
     return 1
 }

@@ -99,28 +99,29 @@ killall_proc_mountpoint() {
     done
 }
 
-_getcmdline() {
+getcmdline() {
     local _line
     local _i
+    local CMDLINE_ETC_D
+    local CMDLINE_ETC
     unset _line
-    if [ -z "$CMDLINE" ]; then
-        unset CMDLINE_ETC CMDLINE_ETC_D
-        if [ -e /etc/cmdline ]; then
-            while read -r _line; do
-                CMDLINE_ETC="$CMDLINE_ETC $_line";
-            done </etc/cmdline;
-        fi
-        for _i in /etc/cmdline.d/*.conf; do
-            [ -e "$_i" ] || continue
-            while read -r _line; do
-                CMDLINE_ETC_D="$CMDLINE_ETC_D $_line";
-            done <"$_i";
-        done
-        if [ -e /proc/cmdline ]; then
-            read -r CMDLINE </proc/cmdline;
-            CMDLINE="$CMDLINE_ETC_D $CMDLINE_ETC $CMDLINE"
-        fi
+
+    if [ -e /etc/cmdline ]; then
+        while read -r _line; do
+            CMDLINE_ETC="$CMDLINE_ETC $_line";
+        done </etc/cmdline;
     fi
+    for _i in /etc/cmdline.d/*.conf; do
+        [ -e "$_i" ] || continue
+        while read -r _line; do
+            CMDLINE_ETC_D="$CMDLINE_ETC_D $_line";
+        done <"$_i";
+    done
+    if [ -e /proc/cmdline ]; then
+        read -r CMDLINE </proc/cmdline;
+        CMDLINE="$CMDLINE_ETC_D $CMDLINE_ETC $CMDLINE"
+    fi
+    printf "%s" "$CMDLINE"
 }
 
 _dogetarg() {
@@ -128,7 +129,7 @@ _dogetarg() {
     unset _val
     unset _o
     unset _doecho
-    _getcmdline
+    CMDLINE=$(getcmdline)
 
     for _o in $CMDLINE; do
         if [ "${_o%%=*}" = "${1%%=*}" ]; then
@@ -259,7 +260,7 @@ _dogetargs() {
     local _o _found _key
     unset _o
     unset _found
-    _getcmdline
+    CMDLINE=$(getcmdline)
     _key="$1"
     set --
     for _o in $CMDLINE; do

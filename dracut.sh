@@ -729,7 +729,7 @@ fi
 
 if ! [[ $print_cmdline ]]; then
     inst /bin/sh
-    if ! $DRACUT_INSTALL ${initdir+-D "$initdir"} -R "$initdir/bin/sh" &>/dev/null; then
+    if ! $DRACUT_INSTALL ${initdir:+-D "$initdir"} -R "$initdir/bin/sh" &>/dev/null; then
         unset DRACUT_RESOLVE_LAZY
         export DRACUT_RESOLVE_DEPS=1
     fi
@@ -821,20 +821,6 @@ if [[ -f $outfile && ! $force && ! $print_cmdline ]]; then
     exit 1
 fi
 
-outdir=${outfile%/*}
-[[ $outdir ]] || outdir="/"
-
-if [[ ! -d "$outdir" ]]; then
-    dfatal "Can't write to $outdir: Directory $outdir does not exist or is not accessible."
-    exit 1
-elif [[ ! -w "$outdir" ]]; then
-    dfatal "No permission to write to $outdir."
-    exit 1
-elif [[ -f "$outfile" && ! -w "$outfile" ]]; then
-    dfatal "No permission to write $outfile."
-    exit 1
-fi
-
 # Need to be able to have non-root users read stuff (rpcbind etc)
 chmod 755 "$initdir"
 
@@ -913,8 +899,7 @@ if [[ $hostonly ]]; then
                 [[ $_t != "swap" ]] && continue
                 [[ $_m != "swap" ]] && [[ $_m != "none" ]] && continue
                 [[ "$_o" == *noauto* ]] && continue
-                [[ "$_d" == UUID\=* ]] && _d="/dev/disk/by-uuid/${_d#UUID=}"
-                [[ "$_d" == LABEL\=* ]] && _d="/dev/disk/by-label/$_d#LABEL=}"
+                _d=$(expand_persistent_dev "$_d")
                 [[ "$_d" -ef "$dev" ]] || continue
 
                 if [[ -f /etc/crypttab ]]; then
@@ -932,7 +917,23 @@ if [[ $hostonly ]]; then
             done < /etc/fstab
         done < /proc/swaps
     fi
+    # record all host modaliases
+    declare -A host_modalias
+    find  /sys/devices/ -name modalias -print > "$initdir/.modalias"
+    while read m; do
+        host_modalias["$(<"$m")"]=1
+    done < "$initdir/.modalias"
+    rm -f -- "$initdir/.modalias"
+
+    # check /proc/modules
+    declare -A host_modules
+    while read m rest; do
+        host_modules["$m"]=1
+    done </proc/modules
 fi
+
+unset m
+unset rest
 
 _get_fs_type() {
     [[ $1 ]] || return
@@ -1004,7 +1005,8 @@ export initdir dracutbasedir dracutmodules \
     stdloglvl sysloglvl fileloglvl kmsgloglvl logfile \
     debug host_fs_types host_devs sshkey add_fstab \
     DRACUT_VERSION udevdir prefix filesystems drivers \
-    systemdutildir systemdsystemunitdir systemdsystemconfdir
+    systemdutildir systemdsystemunitdir systemdsystemconfdir \
+    host_modalias host_modules
 
 mods_to_load=""
 # check all our modules to see if they should be sourced.
@@ -1024,6 +1026,20 @@ if [[ $print_cmdline ]]; then
     unset moddir
     printf "\n"
     exit 0
+fi
+
+outdir=${outfile%/*}
+[[ $outdir ]] || outdir="/"
+
+if [[ ! -d "$outdir" ]]; then
+    dfatal "Can't write to $outdir: Directory $outdir does not exist or is not accessible."
+    exit 1
+elif [[ ! -w "$outdir" ]]; then
+    dfatal "No permission to write to $outdir."
+    exit 1
+elif [[ -f "$outfile" && ! -w "$outfile" ]]; then
+    dfatal "No permission to write $outfile."
+    exit 1
 fi
 
 # Create some directory structure first
@@ -1185,7 +1201,7 @@ if [[ $kernel_only != yes ]]; then
         find "$initdir" -type f \
             '(' -perm -0100 -or -perm -0010 -or -perm -0001 ')' \
             -not -path '*.ko' -print0 \
-        | xargs -r -0 $DRACUT_INSTALL ${initdir+-D "$initdir"} -R ${DRACUT_FIPS_MODE+-H} --
+        | xargs -r -0 $DRACUT_INSTALL ${initdir:+-D "$initdir"} -R ${DRACUT_FIPS_MODE:+-H} --
         dinfo "*** Resolving executable dependencies done***"
     fi
 fi

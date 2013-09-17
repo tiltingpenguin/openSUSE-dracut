@@ -124,10 +124,10 @@ do_static() {
     [ -n "$mtu" ] && ip link set mtu $mtu dev $netif
     if strstr $ip '*:*:*'; then
         # note no ip addr flush for ipv6
-        ip addr add $ip/$mask ${srv+peer $srv} dev $netif
+        ip addr add $ip/$mask ${srv:+peer $srv} dev $netif
     else
         ip addr flush dev $netif
-        ip addr add $ip/$mask ${srv+peer $srv} brd + dev $netif
+        ip addr add $ip/$mask ${srv:+peer $srv} brd + dev $netif
     fi
 
     [ -n "$gw" ] && echo ip route add default via $gw dev $netif > /tmp/net.$netif.gw
@@ -333,6 +333,12 @@ for p in $(getargs ip=); do
             ;;
     esac
 
-    break
+    exit 0
 done
+
+# no ip option directed at our interface?
+if [ ! -e /tmp/setup_net_${netif}.ok ]; then
+    do_dhcp -4
+fi
+
 exit 0

@@ -203,11 +203,13 @@ fix_bootif() {
 }
 
 ibft_to_cmdline() {
-    local iface="" mac="" dev=""
-    local dhcp="" ip="" gw="" mask="" hostname=""
+    local iface=""
     modprobe -q iscsi_ibft
     (
         for iface in /sys/firmware/ibft/ethernet*; do
+            local mac="" dev=""
+            local dhcp="" ip="" gw="" mask="" hostname=""
+
             [ -e ${iface}/mac ] || continue
             mac=$(read a < ${iface}/mac; echo $a)
             [ -z "$mac" ] && continue
@@ -216,10 +218,6 @@ ibft_to_cmdline() {
             [ -e /tmp/net.${dev}.has_ibft_config ] && continue
 
             [ -e ${iface}/dhcp ] && dhcp=$(read a < ${iface}/dhcp; echo $a)
-            if [ -e ${iface}/vlan ]; then
-               vlan=$(read a < ${iface}/vlan; echo $a)
-                echo "vlan=$vlan:$dev"
-            fi
 
             if [ -n "$dhcp" ]; then
                 echo "ip=$dev:dhcp"
@@ -244,11 +242,23 @@ ibft_to_cmdline() {
                 ls -l ${iface} | vinfo
             fi
 
+            if [ -e ${iface}/vlan ]; then
+               vlan=$(read a < ${iface}/vlan; echo $a)
+               if [ "$vlan" -ne "0" ]; then
+                   case "$vlan" in
+                       [0-9]*)
+                           echo "vlan=$dev.$vlan:$dev"
+                           ;;
+                       *)
+                           echo "vlan=$vlan:$dev"
+                           ;;
+                   esac
+               fi
+            fi
+
             echo $mac > /tmp/net.${dev}.has_ibft_config
         done
     ) >> /etc/cmdline.d/40-ibft.conf
-    # reread cmdline
-    unset CMDLINE
 }
 
 parse_iscsi_root()

@@ -13,12 +13,14 @@
 # root= takes precedence over netroot= if root=iscsi[...]
 #
 
-# Don't continue if root is ok
-[ -n "$rootok" ] && return
-
 # This script is sourced, so root should be set. But let's be paranoid
 [ -z "$root" ] && root=$(getarg root=)
-[ -z "$netroot" ] && netroot=$(getarg netroot=)
+if [ -z "$netroot" ]; then
+    for netroot in $(getargs netroot=); do
+        [ "${netroot%%:*}" = "iscsi" ] && break
+    done
+    [ "${netroot%%:*}" = "iscsi" ] || unset netroot
+fi
 [ -z "$iscsiroot" ] && iscsiroot=$(getarg iscsiroot=)
 [ -z "$iscsi_firmware" ] && getargbool 0 rd.iscsi.firmware -y iscsi_firmware && iscsi_firmware="1"
 
