@@ -26,7 +26,6 @@ modules.d/30convertfs		usr/lib/dracut/modules.d
 modules.d/50drm			usr/lib/dracut/modules.d
 modules.d/50gensplash		usr/lib/dracut/modules.d
 modules.d/50plymouth		usr/lib/dracut/modules.d
-modules.d/90bcache		usr/lib/dracut/modules.d
 modules.d/90btrfs		usr/lib/dracut/modules.d
 modules.d/90crypt		usr/lib/dracut/modules.d
 modules.d/90dmraid		usr/lib/dracut/modules.d
