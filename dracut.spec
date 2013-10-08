@@ -97,14 +97,12 @@ Requires: util-linux >= 2.21
 Requires: systemd >= 199
 Requires: procps-ng
 Conflicts: grubby < 8.23
+Conflicts: initscripts < 8.63-1
+Conflicts: plymouth < 0.8.0-0.2009.29.09.19.1
+Conflicts: bcache-tools < 0-0.14.20130909git
 %else
 Requires: udev > 166
 Requires: util-linux-ng >= 2.21
-%endif
-
-%if 0%{?fedora} || 0%{?rhel} > 6
-Conflicts: initscripts < 8.63-1
-Conflicts: plymouth < 0.8.0-0.2009.29.09.19.1
 %endif
 
 Conflicts: mdadm < 3.2.6-14
@@ -271,6 +269,10 @@ echo 'hostonly="no"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/02-generic-i
 echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/02-rescue.conf
 %endif
 
+%if 0%{?fedora} || 0%{?rhel} || 0%{?suse_version}
+> $RPM_BUILD_ROOT/etc/system-fips
+%endif
+
 # create compat symlink
 mkdir -p $RPM_BUILD_ROOT/sbin
 ln -s /usr/bin/dracut $RPM_BUILD_ROOT/sbin/dracut
@@ -330,7 +332,6 @@ rm -rf -- $RPM_BUILD_ROOT
 %{dracutlibdir}/modules.d/50drm
 %{dracutlibdir}/modules.d/50plymouth
 %{dracutlibdir}/modules.d/80cms
-%{dracutlibdir}/modules.d/90bcache
 %{dracutlibdir}/modules.d/90btrfs
 %{dracutlibdir}/modules.d/90crypt
 %{dracutlibdir}/modules.d/90dm
@@ -413,6 +414,7 @@ rm -rf -- $RPM_BUILD_ROOT
 %defattr(-,root,root,0755)
 %{dracutlibdir}/modules.d/01fips
 %{dracutlibdir}/dracut.conf.d/40-fips.conf
+%config(missingok) /etc/system-fips
 %endif
 
 %files fips-aesni

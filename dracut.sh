@@ -97,6 +97,8 @@ Creates initial ramdisk images for preloading modules
   --kernel-cmdline [PARAMETERS] Specify default kernel command line parameters
   --strip               Strip binaries in the initramfs
   --nostrip             Do not strip binaries in the initramfs
+  --prelink             Prelink binaries in the initramfs
+  --noprelink           Do not prelink binaries in the initramfs
   --hardlink            Hardlink files in the initramfs
   --nohardlink          Do not hardlink files in the initramfs
   --prefix [DIR]        Prefix initramfs files with [DIR]
@@ -315,6 +317,8 @@ TEMP=$(unset POSIXLY_CORRECT; getopt \
     --long kernel-cmdline: \
     --long strip \
     --long nostrip \
+    --long prelink \
+    --long noprelink \
     --long hardlink \
     --long nohardlink \
     --long noprefix \
@@ -394,6 +398,8 @@ while :; do
         --no-early-microcode) early_microcode_l="no";;
         --strip)       do_strip_l="yes";;
         --nostrip)     do_strip_l="no";;
+        --prelink)     do_prelink_l="yes";;
+        --noprelink)   do_prelink_l="no";;
         --hardlink)    do_hardlink_l="yes";;
         --nohardlink)  do_hardlink_l="no";;
         --noprefix)    prefix_l="/";;
@@ -651,6 +657,8 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 [[ $drivers_dir_l ]] && drivers_dir=$drivers_dir_l
 [[ $do_strip_l ]] && do_strip=$do_strip_l
 [[ $do_strip ]] || do_strip=yes
+[[ $do_prelink_l ]] && do_prelink=$do_prelink_l
+[[ $do_prelink ]] || do_prelink=yes
 [[ $do_hardlink_l ]] && do_hardlink=$do_hardlink_l
 [[ $do_hardlink ]] || do_hardlink=yes
 [[ $prefix_l ]] && prefix=$prefix_l
@@ -696,9 +704,9 @@ readonly initdir="$(mktemp --tmpdir="$TMPDIR/" -d -t initramfs.XXXXXX)"
 }
 
 if [[ $early_microcode = yes ]]; then
-    readonly microcode_dir="$(mktemp --tmpdir="$TMPDIR/" -d -t early_microcode.XXXXXX)"
-    [ -d "$microcode_dir" ] || {
-        printf "%s\n" "dracut: mktemp --tmpdir=\"$TMPDIR/\" -d -t early_microcode.XXXXXX failed." >&2
+    readonly early_cpio_dir="$(mktemp --tmpdir="$TMPDIR/" -d -t early_cpio.XXXXXX)"
+    [ -d "$early_cpio_dir" ] || {
+        printf "%s\n" "dracut: mktemp --tmpdir=\"$TMPDIR/\" -d -t early_cpio.XXXXXX failed." >&2
         exit 1
     }
 fi
@@ -707,7 +715,7 @@ trap '
     ret=$?;
     [[ $outfile ]] && [[ -f $outfile.$$ ]] && rm -f -- "$outfile.$$";
     [[ $keep ]] && echo "Not removing $initdir." >&2 || { [[ $initdir ]] && rm -rf -- "$initdir"; };
-    [[ $keep ]] && echo "Not removing $microcode_dir." >&2 || { [[ $microcode_dir ]] && rm -Rf -- "$microcode_dir"; };
+    [[ $keep ]] && echo "Not removing $early_cpio_dir." >&2 || { [[ $early_cpio_dir ]] && rm -Rf -- "$early_cpio_dir"; };
     [[ $_dlogdir ]] && rm -Rf -- "$_dlogdir";
     exit $ret;
     ' EXIT
@@ -816,9 +824,25 @@ if [[ -d $srcmods ]]; then
     }
 fi
 
-if [[ -f $outfile && ! $force && ! $print_cmdline ]]; then
-    dfatal "Will not override existing initramfs ($outfile) without --force"
-    exit 1
+if [[ ! $print_cmdline ]]; then
+    if [[ -f $outfile && ! $force ]]; then
+        dfatal "Will not override existing initramfs ($outfile) without --force"
+        exit 1
+    fi
+
+    outdir=${outfile%/*}
+    [[ $outdir ]] || outdir="/"
+
+    if [[ ! -d "$outdir" ]]; then
+        dfatal "Can't write to $outdir: Directory $outdir does not exist or is not accessible."
+        exit 1
+    elif [[ ! -w "$outdir" ]]; then
+        dfatal "No permission to write to $outdir."
+        exit 1
+    elif [[ -f "$outfile" && ! -w "$outfile" ]]; then
+        dfatal "No permission to write $outfile."
+        exit 1
+    fi
 fi
 
 # Need to be able to have non-root users read stuff (rpcbind etc)
@@ -919,10 +943,15 @@ if [[ $hostonly ]]; then
     fi
     # record all host modaliases
     declare -A host_modalias
-    find  /sys/devices/ -name modalias -print > "$initdir/.modalias"
+    find  /sys/devices/ -name uevent -print > "$initdir/.modalias"
     while read m; do
-        host_modalias["$(<"$m")"]=1
+        while read line; do
+            [[ "$line" != MODALIAS\=* ]] && continue
+            modalias="${line##MODALIAS=}" && [[ $modalias ]] && host_modalias["$modalias"]=1
+            break
+        done < "$m"
     done < "$initdir/.modalias"
+
     rm -f -- "$initdir/.modalias"
 
     # check /proc/modules
@@ -1026,20 +1055,6 @@ if [[ $print_cmdline ]]; then
     unset moddir
     printf "\n"
     exit 0
-fi
-
-outdir=${outfile%/*}
-[[ $outdir ]] || outdir="/"
-
-if [[ ! -d "$outdir" ]]; then
-    dfatal "Can't write to $outdir: Directory $outdir does not exist or is not accessible."
-    exit 1
-elif [[ ! -w "$outdir" ]]; then
-    dfatal "No permission to write to $outdir."
-    exit 1
-elif [[ -f "$outfile" && ! -w "$outfile" ]]; then
-    dfatal "No permission to write $outfile."
-    exit 1
 fi
 
 # Create some directory structure first
@@ -1246,18 +1261,20 @@ if [[ $kernel_only != yes ]]; then
     fi
 fi
 
-PRELINK_BIN="$(command -v prelink)"
-if [[ $UID = 0 ]] && [[ $PRELINK_BIN ]]; then
-    if [[ $DRACUT_FIPS_MODE ]]; then
-        dinfo "*** Installing prelink files ***"
-        inst_multiple -o prelink /etc/prelink.conf /etc/prelink.conf.d/*.conf /etc/prelink.cache
-    else
-        dinfo "*** Pre-linking files ***"
-        inst_multiple -o prelink /etc/prelink.conf /etc/prelink.conf.d/*.conf
-        chroot "$initdir" "$PRELINK_BIN" -a
-        rm -f -- "$initdir/$PRELINK_BIN"
-        rm -fr -- "$initdir"/etc/prelink.*
-        dinfo "*** Pre-linking files done ***"
+if [[ $do_prelink == yes ]]; then
+    PRELINK_BIN="$(command -v prelink)"
+    if [[ $UID = 0 ]] && [[ $PRELINK_BIN ]]; then
+        if [[ $DRACUT_FIPS_MODE ]]; then
+            dinfo "*** Installing prelink files ***"
+            inst_multiple -o prelink /etc/prelink.conf /etc/prelink.conf.d/*.conf /etc/prelink.cache
+        else
+            dinfo "*** Pre-linking files ***"
+            inst_multiple -o prelink /etc/prelink.conf /etc/prelink.conf.d/*.conf
+            chroot "$initdir" "$PRELINK_BIN" -a
+            rm -f -- "$initdir/$PRELINK_BIN"
+            rm -fr -- "$initdir"/etc/prelink.*
+            dinfo "*** Pre-linking files done ***"
+        fi
     fi
 fi
 
@@ -1296,7 +1313,7 @@ if [[ $early_microcode = yes ]]; then
     dinfo "*** Generating early-microcode cpio image ***"
     ucode_dir=(amd-ucode intel-ucode)
     ucode_dest=(AuthenticAMD.bin GenuineIntel.bin)
-    _dest_dir="$microcode_dir/d/kernel/x86/microcode"
+    _dest_dir="$early_cpio_dir/d/kernel/x86/microcode"
     _dest_idx="0 1"
     mkdir -p $_dest_dir
     if [[ $hostonly ]]; then
@@ -1311,19 +1328,34 @@ if [[ $early_microcode = yes ]]; then
                 dinfo "*** Constructing ${ucode_dest[$idx]} ****"
                 if [[ $hostonly ]]; then
                     _src=$(get_ucode_file)
+                    if ! [[ -r $_fwdir/$_fw/$_src ]];then
+                        break;
+                    fi
                 fi
                 cat $_fwdir/$_fw/$_src > $_dest_dir/${ucode_dest[$idx]}
+                create_early_cpio="yes"
             fi
         done
     done
-    (cd "$microcode_dir/d"; find . -print0 | cpio --null -o -H newc --quiet >../ucode.cpio)
+fi
+
+if [[ $acpi_override = yes ]] && [[ -d $acpi_table_dir ]]; then
+    dinfo "*** Packaging ACPI tables to override BIOS provided ones ***"
+    _dest_dir="$early_cpio_dir/d/kernel/firmware/acpi"
+    mkdir -p $_dest_dir
+    for table in $acpi_table_dir/*.aml; do
+        dinfo "   Adding ACPI table: $table"
+        cp $table $_dest_dir
+        create_early_cpio="yes"
+    done
 fi
 
 rm -f -- "$outfile"
 dinfo "*** Creating image file ***"
-if [[ $early_microcode = yes ]]; then
+if [[ $create_early_cpio = yes ]]; then
     # The microcode blob is _before_ the initramfs blob, not after
-    mv $microcode_dir/ucode.cpio $outfile.$$
+    (cd "$early_cpio_dir/d"; find . -print0 | cpio --null -o -H newc --quiet >../early.cpio)
+    mv $early_cpio_dir/early.cpio $outfile.$$
 fi
 if ! ( umask 077; cd "$initdir"; find . -print0 | cpio --null -R 0:0 -H newc -o --quiet| \
     $compress >> "$outfile.$$"; ); then
