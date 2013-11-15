@@ -1,3 +1,11 @@
+dracut (034-2) unstable; urgency=low
+
+  * postinst, preinst: respect second argument, Closes #729621
+  * postinst: do nothing if no initrd is needed, Closes #729622
+    Thanks to Ben Hutchings for both patches
+
+ -- Thomas Lange <lange@debian.org>  Fri, 15 Nov 2013 21:14:42 +0100
+
 dracut (034-1) unstable; urgency=low
 
   * new upstream
