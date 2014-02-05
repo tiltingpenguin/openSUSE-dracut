@@ -65,6 +65,7 @@ ldconfig_paths()
             printf "%s\n" ${d%/*};
         done
     ); do
+        [[ "$i" = "/lib" || "$i" = "/usr/lib" || "$i" = "/lib64" || "$i" = "/usr/lib64" ]] && continue
         a["$i"]=1;
     done;
     printf "%s\n" ${!a[@]}
@@ -81,7 +82,7 @@ if ! [[ $libdirs ]] ; then
         [[ -d /usr/lib ]] && libdirs+=" /usr/lib"
     fi
 
-    libdirs+="$(ldconfig_paths)"
+    libdirs+=" $(ldconfig_paths)"
 
     export libdirs
 fi
@@ -579,7 +580,7 @@ host_fs_all()
 check_block_and_slaves() {
     local _x
     [[ -b /dev/block/$2 ]] || return 1 # Not a block device? So sorry.
-    "$1" $2 && return
+    if ! lvm_internal_dev $2; then "$1" $2 && return; fi
     check_vol_slaves "$@" && return 0
     if [[ -f /sys/dev/block/$2/../dev ]]; then
         check_block_and_slaves $1 $(<"/sys/dev/block/$2/../dev") && return 0
@@ -595,7 +596,7 @@ check_block_and_slaves() {
 check_block_and_slaves_all() {
     local _x _ret=1
     [[ -b /dev/block/$2 ]] || return 1 # Not a block device? So sorry.
-    if "$1" $2; then
+    if ! lvm_internal_dev $2 && "$1" $2; then
         _ret=0
     fi
     check_vol_slaves "$@" && return 0
@@ -896,6 +897,34 @@ inst_rules() {
         done
         [[ $_found ]] || dinfo "Skipping udev rule: $_rule"
     done
+}
+
+inst_rules_wildcard() {
+    local _target=/etc/udev/rules.d _rule _found
+
+    inst_dir "${udevdir}/rules.d"
+    inst_dir "$_target"
+    for _rule in ${udevdir}/rules.d/$1 ${dracutbasedir}/rules.d/$1 ; do
+        if [[ -e $_rule ]]; then
+            inst_rule_programs "$_rule"
+            inst_rule_group_owner "$_rule"
+            inst_rule_initqueue "$_rule"
+            inst_simple "$_rule"
+            _found=$_rule
+        fi
+    done
+    if [ -n ${hostonly} ] ; then
+        for _rule in ${_target}/$1 ; do
+            if [[ -f $_rule ]]; then
+                inst_rule_programs "$_rule"
+                inst_rule_group_owner "$_rule"
+                inst_rule_initqueue "$_rule"
+                inst_simple "$_rule"
+                _found=$_rule
+            fi
+        done
+    fi
+    [[ $_found ]] || dinfo "Skipping udev rule: $_rule"
 }
 
 prepare_udev_rules() {
@@ -1455,13 +1484,6 @@ dracut_kernel_post() {
         wait $_pid
     fi
 
-    for _f in modules.builtin.bin modules.builtin; do
-        [[ $srcmods/$_f ]] && break
-    done || {
-        dfatal "No modules.builtin.bin and modules.builtin found!"
-        return 1
-    }
-
     for _f in modules.builtin.bin modules.builtin modules.order; do
         [[ $srcmods/$_f ]] && inst_simple "$srcmods/$_f" "/lib/modules/$kernel/$_f"
     done
@@ -1480,7 +1502,7 @@ dracut_kernel_post() {
 
 module_is_host_only() {
     local _mod=$1
-    local _modenc a i
+    local _modenc a i _k _s _v _aliases
     _mod=${_mod##*/}
     _mod=${_mod%.ko}
     _modenc=${_mod//-/_}
@@ -1497,19 +1519,25 @@ module_is_host_only() {
         # this covers the case, where a new module is introduced
         # or a module was renamed
         # or a module changed from builtin to a module
+
         if [[ -d /lib/modules/$kernel_current ]]; then
             # if the modinfo can be parsed, but the module
             # is not loaded, then we can safely return 1
             modinfo -F filename "$_mod" &>/dev/null && return 1
         fi
 
-        # Finally check all modalias, if we install for a kernel
-        # different from the current one
-        for a in $(modinfo -k $kernel -F alias $_mod 2>/dev/null); do
+        _aliases=$(modinfo -k $kernel -F alias $_mod 2>/dev/null)
+
+        # if the module has no aliases, install it
+        [[ $_aliases ]] || return 0
+
+        # finally check all modalias
+        for a in $_aliases; do
             for i in "${!host_modalias[@]}"; do
                 [[ $i == $a ]]  && return 0
             done
         done
+
     fi
 
     return 1
@@ -1672,3 +1700,15 @@ get_ucode_file ()
         printf "%02x-%02x-%02x" ${family} ${model} ${stepping}
     fi
 }
+
+# Not every device in /dev/mapper should be examined.
+# If it is an LVM device, touch only devices which have /dev/VG/LV symlink.
+lvm_internal_dev() {
+    local dev_dm_dir=/sys/dev/block/$1/dm
+    [[ ! -f $dev_dm_dir/uuid || $(<$dev_dm_dir/uuid) != LVM-* ]] && return 1 # Not an LVM device
+    local DM_VG_NAME DM_LV_NAME DM_LV_LAYER
+    eval $(dmsetup splitname --nameprefixes --noheadings --rows "$(<$dev_dm_dir/name)" 2>/dev/null)
+    [[ ${DM_VG_NAME} ]] && [[ ${DM_LV_NAME} ]] || return 0 # Better skip this!
+    [[ ${DM_LV_LAYER} ]] || [[ ! -L /dev/${DM_VG_NAME}/${DM_LV_NAME} ]]
+}
+

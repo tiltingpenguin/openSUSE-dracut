@@ -28,30 +28,6 @@ iface_for_mac() {
     done
 }
 
-iface_has_link() {
-    local interface="$1" flags=""
-    [ -n "$interface" ] || return 2
-    interface="/sys/class/net/$interface"
-    [ -d "$interface" ] || return 2
-    flags=$(cat $interface/flags)
-    echo $(($flags|0x41)) > $interface/flags # 0x41: IFF_UP|IFF_RUNNING
-    [ "$(cat $interface/carrier)" = 1 ] || return 1
-    # XXX Do we need to reset the flags here? anaconda never bothered..
-}
-
-find_iface_with_link() {
-    local iface_path="" iface=""
-    for iface_path in /sys/class/net/*; do
-        iface=${iface_path##*/}
-        str_starts "$iface" "lo" && continue
-        if iface_has_link $iface; then
-            echo "$iface"
-            return 0
-        fi
-    done
-    return 1
-}
-
 # get the iface name for the given identifier - either a MAC, IP, or iface name
 iface_name() {
     case $1 in
@@ -363,7 +339,7 @@ ip_to_var() {
         fi
     done
 
-    unset ip srv gw mask hostname dev autoconf macaddr mtu
+    unset ip srv gw mask hostname dev autoconf macaddr mtu dns1 dns2
     case $# in
         0)  autoconf="error" ;;
         1)  autoconf=$1 ;;
@@ -371,11 +347,22 @@ ip_to_var() {
         3)  [ -n "$1" ] && dev=$1; [ -n "$2" ] && autoconf=$2; [ -n "$3" ] && mtu=$3 ;;
         4)  [ -n "$1" ] && dev=$1; [ -n "$2" ] && autoconf=$2; [ -n "$3" ] && mtu=$3; [ -n "$4" ] && macaddr=$4 ;;
         *)  [ -n "$1" ] && ip=$1; [ -n "$2" ] && srv=$2; [ -n "$3" ] && gw=$3; [ -n "$4" ] && mask=$4;
-            [ -n "$5" ] && hostname=$5; [ -n "$6" ] && dev=$6; [ -n "$7" ] && autoconf=$7; [ -n "$8" ] && mtu=$8;
-            if [ -n "${9}" -a -n "${10}" -a -n "${11}" -a -n "${12}" -a -n "${13}" -a -n "${14}" ]; then
-                macaddr="${9}:${10}:${11}:${12}:${13}:${14}"
-            fi
-	    ;;
+            [ -n "$5" ] && hostname=$5; [ -n "$6" ] && dev=$6; [ -n "$7" ] && autoconf=$7;
+            case "$8" in
+                [0-9]*:*|[0-9]*.[0-9]*.[0-9]*.[0-9]*)
+                    dns1="$mtu"; unset $mtu
+                    [ -n "$9" ] && dns2="$9"
+                    ;;
+                [0-9]*)
+                    mtu="$8"
+                    ;;
+                *)
+                    if [ -n "${9}" -a -n "${10}" -a -n "${11}" -a -n "${12}" -a -n "${13}" -a -n "${14}" ]; then
+                        macaddr="${9}:${10}:${11}:${12}:${13}:${14}"
+                    fi
+	            ;;
+            esac
+            ;;
     esac
 
     # ip=<ipv4-address> means anaconda-style static config argument cluster:
@@ -443,7 +430,7 @@ wait_for_if_up() {
     local li
     while [ $cnt -lt 200 ]; do
         li=$(ip -o link show up dev $1)
-        [ -n "$li" ] && return 0
+        [ -n "$li" ] && [ -z "${li##*state UP*}" ] && return 0
         sleep 0.1
         cnt=$(($cnt+1))
     done
@@ -482,4 +469,27 @@ linkup() {
 type hostname >/dev/null 2>&1 || \
 hostname() {
 	cat /proc/sys/kernel/hostname
+}
+
+iface_has_link() {
+    local interface="$1" flags=""
+    [ -n "$interface" ] || return 2
+    interface="/sys/class/net/$interface"
+    [ -d "$interface" ] || return 2
+    linkup "$1"
+    [ "$(cat $interface/carrier)" = 1 ] || return 1
+    # XXX Do we need to reset the flags here? anaconda never bothered..
+}
+
+find_iface_with_link() {
+    local iface_path="" iface=""
+    for iface_path in /sys/class/net/*; do
+        iface=${iface_path##*/}
+        str_starts "$iface" "lo" && continue
+        if iface_has_link $iface; then
+            echo "$iface"
+            return 0
+        fi
+    done
+    return 1
 }

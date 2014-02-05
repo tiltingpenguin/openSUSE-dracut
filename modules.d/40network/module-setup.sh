@@ -2,6 +2,7 @@
 # -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
+# called by dracut
 check() {
     local _program
 
@@ -15,16 +16,18 @@ check() {
     return 255
 }
 
+# called by dracut
 depends() {
     return 0
 }
 
+# called by dracut
 installkernel() {
     # Include wired net drivers, excluding wireless
 
     net_module_filter() {
-        local _net_drivers='eth_type_trans|register_virtio_device'
-        local _unwanted_drivers='/(wireless|isdn|uwb)/'
+        local _net_drivers='eth_type_trans|register_virtio_device|usbnet_open'
+        local _unwanted_drivers='/(wireless|isdn|uwb|net/ethernet|net/phy|net/team)/'
         local _ret
         # subfunctions inherit following FDs
         local _merge=8 _side2=9
@@ -64,9 +67,14 @@ installkernel() {
         | net_module_filter | instmods
 
     #instmods() will take care of hostonly
-    instmods =drivers/net/phy ecb arc4 bridge stp llc ipv6 bonding 8021q af_packet virtio_net =drivers/net/team
+    instmods \
+        =drivers/net/phy \
+        =drivers/net/team \
+        =drivers/net/ethernet \
+        ecb arc4 bridge stp llc ipv6 bonding 8021q af_packet virtio_net
 }
 
+# called by dracut
 install() {
     local _arch _i _dir
     inst_multiple ip arping dhclient sed

@@ -2,15 +2,18 @@
 # -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
+# called by dracut
 check() {
     return 0
 }
 
+# called by dracut
 depends() {
     echo udev-rules
     return 0
 }
 
+# called by dracut
 install() {
     local _d
 
@@ -42,7 +45,6 @@ install() {
     mkdir -p ${initdir}/tmp
 
     inst_simple "$moddir/dracut-lib.sh" "/lib/dracut-lib.sh"
-    inst_simple "$moddir/uefi-lib.sh" "/lib/uefi-lib.sh"
 
     if ! dracut_module_included "systemd"; then
         inst_multiple switch_root || dfatal "Failed to install switch_root"

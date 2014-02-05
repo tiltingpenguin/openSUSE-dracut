@@ -31,32 +31,46 @@ iroot="$2"
 # If it's not iscsi we don't continue
 [ "${iroot%%:*}" = "iscsi" ] || exit 1
 
-iroot=${iroot#iscsi:}
+iroot=${iroot#iscsi}
+iroot=${iroot#:}
 
 # XXX modprobe crc32c should go in the cmdline parser, but I haven't yet
 # figured out a way how to check whether this is built-in or not
 modprobe crc32c 2>/dev/null
 
-[ -e /sys/module/bnx2i ] && iscsiuio
-
-if getargbool 0 rd.iscsi.firmware -d -y iscsi_firmware ; then
-    if [ -z "$root" -o -n "${root%%block:*}" ]; then
-        # if root is not specified try to mount the whole iSCSI LUN
-        printf 'ENV{DEVTYPE}!="partition", SYMLINK=="disk/by-path/*-iscsi-*-*", SYMLINK+="root"\n' >> /etc/udev/rules.d/99-iscsi-root.rules
-        udevadm control --reload
-        write_fs_tab /dev/root
-        wait_for_dev /dev/root
-    fi
-
-    for p in $(getargs rd.iscsi.param -d iscsi_param); do
-	iscsi_param="$iscsi_param --param $p"
-    done
-
-    iscsistart -b $iscsi_param
-    echo 'started' > "/tmp/iscsistarted-iscsi"
-    echo 'started' > "/tmp/iscsistarted-firmware"
-    exit 0
+if [ -e /sys/module/bnx2i ] && ! [ -e /tmp/iscsiuio-started ]; then
+        iscsiuio
+        > /tmp/iscsiuio-started
 fi
+
+handle_firmware()
+{
+    if ! [ -e /tmp/iscsistarted-firmware ]; then
+        if ! iscsistart -f; then
+            warn "iscistart: Could not get list of targets from firmware."
+            return 1
+        fi
+
+        for p in $(getargs rd.iscsi.param -d iscsi_param); do
+	    iscsi_param="$iscsi_param --param $p"
+        done
+
+        if ! iscsistart -b $iscsi_param; then
+            warn "'iscsistart -b $iscsi_param' failed"
+        fi
+
+        if [ -d /sys/class/iscsi_session ]; then
+            echo 'started' > "/tmp/iscsistarted-iscsi"
+            echo 'started' > "/tmp/iscsistarted-firmware"
+        else
+            return 1
+        fi
+
+        need_shutdown
+    fi
+    return 0
+}
+
 
 handle_netroot()
 {
@@ -137,7 +151,7 @@ handle_netroot()
 
 # FIXME $iscsi_protocol??
 
-    if [ -z "$root" -o -n "${root%%block:*}" ]; then
+    if [ "$root" = "dhcp" ]; then
         # if root is not specified try to mount the whole iSCSI LUN
         printf 'SYMLINK=="disk/by-path/*-iscsi-*-%s", SYMLINK+="root"\n' $iscsi_lun >> /etc/udev/rules.d/99-iscsi-root.rules
         udevadm control --reload
@@ -166,21 +180,38 @@ handle_netroot()
 
     netroot_enc=$(str_replace "$1" '/' '\2f')
     echo 'started' > "/tmp/iscsistarted-iscsi:${netroot_enc}"
-
 }
+
+ret=0
 
 # loop over all netroot parameter
 if getarg netroot; then
     for nroot in $(getargs netroot); do
-        [ "${netroot%%:*}" = "iscsi" ] || continue
-        handle_netroot ${nroot##iscsi:}
+        [ "${nroot%%:*}" = "iscsi" ] || continue
+        nroot="${nroot##iscsi:}"
+        if [ -n "$nroot" ]; then
+            handle_netroot "$nroot"
+            ret=$(($ret + $?))
+        fi
     done
+    if getargbool 0 rd.iscsi.firmware -d -y iscsi_firmware ; then
+        handle_firmware
+        ret=$(($ret + $?))
+    fi
 else
-    handle_netroot $iroot
+    if [ -n "$iroot" ]; then
+        handle_netroot "$iroot"
+        ret=$?
+    else
+        if getargbool 0 rd.iscsi.firmware -d -y iscsi_firmware ; then
+            handle_firmware
+            ret=$?
+        fi
+    fi
 fi
 
 need_shutdown
 
 # now we have a root filesystem somewhere in /dev/sda*
 # let the normal block handler handle root=
-exit 0
+exit $ret

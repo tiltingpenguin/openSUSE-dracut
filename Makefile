@@ -21,11 +21,13 @@ man1pages = lsinitrd.1
 man5pages = dracut.conf.5
 
 man7pages = dracut.cmdline.7 \
-            dracut.bootup.7
+            dracut.bootup.7 \
+            dracut.modules.7
 
 man8pages = dracut.8 \
             dracut-catimages.8 \
             mkinitrd.8 \
+            mkinitrd-suse.8 \
             modules.d/98systemd/dracut-cmdline.service.8 \
             modules.d/98systemd/dracut-initqueue.service.8 \
             modules.d/98systemd/dracut-mount.service.8 \
@@ -37,15 +39,15 @@ man8pages = dracut.8 \
 
 manpages = $(man1pages) $(man5pages) $(man7pages) $(man8pages)
 
-
 .PHONY: install clean archive rpm testimage test all check AUTHORS doc dracut-version.sh
 
-all: dracut-version.sh dracut-install
+all: dracut-version.sh dracut-install skipcpio/skipcpio
 
 DRACUT_INSTALL_OBJECTS = \
         install/dracut-install.o \
         install/hashmap.o\
         install/log.o \
+        install/strv.o \
         install/util.o
 
 # deps generated with gcc -MM
@@ -55,14 +57,22 @@ install/hashmap.o: install/hashmap.c install/util.h install/macro.h install/log.
 	install/hashmap.h
 install/log.o: install/log.c install/log.h install/macro.h install/util.h
 install/util.o: install/util.c install/util.h install/macro.h install/log.h
+install/strv.o: install/strv.c install/strv.h install/util.h install/macro.h install/log.h
 
 install/dracut-install: $(DRACUT_INSTALL_OBJECTS)
 
 dracut-install: install/dracut-install
 	ln -fs $< $@
 
+SKIPCPIO_OBJECTS= \
+	skipcpio/skipcpio.o
+
+skipcpio/skipcpio.o: skipcpio/skipcpio.c
+skipcpio/skipcpio: skipcpio/skipcpio.o
+
 indent:
 	indent -i8 -nut -br -linux -l120 install/dracut-install.c
+	indent -i8 -nut -br -linux -l120 skipcpio/skipcpio.c
 
 doc: $(manpages) dracut.html
 
@@ -76,7 +86,9 @@ endif
 %.xml: %.asc
 	asciidoc -d manpage -b docbook -o $@ $<
 
-dracut.html: dracut.asc $(manpages) dracut.css
+dracut.8: dracut.usage.asc dracut.8.asc
+
+dracut.html: dracut.asc $(manpages) dracut.css dracut.usage.asc
 	asciidoc -a numbered -d book -b docbook -o dracut.xml dracut.asc
 	xsltproc -o dracut.html --xinclude -nonet \
 		--stringparam custom.css.source dracut.css \
@@ -134,6 +146,9 @@ endif
 	if [ -f install/dracut-install ]; then \
 		install -m 0755 install/dracut-install $(DESTDIR)$(pkglibdir)/dracut-install; \
 	fi
+	if [ -f skipcpio/skipcpio ]; then \
+		install -m 0755 skipcpio/skipcpio $(DESTDIR)$(pkglibdir)/skipcpio; \
+	fi
 	mkdir -p $(DESTDIR)${prefix}/lib/kernel/install.d
 	install -m 0755 50-dracut.install $(DESTDIR)${prefix}/lib/kernel/install.d/50-dracut.install
 	install -m 0755 51-dracut-rescue.install $(DESTDIR)${prefix}/lib/kernel/install.d/51-dracut-rescue.install
@@ -150,27 +165,28 @@ clean:
 	$(RM) */*/*~
 	$(RM) $(manpages:%=%.xml) dracut.xml
 	$(RM) test-*.img
-	$(RM) dracut-*.rpm dracut-*.tar.bz2
+	$(RM) dracut-*.rpm dracut-*.tar.bz2 dracut-*.tar.xz
 	$(RM) dracut-version.sh
 	$(RM) dracut-install install/dracut-install $(DRACUT_INSTALL_OBJECTS)
+	$(RM) skipcpio/skipcpio $(SKIPCPIO_OBJECTS)
 	$(RM) $(manpages) dracut.html
 	$(MAKE) -C test clean
 
-dist: dracut-$(VERSION).tar.bz2
+dist: dracut-$(VERSION).tar.xz
 
-dracut-$(VERSION).tar.bz2: doc syncheck
+dracut-$(VERSION).tar.xz: doc syncheck
 	@echo "DRACUT_VERSION=$(VERSION)" > dracut-version.sh
 	git archive --format=tar $(VERSION) --prefix=dracut-$(VERSION)/ > dracut-$(VERSION).tar
 	mkdir -p dracut-$(VERSION)
 	for i in $(manpages) dracut.html dracut-version.sh; do [ "$${i%/*}" != "$$i" ] && mkdir -p "dracut-$(VERSION)/$${i%/*}"; cp "$$i" "dracut-$(VERSION)/$$i"; done
 	tar --owner=root --group=root -rf dracut-$(VERSION).tar $$(find dracut-$(VERSION) -type f)
-	rm -fr -- dracut-$(VERSION).tar.bz2 dracut-$(VERSION)
-	bzip2 -9 dracut-$(VERSION).tar
+	rm -fr -- dracut-$(VERSION).tar.xz dracut-$(VERSION)
+	xz -9 dracut-$(VERSION).tar
 	rm -f -- dracut-$(VERSION).tar
 
-rpm: dracut-$(VERSION).tar.bz2 syncheck
+rpm: dracut-$(VERSION).tar.xz syncheck
 	rpmbuild=$$(mktemp -d -t rpmbuild-dracut.XXXXXX); src=$$(pwd); \
-	cp dracut-$(VERSION).tar.bz2 "$$rpmbuild"; \
+	cp dracut-$(VERSION).tar.xz "$$rpmbuild"; \
 	LC_MESSAGES=C $$src/git2spec.pl $(VERSION) "$$rpmbuild" < dracut.spec > $$rpmbuild/dracut.spec; \
 	(cd "$$rpmbuild"; rpmbuild --define "_topdir $$PWD" --define "_sourcedir $$PWD" \
 	        --define "_specdir $$PWD" --define "_srcrpmdir $$PWD" \
@@ -210,9 +226,9 @@ hostimage: all
 AUTHORS:
 	git shortlog  --numbered --summary -e |while read a rest; do echo $$rest;done > AUTHORS
 
-dracut.html.sign: dracut-$(VERSION).tar.bz2
-	gpg-sign-all dracut-$(VERSION).tar.bz2 dracut.html
+dracut.html.sign: dracut-$(VERSION).tar.xz dracut.html
+	gpg-sign-all dracut-$(VERSION).tar.xz dracut.html
 
 upload: dracut.html.sign
-	kup put dracut-$(VERSION).tar.bz2 dracut-$(VERSION).tar.sign /pub/linux/utils/boot/dracut/
+	kup put dracut-$(VERSION).tar.xz dracut-$(VERSION).tar.sign /pub/linux/utils/boot/dracut/
 	kup put dracut.html dracut.html.sign /pub/linux/utils/boot/dracut/

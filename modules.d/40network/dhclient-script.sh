@@ -12,6 +12,7 @@ setup_interface() {
     search=$(printf -- "$new_domain_search")
     namesrv=$new_domain_name_servers
     hostname=$new_host_name
+    lease_time=$new_dhcp_lease_time
 
     [ -f /tmp/net.$netif.override ] && . /tmp/net.$netif.override
 
@@ -29,7 +30,9 @@ setup_interface() {
         fi
     fi
 
-    ip addr add $ip${mask:+/$mask} ${bcast:+broadcast $bcast} dev $netif
+    ip addr add $ip${mask:+/$mask} ${bcast:+broadcast $bcast} \
+        valid_lft ${lease_time} preferred_lft ${lease_time} \
+        dev $netif
 
     [ -n "$gw" ] && echo ip route add default via $gw dev $netif > /tmp/net.$netif.gw
 
@@ -48,7 +51,7 @@ setup_interface() {
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 export PS4="dhclient.$interface.$$ + "
-exec >>/run/initramfs/loginit.pipe 2>>/run/initramfs/loginit.pipe
+[ -e /run/initramfs/loginit.pipe ] && exec >>/run/initramfs/loginit.pipe 2>>/run/initramfs/loginit.pipe
 type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
 type ip_to_var >/dev/null 2>&1 || . /lib/net-lib.sh
 

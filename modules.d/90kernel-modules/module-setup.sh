@@ -2,10 +2,11 @@
 # -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
+# called by dracut
 installkernel() {
     if [[ -z $drivers ]]; then
         block_module_filter() {
-            local _blockfuncs='ahci_init_controller|ata_scsi_ioctl|scsi_add_host|blk_init_queue|register_mtd_blktrans|scsi_esp_register|register_virtio_device|usb_stor_disconnect'
+            local _blockfuncs='ahci_init_controller|ata_scsi_ioctl|scsi_add_host|blk_cleanup_queue|register_mtd_blktrans|scsi_esp_register|register_virtio_device|usb_stor_disconnect'
             # subfunctions inherit following FDs
             local _merge=8 _side2=9
             function bmf1() {
@@ -35,9 +36,12 @@ installkernel() {
             return 0
         }
 
-        hostonly='' instmods sr_mod sd_mod scsi_dh ata_piix \
-            ehci-hcd ehci-pci ehci-platform ohci-hcd uhci-hcd xhci-hcd hid_generic \
-            unix
+        hostonly='' instmods \
+            sr_mod sd_mod scsi_dh ata_piix hid_generic unix \
+            ehci-hcd ehci-pci ehci-platform \
+            ohci-hcd ohci-pci \
+            uhci-hcd \
+            xhci-hcd
 
         instmods yenta_socket scsi_dh_rdac scsi_dh_emc \
             atkbd i8042 usbhid hid-apple hid-sunplus hid-cherry hid-logitech \
@@ -48,7 +52,7 @@ installkernel() {
             # arm specific modules
             hostonly='' instmods sdhci_esdhc_imx mmci sdhci_tegra mvsdio omap omapdrm \
                 omap_hsmmc panel-tfp410 sdhci_dove ahci_platform pata_imx sata_mv \
-                ehci-tegra
+                ehci-tegra mmc_block usb_storage
         fi
 
         # install virtual machine support
@@ -73,6 +77,7 @@ installkernel() {
     :
 }
 
+# called by dracut
 install() {
     inst_multiple -o /lib/modprobe.d/*.conf
     [[ $hostonly ]] && inst_multiple -o /etc/modprobe.d/*.conf /etc/modprobe.conf

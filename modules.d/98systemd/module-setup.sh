@@ -2,6 +2,7 @@
 # -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
+# called by dracut
 check() {
     [[ $mount_needs ]] && return 1
     if [[ -x $systemdutildir/systemd ]]; then
@@ -13,10 +14,16 @@ check() {
     return 1
 }
 
+# called by dracut
 depends() {
     return 0
 }
 
+installkernel() {
+    instmods autofs4 ipv6
+}
+
+# called by dracut
 install() {
     local _mods
 
@@ -160,15 +167,15 @@ install() {
     egrep '^systemd-journal:' "$initdir/etc/passwd" 2>/dev/null >> "$initdir/etc/passwd"
     egrep '^systemd-journal:' /etc/group >> "$initdir/etc/group"
 
-    ln -fs $systemdutildir/systemd "$initdir/init"
-    ln -fs $systemdutildir/systemd "$initdir/sbin/init"
+    ln_r $systemdutildir/systemd "/init"
+    ln_r $systemdutildir/systemd "/sbin/init"
 
     inst_script "$moddir/dracut-emergency.sh" /bin/dracut-emergency
     inst_simple "$moddir/emergency.service" ${systemdsystemunitdir}/emergency.service
     inst_simple "$moddir/dracut-emergency.service" ${systemdsystemunitdir}/dracut-emergency.service
     inst_simple "$moddir/emergency.service" ${systemdsystemunitdir}/rescue.service
 
-    ln -fs initrd.target "${initdir}${systemdsystemunitdir}/default.target"
+    ln_r "${systemdsystemunitdir}/initrd.target" "${systemdsystemunitdir}/default.target"
 
     inst_script "$moddir/dracut-cmdline.sh" /bin/dracut-cmdline
     inst_script "$moddir/dracut-pre-udev.sh" /bin/dracut-pre-udev
@@ -178,7 +185,12 @@ install() {
     inst_script "$moddir/dracut-mount.sh" /bin/dracut-mount
     inst_script "$moddir/dracut-pre-pivot.sh" /bin/dracut-pre-pivot
 
-    inst_rules 99-systemd.rules
+    inst_script "$moddir/rootfs-generator.sh" /lib/systemd/system-generators/dracut-rootfs-generator
+
+    inst_binary true
+    ln_r $(type -P true) "/usr/bin/loginctl"
+    ln_r $(type -P true) "/bin/loginctl"
+    inst_rules 71-seat.rules 73-seat-late.rules 99-systemd.rules
 
     for i in \
         emergency.target \

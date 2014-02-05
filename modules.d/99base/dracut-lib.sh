@@ -4,6 +4,13 @@
 
 export DRACUT_SYSTEMD
 export NEWROOT
+if [ -n "$NEWROOT" ]; then
+    [ -d $NEWROOT ] || mkdir -p -m 0755 $NEWROOT
+fi
+
+[ -d /run/initramfs ] || mkdir -p -m 0755 /run/initramfs
+[ -d /run/lock ] || mkdir -p -m 0755 /run/lock
+[ -d /run/log ] || mkdir -p -m 0755 /run/log
 
 debug_off() {
     set +x
@@ -430,8 +437,15 @@ die() {
         echo "warn dracut: Refusing to continue";
     } >> $hookdir/emergency/01-die.sh
     [ -d /run/initramfs ] || mkdir -p -- /run/initramfs
+
     > /run/initramfs/.die
-    emergency_shell
+
+    getargbool 0 "rd.debug=" && emergency_shell
+
+    if [ -n "$DRACUT_SYSTEMD" ]; then
+        systemctl --no-block --force halt
+    fi
+
     exit 1
 }
 
@@ -846,7 +860,18 @@ dev_unit_name()
 wait_for_dev()
 {
     local _name
+    local _needreload
+    local _noreload
+
+    if [ "$1" = "-n" ]; then
+        _noreload=1
+        shift
+    fi
+
     _name="$(str_replace "$1" '/' '\x2f')"
+
+    [ -e "${PREFIX}$hookdir/initqueue/finished/devexists-${_name}.sh" ] && return 0
+
     printf '[ -e "%s" ]\n' $1 \
         >> "${PREFIX}$hookdir/initqueue/finished/devexists-${_name}.sh"
     {
@@ -856,17 +881,24 @@ wait_for_dev()
 
     if [ -n "$DRACUT_SYSTEMD" ]; then
         _name=$(dev_unit_name "$1")
-        if ! [ -L ${PREFIX}/etc/systemd/system/initrd.target.requires/${_name}.device ]; then
-            [ -d ${PREFIX}/etc/systemd/system/initrd.target.requires ] || mkdir -p ${PREFIX}/etc/systemd/system/initrd.target.requires
-            ln -s ../${_name}.device ${PREFIX}/etc/systemd/system/initrd.target.requires/${_name}.device
+        if ! [ -L ${PREFIX}/etc/systemd/system/initrd.target.wants/${_name}.device ]; then
+            [ -d ${PREFIX}/etc/systemd/system/initrd.target.wants ] || mkdir -p ${PREFIX}/etc/systemd/system/initrd.target.wants
+            ln -s ../${_name}.device ${PREFIX}/etc/systemd/system/initrd.target.wants/${_name}.device
+            _needreload=1
         fi
 
-        mkdir -p ${PREFIX}/etc/systemd/system/${_name}.device.d
-        {
-            echo "[Unit]"
-            echo "JobTimeoutSec=3600"
-        } > ${PREFIX}/etc/systemd/system/${_name}.device.d/timeout.conf
-        [ -z "$PREFIX" ] && /sbin/initqueue --onetime --unique --name daemon-reload systemctl daemon-reload
+        if ! [ -f ${PREFIX}/etc/systemd/system/${_name}.device.d/timeout.conf ]; then
+            mkdir -p ${PREFIX}/etc/systemd/system/${_name}.device.d
+            {
+                echo "[Unit]"
+                echo "JobTimeoutSec=3600"
+            } > ${PREFIX}/etc/systemd/system/${_name}.device.d/timeout.conf
+            _needreload=1
+        fi
+
+        if [ -z "$PREFIX" ] && [ "$_needreload" = 1 ] && [ -z "$_noreload" ]; then
+            /sbin/initqueue --onetime --unique --name daemon-reload systemctl daemon-reload
+        fi
     fi
 }
 
@@ -878,7 +910,7 @@ cancel_wait_for_dev()
     rm -f -- "$hookdir/emergency/80-${_name}.sh"
     if [ -n "$DRACUT_SYSTEMD" ]; then
         _name=$(dev_unit_name "$1")
-        rm -f -- ${PREFIX}/etc/systemd/system/initrd.target.requires/${_name}.device
+        rm -f -- ${PREFIX}/etc/systemd/system/initrd.target.wants/${_name}.device
         rm -f -- ${PREFIX}/etc/systemd/system/${_name}.device.d/timeout.conf
         /sbin/initqueue --onetime --unique --name daemon-reload systemctl daemon-reload
     fi
@@ -942,9 +974,9 @@ if ! command -v pidof >/dev/null 2>/dev/null; then
         [ -z "$_cmd" ] && return 1
         _exe=$(type -P "$1")
         for i in /proc/*/exe; do
-            [ -e "$i" ] || return 1
+            [ -e "$i" ] || continue
             if [ -n "$_exe" ]; then
-                [ "$i" -ef "$_cmd" ] || continue
+                [ "$i" -ef "$_exe" ] || continue
             else
                 _rl=$(readlink -f "$i");
                 [ "${_rl%/$_cmd}" != "$_rl" ] || continue
@@ -1027,7 +1059,13 @@ emergency_shell()
         # cause a kernel panic
         exit 1
     fi
-    [ -e /run/initramfs/.die ] && exit 1
+
+    if [ -e /run/initramfs/.die ]; then
+        if [ -n "$DRACUT_SYSTEMD" ]; then
+            systemctl --no-block --force halt
+        fi
+        exit 1
+    fi
 }
 
 action_on_fail()

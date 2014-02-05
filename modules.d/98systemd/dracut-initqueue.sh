@@ -52,6 +52,10 @@ while :; do
     # no more udev jobs and queues empty.
     sleep 0.5
 
+    for i in /run/systemd/ask-password/ask.*; do
+        [ -e "$i" ] && continue 2
+    done
+
     if [ $main_loop -gt $((2*$RDRETRY/3)) ]; then
         for job in $hookdir/initqueue/timeout/*.sh; do
             [ -e "$job" ] || break
@@ -63,7 +67,7 @@ while :; do
 
     main_loop=$(($main_loop+1))
     if [ $main_loop -gt $RDRETRY ]; then
-        if ! [ -d /sysroot/etc/fstab ] || ! [ -e /sysroot/sbin/init ] ; then
+        if ! [ -f /sysroot/etc/fstab ] || ! [ -e /sysroot/sbin/init ] ; then
             action_on_fail "Could not boot." && break
         fi
         warn "Not all disks have been found."

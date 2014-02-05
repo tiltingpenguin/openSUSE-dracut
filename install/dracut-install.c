@@ -44,6 +44,7 @@
 #include "log.h"
 #include "hashmap.h"
 #include "util.h"
+#include "strv.h"
 
 static bool arg_hmac = false;
 static bool arg_createdir = false;
@@ -63,12 +64,12 @@ static size_t dir_len(char const *file)
 {
         size_t length;
 
-        if(!file)
+        if (!file)
                 return 0;
 
         /* Strip the basename and any redundant slashes before it.  */
-        for (length = strlen(file)-1; 0 < length; length--)
-                if (file[length] == '/' && file[length-1] != '/')
+        for (length = strlen(file) - 1; 0 < length; length--)
+                if (file[length] == '/' && file[length - 1] != '/')
                         break;
         return length;
 }
@@ -101,9 +102,9 @@ static char *convert_abs_rel(const char *from, const char *target)
         /* dir_len() skips double /'s e.g. //lib64, so we can't skip just one
          * character - need to skip all leading /'s */
         rl = strlen(target);
-        for (i = dirlen+1; i < rl; ++i)
-            if (target_dir_p[i] != '/')
-                break;
+        for (i = dirlen + 1; i < rl; ++i)
+                if (target_dir_p[i] != '/')
+                        break;
         ret = asprintf(&realtarget, "%s/%s", realpath_p, &target_dir_p[i]);
         if (ret < 0) {
                 log_error("Out of memory!");
@@ -220,7 +221,7 @@ static int cp(const char *src, const char *dst)
                 if (ret == 0) {
                         struct timeval tv[2];
                         if (fchown(dest_desc, sb.st_uid, sb.st_gid) != 0)
-                                fchown(dest_desc, (__uid_t)-1, sb.st_gid);
+                                fchown(dest_desc, (__uid_t) - 1, sb.st_gid);
                         tv[0].tv_sec = sb.st_atime;
                         tv[0].tv_usec = 0;
                         tv[1].tv_sec = sb.st_mtime;
@@ -239,14 +240,16 @@ static int cp(const char *src, const char *dst)
  normal_copy:
         pid = fork();
         if (pid == 0) {
-                execlp("cp", "cp", "--reflink=auto", "--sparse=auto", "--preserve=mode,timestamps", "-fL", src, dst, NULL);
+                execlp("cp", "cp", "--reflink=auto", "--sparse=auto", "--preserve=mode,timestamps", "-fL", src, dst,
+                       NULL);
                 _exit(EXIT_FAILURE);
         }
 
         while (waitpid(pid, &ret, 0) < 0) {
                 if (errno != EINTR) {
                         ret = -1;
-                        log_error("Failed: cp --reflink=auto --sparse=auto --preserve=mode,timestamps -fL %s %s", src, dst);
+                        log_error("Failed: cp --reflink=auto --sparse=auto --preserve=mode,timestamps -fL %s %s", src,
+                                  dst);
                         break;
                 }
         }
@@ -286,7 +289,7 @@ static int library_install(const char *src, const char *lib)
            libc.so.6 (libc6,64bit, hwcap: 0x0000001000000000, OS ABI: Linux 2.6.32) => /lib64/power6/libc.so.6
            libc.so.6 (libc6,64bit, hwcap: 0x0000000000000200, OS ABI: Linux 2.6.32) => /lib64/power6x/libc.so.6
            libc.so.6 (libc6,64bit, OS ABI: Linux 2.6.32) => /lib64/libc.so.6
-        */
+         */
 
         free(p);
         p = strdup(lib);
@@ -372,7 +375,7 @@ static int resolve_deps(const char *src)
 
                 if (strstr(buf, "you do not have execution permission")) {
                         log_error("%s", buf);
-                        ret+=1;
+                        ret += 1;
                         break;
                 }
 
@@ -391,7 +394,11 @@ static int resolve_deps(const char *src)
                 if (strstr(buf, destrootdir))
                         break;
 
-                p = strchr(buf, '/');
+                p = strstr(buf, "=>");
+                if (!p)
+                        p = buf;
+
+                p = strchr(p, '/');
                 if (p) {
                         for (q = p; *q && *q != ' ' && *q != '\n'; q++) ;
                         *q = '\0';
@@ -421,7 +428,7 @@ static int hmac_install(const char *src, const char *dst, const char *hmacpath)
         if (endswith(src, ".hmac"))
                 return 0;
 
-	if (!hmacpath) {
+        if (!hmacpath) {
                 hmac_install(src, dst, "/lib/fipscheck");
                 hmac_install(src, dst, "/lib64/fipscheck");
                 hmac_install(src, dst, "/lib/hmaccalc");
@@ -635,8 +642,8 @@ static void item_free(char *i)
 }
 
 static void usage(int status)
-{        
-             /*                                                                     */
+{
+        /*                                                                     */
         printf("Usage: %s -D DESTROOTDIR [OPTION]... -a SOURCE...\n"
                "or: %s -D DESTROOTDIR [OPTION]... SOURCE DEST\n"
                "\n"
@@ -676,8 +683,8 @@ static void usage(int status)
                "        |-- libdl.so -> libdl-2.15.90.so\n"
                "        |-- libdl.so.2 -> libdl-2.15.90.so\n"
                "        |-- libtinfo.so.5 -> libtinfo.so.5.9\n"
-               "        `-- libtinfo.so.5.9\n"
-               , program_invocation_short_name, program_invocation_short_name, program_invocation_short_name);
+               "        `-- libtinfo.so.5.9\n", program_invocation_short_name, program_invocation_short_name,
+               program_invocation_short_name);
         exit(status);
 }
 
@@ -784,13 +791,13 @@ static int resolve_lazy(int argc, char **argv)
         return ret;
 }
 
-static char *find_binary(const char *src)
+static char **find_binary(const char *src)
 {
-        _cleanup_free_ char *path = NULL;
-        char *p, *q;
-        bool end = false;
+        char *path = NULL;
+        _cleanup_strv_free_ char **p = NULL;
+        char **ret = NULL;
+        char **q;
         char *newsrc = NULL;
-        int ret;
 
         path = getenv("PATH");
 
@@ -798,33 +805,20 @@ static char *find_binary(const char *src)
                 log_error("PATH is not set");
                 exit(EXIT_FAILURE);
         }
-        path = strdup(path);
-        p = path;
-
-        if (path == NULL) {
-                log_error("Out of memory!");
-                exit(EXIT_FAILURE);
-        }
 
         log_debug("PATH=%s", path);
 
-        do {
+        p = strv_split(path, ":");
+
+        STRV_FOREACH(q, p) {
                 struct stat sb;
+                int r;
 
-                for (q = p; *q && *q != ':'; q++) ;
-
-                if (*q == '\0')
-                        end = true;
-                else
-                        *q = '\0';
-
-                ret = asprintf(&newsrc, "%s/%s", p, src);
-                if (ret < 0) {
+                r = asprintf(&newsrc, "%s/%s", *q, src);
+                if (r < 0) {
                         log_error("Out of memory!");
                         exit(EXIT_FAILURE);
                 }
-
-                p = q + 1;
 
                 if (stat(newsrc, &sb) != 0) {
                         log_debug("stat(%s) != 0", newsrc);
@@ -833,30 +827,37 @@ static char *find_binary(const char *src)
                         continue;
                 }
 
-                end = true;
+                strv_push(&ret, newsrc);
 
-        } while (!end);
+        };
 
-        if (newsrc)
-                log_debug("find_binary(%s) == %s", src, newsrc);
+        if (ret) {
+                STRV_FOREACH(q, ret) {
+                        log_debug("find_binary(%s) == %s", src, *q);
+                }
+        }
 
-        return newsrc;
+        return ret;
 }
 
 static int install_one(const char *src, const char *dst)
 {
         int r = EXIT_SUCCESS;
-        int ret;
+        int ret = 0;
 
         if (strchr(src, '/') == NULL) {
-                char *newsrc = find_binary(src);
-                if (newsrc) {
-                        log_debug("dracut_install '%s' '%s'", newsrc, dst);
-                        ret = dracut_install(newsrc, dst, arg_createdir, arg_resolvedeps, true);
-                        if (ret == 0) {
-                                log_debug("dracut_install '%s' '%s' OK", newsrc, dst);
+                char **q = NULL;
+                char **p = find_binary(src);
+                if (p) {
+                        STRV_FOREACH(q, p) {
+                                char *newsrc = *q;
+                                log_debug("dracut_install '%s' '%s'", newsrc, dst);
+                                ret = dracut_install(newsrc, dst, arg_createdir, arg_resolvedeps, true);
+                                if (ret == 0) {
+                                        log_debug("dracut_install '%s' '%s' OK", newsrc, dst);
+                                }
                         }
-                        free(newsrc);
+                        strv_free(p);
                 } else {
                         ret = -1;
                 }
@@ -877,17 +878,22 @@ static int install_all(int argc, char **argv)
         int r = EXIT_SUCCESS;
         int i;
         for (i = 0; i < argc; i++) {
-                int ret;
+                int ret = 0;
                 log_debug("Handle '%s'", argv[i]);
 
                 if (strchr(argv[i], '/') == NULL) {
-                        _cleanup_free_ char *newsrc = find_binary(argv[i]);
-                        if (newsrc) {
-                                log_debug("dracut_install '%s'", newsrc);
-                                ret = dracut_install(newsrc, newsrc, arg_createdir, arg_resolvedeps, true);
-                                if (ret == 0) {
-                                        log_debug("dracut_install '%s' OK", newsrc);
+                        char **q = NULL;
+                        char **p = find_binary(argv[i]);
+                        if (p) {
+                                STRV_FOREACH(q, p) {
+                                        char *newsrc = *q;
+                                        log_debug("dracut_install '%s'", newsrc);
+                                        ret = dracut_install(newsrc, newsrc, arg_createdir, arg_resolvedeps, true);
+                                        if (ret == 0) {
+                                                log_debug("dracut_install '%s' OK", newsrc);
+                                        }
                                 }
+                                strv_free(p);
                         } else {
                                 ret = -1;
                         }

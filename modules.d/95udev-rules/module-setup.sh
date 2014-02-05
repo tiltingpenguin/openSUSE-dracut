@@ -2,6 +2,7 @@
 # -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
+# called by dracut
 install() {
     local _i
 
@@ -38,6 +39,8 @@ install() {
     prepare_udev_rules 59-persistent-storage.rules 61-persistent-storage.rules
     # debian udev rules
     inst_rules 91-permissions.rules
+    # eudev rules
+    inst_rules 80-drivers-modprobe.rules
 
     {
         for i in cdrom tape dialout floppy; do
