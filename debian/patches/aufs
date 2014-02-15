@@ -1,8 +1,6 @@
-Index: dracut/modules.d/90aufs/aufs-mount.sh
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ dracut/modules.d/90aufs/aufs-mount.sh	2012-01-11 15:21:46.887432287 +0100
-@@ -0,0 +1,39 @@
+--- /dev/null
++++ b/modules.d/90aufs/aufs-mount.sh
+@@ -0,0 +1,33 @@
 +#!/bin/sh
 +
 +# make a read-only nfsroot writeable by using aufs
@@ -36,16 +34,8 @@ Index: dracut/modules.d/90aufs/aufs-mount.sh
 +mkdir -p $NEWROOT/live/image
 +mount --move /cow $NEWROOT/live/cow
 +mount --move /live/image $NEWROOT/live/image
-+
-+# aufs2 in kernel versions around 2.6.33 has a regression:
-+# directories can't be accessed when read for the first the time,
-+# causing a failure for example when accessing /var/lib/fai
-+# when booting FAI, this simple workaround solves it
-+ls $NEWROOT/*  >/dev/null 2>&1
-Index: dracut/modules.d/90aufs/module-setup.sh
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ dracut/modules.d/90aufs/module-setup.sh	2012-01-11 15:21:32.172432922 +0100
+--- /dev/null
++++ b/modules.d/90aufs/module-setup.sh
 @@ -0,0 +1,12 @@
 +#!/bin/bash
 +
