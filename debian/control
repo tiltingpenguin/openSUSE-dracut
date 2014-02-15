@@ -13,7 +13,7 @@ Architecture: any
 Multi-Arch: foreign
 Recommends: cryptsetup, dmsetup, dmraid, lvm2, mdadm
 Suggests: dracut-network
-Depends: cpio, module-init-tools, udev, kpartx, kbd, util-linux (>= 2.20), ${shlibs:Depends}, ${misc:Depends}
+Depends: cpio, kmod, udev, kpartx, kbd, util-linux (>= 2.20), ${shlibs:Depends}, ${misc:Depends}
 Provides: linux-initramfs-tool
 Conflicts: initramfs-tools
 Description: A new initramfs infrastructure
