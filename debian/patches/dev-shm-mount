@@ -1,16 +1,14 @@
-Index: dracut/modules.d/99base/init.sh
-===================================================================
---- dracut.orig/modules.d/99base/init.sh	2013-08-23 12:09:36.720051910 +0200
-+++ dracut/modules.d/99base/init.sh	2013-08-23 13:17:54.656232241 +0200
+--- a/modules.d/99base/init.sh
++++ b/modules.d/99base/init.sh
 @@ -59,11 +59,6 @@
-     mount -t devpts -o gid=5,mode=620,noexec,nosuid devpts /dev/pts >/dev/null 
+     mount -t devpts -o gid=5,mode=620,noexec,nosuid devpts /dev/pts >/dev/null
  fi
  
 -if ! ismounted /dev/shm; then
 -    mkdir -m 0755 /dev/shm
--    mount -t tmpfs -o mode=1777,nosuid,nodev,strictatime tmpfs /dev/shm >/dev/null 
+-    mount -t tmpfs -o mode=1777,nosuid,nodev,strictatime tmpfs /dev/shm >/dev/null
 -fi
 -
  if ! ismounted /run; then
      mkdir -m 0755 /newrun
-     mount -t tmpfs -o mode=0755,nosuid,nodev,strictatime tmpfs /newrun >/dev/null 
+     mount -t tmpfs -o mode=0755,nosuid,nodev,strictatime tmpfs /newrun >/dev/null
