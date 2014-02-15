@@ -1,3 +1,11 @@
+dracut (036-1) UNRELEASED; urgency=low
+
+  * new upstream
+  * use kmod in depends, Closes: #733699
+  * adjust patches
+
+ -- Thomas Lange <lange@debian.org>  Sat, 15 Feb 2014 22:23:19 +0100
+
 dracut (034-2) unstable; urgency=low
 
   * postinst, preinst: respect second argument, Closes: #729621
