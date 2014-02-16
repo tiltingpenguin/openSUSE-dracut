@@ -26,7 +26,7 @@
 +mount --move $NEWROOT /live/image
 +
 +mkdir /cow
-+mount -n -t tmpfs tmpfs /cow
++mount -n -t tmpfs -o mode=0755 tmpfs /cow
 +
 +mount -t aufs -o noatime,noxino,dirs=/cow=rw:/live/image=rr aufs $NEWROOT
 +
