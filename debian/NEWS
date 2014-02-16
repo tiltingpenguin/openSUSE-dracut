@@ -1,4 +1,6 @@
-dracut (024-1) unstable; urgency=low
+dracut (036-1) unstable; urgency=low
 
   - As of dracut >= 024, rd.auto is set to 0 by default, which diable autoassembly
     of special devices like cryptoLUKS, dmraid, mdraid or lvm.  
+
+ -- Thomas Lange <lange@debian.org>  Sun, 16 Feb 2014 19:28:26 +0100
