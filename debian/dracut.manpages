@@ -1,5 +1,6 @@
 dracut.8
 dracut.conf.5
+dracut.modules.7
 dracut.cmdline.7
 dracut-catimages.8
 lsinitrd.1

@@ -5,6 +5,7 @@ usr/lib/dracut/dracut-functions
 usr/lib/dracut/dracut-functions.sh
 usr/lib/dracut/dracut-initramfs-restore
 usr/lib/dracut/dracut-install
+usr/lib/dracut/skipcpio
 usr/lib/dracut/dracut-logger.sh
 usr/share/bash-completion/completions/dracut   etc/bash_completion.d
 usr/share/bash-completion/completions/lsinitrd etc/bash_completion.d
@@ -41,6 +42,7 @@ modules.d/91crypt-gpg		usr/lib/dracut/modules.d
 modules.d/91crypt-loop          usr/lib/dracut/modules.d
 modules.d/95dasd_mod		usr/lib/dracut/modules.d
 modules.d/95dasd		usr/lib/dracut/modules.d
+modules.d/95dasd_rules		usr/lib/dracut/modules.d
 modules.d/95debug		usr/lib/dracut/modules.d
 modules.d/95fstab-sys		usr/lib/dracut/modules.d
 modules.d/95resume		usr/lib/dracut/modules.d
