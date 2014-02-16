@@ -1,0 +1,4 @@
+dracut (024-1) unstable; urgency=low
+
+  - As of dracut >= 024, rd.auto is set to 0 by default, which diable autoassembly
+    of special devices like cryptoLUKS, dmraid, mdraid or lvm.  
