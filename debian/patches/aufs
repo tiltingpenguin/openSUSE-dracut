@@ -1,13 +1,11 @@
 --- /dev/null
 +++ b/modules.d/90aufs/aufs-mount.sh
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,31 @@
 +#!/bin/sh
 +
 +# make a read-only nfsroot writeable by using aufs
 +# the nfsroot is already mounted to $NEWROOT
 +# add the parameter aufs to the kernel, to activate this feature
-+
-+# TODO: hande the /run directory, which is not yet available in Debian squeeze
 +
 +. /lib/dracut-lib.sh
 +
