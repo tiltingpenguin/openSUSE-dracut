@@ -33,7 +33,7 @@ if [ -f /etc/crypttab ] && getargbool 1 rd.luks.crypttab -d -n rd_NO_CRYPTTAB; t
 
         # UUID used in crypttab
         if [ "${dev%%=*}" = "UUID" ]; then
-            if [ "luks-${dev##UUID=}" = "$2" ]; then
+            if [ "luks-${dev##UUID=}" = "$luksname" ]; then
                 luksname="$name"
                 break
             fi
@@ -55,7 +55,8 @@ fi
 [ -b /dev/mapper/$luksname ] && exit 0
 
 # we already asked for this device
-[ -f /tmp/cryptroot-asked-$luksname ] && exit 0
+asked_file=/tmp/cryptroot-asked-$luksname
+[ -f $asked_file ] && exit 0
 
 # load dm_crypt if it is not already loaded
 [ -d /sys/module/dm_crypt ] || modprobe dm_crypt
@@ -159,7 +160,7 @@ fi
 unset device luksname luksfile
 
 # mark device as asked
->> /tmp/cryptroot-asked-$luksname
+>> $asked_file
 
 need_shutdown
 udevsettle

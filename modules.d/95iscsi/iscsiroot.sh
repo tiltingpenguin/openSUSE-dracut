@@ -60,7 +60,7 @@ handle_firmware()
         fi
 
         if [ -d /sys/class/iscsi_session ]; then
-            echo 'started' > "/tmp/iscsistarted-iscsi"
+            echo 'started' > "/tmp/iscsistarted-iscsi:"
             echo 'started' > "/tmp/iscsistarted-firmware"
         else
             return 1
@@ -125,7 +125,7 @@ handle_netroot()
 
     if [ -z $iscsi_initiator ]; then
        if [ -f /sys/firmware/ibft/initiator/initiator-name ]; then
-           iscsi_initiator=$(while read line; do echo $line;done < /sys/firmware/ibft/initiator-name)
+           iscsi_initiator=$(while read line; do echo $line;done < /sys/firmware/ibft/initiator/initiator-name)
        fi
     fi
 
@@ -156,7 +156,7 @@ handle_netroot()
         printf 'SYMLINK=="disk/by-path/*-iscsi-*-%s", SYMLINK+="root"\n' $iscsi_lun >> /etc/udev/rules.d/99-iscsi-root.rules
         udevadm control --reload
         write_fs_tab /dev/root
-        wait_for_dev /dev/root
+        wait_for_dev -n /dev/root
 
         # install mount script
         [ -z "$DRACUT_SYSTEMD" ] && \

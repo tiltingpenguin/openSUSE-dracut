@@ -5,7 +5,7 @@
 # called by dracut
 check() {
     [[ $mount_needs ]] && return 1
-    if [[ -x $systemdutildir/systemd ]]; then
+    if require_binaries $systemdutildir/systemd; then
         SYSTEMD_VERSION=$($systemdutildir/systemd --version | { read a b a; echo $b; })
         (( $SYSTEMD_VERSION >= 198 )) && return 0
        return 255
@@ -44,6 +44,7 @@ install() {
         $systemdutildir/systemd-modules-load \
         $systemdutildir/systemd-vconsole-setup \
         $systemdutildir/system-generators/systemd-fstab-generator \
+        \
         $systemdsystemunitdir/cryptsetup.target \
         $systemdsystemunitdir/emergency.target \
         $systemdsystemunitdir/sysinit.target \
@@ -72,6 +73,9 @@ install() {
         $systemdsystemunitdir/timers.target \
         $systemdsystemunitdir/paths.target \
         $systemdsystemunitdir/umount.target \
+        \
+        $systemdsystemunitdir/sys-kernel-config.mount \
+        \
         $systemdsystemunitdir/kmod-static-nodes.service \
         $systemdsystemunitdir/systemd-tmpfiles-setup-dev.service \
         $systemdsystemunitdir/systemd-ask-password-console.path \
@@ -93,6 +97,7 @@ install() {
         $systemdsystemunitdir/systemd-journald.service \
         $systemdsystemunitdir/systemd-vconsole-setup.service \
         $systemdsystemunitdir/systemd-random-seed-load.service \
+        $systemdsystemunitdir/systemd-sysctl.service \
         \
         $systemdsystemunitdir/sysinit.target.wants/systemd-modules-load.service \
         $systemdsystemunitdir/sysinit.target.wants/systemd-ask-password-console.path \
@@ -104,6 +109,7 @@ install() {
         $systemdsystemunitdir/sysinit.target.wants/systemd-udev-trigger.service \
         $systemdsystemunitdir/sysinit.target.wants/kmod-static-nodes.service \
         $systemdsystemunitdir/sysinit.target.wants/systemd-tmpfiles-setup-dev.service \
+        $systemdsystemunitdir/sysinit.target.wants/systemd-sysctl.service \
         \
         $systemdsystemunitdir/ctrl-alt-del.target \
         $systemdsystemunitdir/syslog.socket \
@@ -190,7 +196,7 @@ install() {
     inst_binary true
     ln_r $(type -P true) "/usr/bin/loginctl"
     ln_r $(type -P true) "/bin/loginctl"
-    inst_rules 71-seat.rules 73-seat-late.rules 99-systemd.rules
+    inst_rules 70-uaccess.rules 71-seat.rules 73-seat-late.rules 99-systemd.rules
 
     for i in \
         emergency.target \

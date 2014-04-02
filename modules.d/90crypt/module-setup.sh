@@ -6,7 +6,7 @@
 check() {
     local _rootdev
     # if cryptsetup is not installed, then we cannot support encrypted devices.
-    type -P cryptsetup >/dev/null || return 1
+    require_binaries cryptsetup || return 1
 
     [[ $hostonly ]] || [[ $mount_needs ]] && {
         for fs in "${host_fs_types[@]}"; do
@@ -51,8 +51,10 @@ cmdline() {
 # called by dracut
 install() {
 
-    cmdline >> "${initdir}/etc/cmdline.d/90crypt.conf"
-    echo >> "${initdir}/etc/cmdline.d/90crypt.conf"
+    if [[ $hostonly_cmdline == "yes" ]]; then
+        cmdline >> "${initdir}/etc/cmdline.d/90crypt.conf"
+        echo >> "${initdir}/etc/cmdline.d/90crypt.conf"
+    fi
 
     inst_multiple cryptsetup rmdir readlink umount
     inst_script "$moddir"/cryptroot-ask.sh /sbin/cryptroot-ask

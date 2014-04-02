@@ -2,6 +2,17 @@
 # -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
 # ex: ts=8 sw=4 sts=4 et filetype=sh
 
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
+type ip_to_var >/dev/null 2>&1 || . /lib/net-lib.sh
+
+# We already need a set netif here
+netif=$interface
+
+# Huh? Interface configured?
+[ -f "/tmp/net.$netif.up" ] && exit 0
+
 setup_interface() {
     ip=$new_ip_address
     mtu=$new_interface_mtu
@@ -48,24 +59,42 @@ setup_interface() {
     [ -n "$hostname" ] && echo "echo ${hostname%.$domain}${domain:+.$domain} > /proc/sys/kernel/hostname" > /tmp/net.$netif.hostname
 }
 
-PATH=/usr/sbin:/usr/bin:/sbin:/bin
+setup_interface6() {
+    domain=$new_domain_name
+    search=$(printf -- "$new_domain_search")
+    namesrv=$new_domain_name_servers
+    hostname=$new_host_name
+    lease_time=$new_dhcp_lease_time
 
-export PS4="dhclient.$interface.$$ + "
-[ -e /run/initramfs/loginit.pipe ] && exec >>/run/initramfs/loginit.pipe 2>>/run/initramfs/loginit.pipe
-type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
-type ip_to_var >/dev/null 2>&1 || . /lib/net-lib.sh
+    [ -f /tmp/net.$netif.override ] && . /tmp/net.$netif.override
 
-# We already need a set netif here
-netif=$interface
+    ip -6 addr add ${new_ip6_address}/${new_ip6_prefixlen} \
+        dev ${netif} scope global valid_lft ${lease_time} \
+        preferred_lft ${lease_time}
 
-# Huh? Interface configured?
-[ -f "/tmp/net.$netif.up" ] && exit 0
+    [ -n "${search}${domain}" ] && echo "search $search $domain" > /tmp/net.$netif.resolv.conf
+    if  [ -n "$namesrv" ] ; then
+        for s in $namesrv; do
+            echo nameserver $s
+        done
+    fi >> /tmp/net.$netif.resolv.conf
+
+    # Note: hostname can be fqdn OR short hostname, so chop off any
+    # trailing domain name and explicity add any domain if set.
+    [ -n "$hostname" ] && echo "echo ${hostname%.$domain}${domain:+.$domain} > /proc/sys/kernel/hostname" > /tmp/net.$netif.hostname
+}
 
 case $reason in
     PREINIT)
         echo "dhcp: PREINIT $netif up"
         linkup $netif
         ;;
+
+    PREINIT6)
+        echo "dhcp: PREINIT $netif up"
+        linkup $netif
+        ;;
+
     BOUND)
         echo "dhcp: BOND setting $netif"
         unset layer2
@@ -90,12 +119,31 @@ case $reason in
             echo "setup_net $netif"
             echo "source_hook initqueue/online $netif"
             [ -e /tmp/net.$netif.manualup ] || echo "/sbin/netroot $netif"
-            echo "> /tmp/setup_net_$netif.ok"
-            echo "> /tmp/setup_net_\$(cat /sys/class/net/$netif/address).ok"
             echo "rm -f -- $hookdir/initqueue/setup_net_$netif.sh"
         } > $hookdir/initqueue/setup_net_$netif.sh
 
-        echo "[ -f /tmp/setup_net_$netif.ok ]" > $hookdir/initqueue/finished/dhclient-$netif.sh
+        echo "[ -f /tmp/net.$netif.did-setup ]" > $hookdir/initqueue/finished/dhclient-$netif.sh
+        >/tmp/net.$netif.up
+        ;;
+
+    BOUND6)
+        echo "dhcp: BOND6 setting $netif"
+        setup_interface6
+
+        set | while read line; do
+            [ "${line#new_}" = "$line" ] && continue
+            echo "$line"
+        done >/tmp/dhclient.$netif.dhcpopts
+
+        {
+            echo '. /lib/net-lib.sh'
+            echo "setup_net $netif"
+            echo "source_hook initqueue/online $netif"
+            [ -e /tmp/net.$netif.manualup ] || echo "/sbin/netroot $netif"
+            echo "rm -f -- $hookdir/initqueue/setup_net_$netif.sh"
+        } > $hookdir/initqueue/setup_net_$netif.sh
+
+        echo "[ -f /tmp/net.$netif.did-setup ]" > $hookdir/initqueue/finished/dhclient-$netif.sh
         >/tmp/net.$netif.up
         ;;
     *) echo "dhcp: $reason";;

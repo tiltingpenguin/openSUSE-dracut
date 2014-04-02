@@ -5,7 +5,7 @@
 # called by dracut
 check() {
     # No point trying to support lvm if the binaries are missing
-    type -P lvm >/dev/null || return 1
+    require_binaries lvm || return 1
 
     [[ $hostonly ]] || [[ $mount_needs ]] && {
         for fs in "${host_fs_types[@]}"; do
@@ -50,8 +50,10 @@ install() {
 
     inst lvm
 
-    cmdline >> "${initdir}/etc/cmdline.d/90lvm.conf"
-    echo >> "${initdir}/etc/cmdline.d/90lvm.conf"
+    if [[ $hostonly_cmdline == "yes" ]]; then
+        cmdline >> "${initdir}/etc/cmdline.d/90lvm.conf"
+        echo >> "${initdir}/etc/cmdline.d/90lvm.conf"
+    fi
 
     inst_rules "$moddir/64-lvm.rules"
 

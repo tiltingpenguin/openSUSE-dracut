@@ -137,6 +137,10 @@ Creates initial ramdisk images for preloading modules
   -H, --hostonly        Host-Only mode: Install only what is needed for
                         booting the local host instead of a generic host.
   -N, --no-hostonly     Disables Host-Only mode
+  --hostonly-cmdline    Store kernel command line arguments needed
+                        in the initramfs
+  --no-hostonly-cmdline Do not store kernel command line arguments needed
+                        in the initramfs
   --persistent-policy [POLICY]
                         Use [POLICY] to address disks and partitions.
                         POLICY can be any directory name found in /dev/disk.
@@ -345,6 +349,8 @@ rearrange_params()
         --long host-only \
         --long no-hostonly \
         --long no-host-only \
+        --long hostonly-cmdline \
+        --long no-hostonly-cmdline \
         --long persistent-policy: \
         --long fstab \
         --long help \
@@ -488,9 +494,12 @@ while :; do
         -f|--force)    force=yes;;
         --kernel-only) kernel_only="yes"; no_kernel="no";;
         --no-kernel)   kernel_only="no"; no_kernel="yes";;
-        --print-cmdline) print_cmdline="yes"; hostonly_l="yes"; kernel_only="yes"; no_kernel="yes";;
-        --early-microcode) early_microcode_l="yes";;
-        --no-early-microcode) early_microcode_l="no";;
+        --print-cmdline)
+                       print_cmdline="yes"; hostonly_l="yes"; kernel_only="yes"; no_kernel="yes";;
+        --early-microcode)
+                       early_microcode_l="yes";;
+        --no-early-microcode)
+                       early_microcode_l="no";;
         --strip)       do_strip_l="yes";;
         --nostrip)     do_strip_l="no";;
         --prelink)     do_prelink_l="yes";;
@@ -517,6 +526,10 @@ while :; do
                        hostonly_l="yes" ;;
         -N|--no-hostonly|--no-host-only)
                        hostonly_l="no" ;;
+        --hostonly-cmdline)
+                       hostonly_cmdline_l="yes" ;;
+        --no-hostonly-cmdline)
+                       hostonly_cmdline_l="no" ;;
         --persistent-policy)
                        persistent_policy_l="$2";       PARMS_TO_STORE+=" '$2'"; shift;;
         --fstab)       use_fstab_l="yes" ;;
@@ -551,7 +564,7 @@ done
 # the old fashioned way
 
 while (($# > 0)); do
-    if [ ${1%%=*} == "++include" ]; then
+    if [ "${1%%=*}" == "++include" ]; then
         push include_src "$2"
         push include_target "$3"
         PARMS_TO_STORE+=" --include '$2' '$3'"
@@ -755,6 +768,7 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 [[ $prefix_l ]] && prefix=$prefix_l
 [[ $prefix = "/" ]] && unset prefix
 [[ $hostonly_l ]] && hostonly=$hostonly_l
+[[ $hostonly_cmdline_l ]] && hostonly_cmdline=$hostonly_cmdline_l
 [[ $persistent_policy_l ]] && persistent_policy=$persistent_policy_l
 [[ $use_fstab_l ]] && use_fstab=$use_fstab_l
 [[ $mdadmconf_l ]] && mdadmconf=$mdadmconf_l
@@ -782,7 +796,7 @@ case $compress in
     xz)    compress="xz --check=crc32 --lzma2=dict=1MiB -T0";;
     gzip)  compress="gzip -9"; command -v pigz > /dev/null 2>&1 && compress="pigz -9";;
     lzo)   compress="lzop -9";;
-    lz4)   compress="lz4 -9";;
+    lz4)   compress="lz4 -l -9";;
 esac
 if [[ $_no_compress_l = "cat" ]]; then
     compress="cat"
@@ -808,7 +822,6 @@ fi
 # clean up after ourselves no matter how we die.
 trap '
     ret=$?;
-    [[ $outfile ]] && [[ -f $outfile.$$ ]] && rm -f -- "$outfile.$$";
     [[ $keep ]] && echo "Not removing $initdir." >&2 || { [[ $initdir ]] && rm -rf -- "$initdir"; };
     [[ $keep ]] && echo "Not removing $early_cpio_dir." >&2 || { [[ $early_cpio_dir ]] && rm -Rf -- "$early_cpio_dir"; };
     [[ $_dlogdir ]] && rm -Rf -- "$_dlogdir";
@@ -1005,7 +1018,7 @@ if [[ $hostonly ]]; then
         _bdev=$(readlink -f "/dev/block/$_dev")
         [[ -b $_bdev ]] && _dev=$_bdev
         push host_devs $_dev
-        [[ "$_mp" == "/" ]] && root_dev="$_dev"
+        [[ "$mp" == "/" ]] && root_dev="$_dev"
         push host_devs "$_dev"
     done
 
@@ -1139,7 +1152,7 @@ export initdir dracutbasedir dracutmodules \
     debug host_fs_types host_devs sshkey add_fstab \
     DRACUT_VERSION udevdir prefix filesystems drivers \
     systemdutildir systemdsystemunitdir systemdsystemconfdir \
-    host_modalias host_modules
+    host_modalias host_modules hostonly_cmdline
 
 mods_to_load=""
 # check all our modules to see if they should be sourced.
@@ -1299,7 +1312,11 @@ if [[ $kernel_only != yes ]]; then
     [[ $kernel_cmdline ]] && printf "%s\n" "$kernel_cmdline" >> "${initdir}/etc/cmdline.d/01-default.conf"
 
     while pop fstab_lines line; do
-        printf "%s\n" "$line 0 0" >> "${initdir}/etc/fstab"
+        line=($line)
+        [ -z "${line[3]}" ] && line[3]="defaults"
+        [ -z "${line[4]}" ] && line[4]="0"
+        [ -z "${line[5]}" ] && line[5]="2"
+        echo "${line[@]}" >> "${initdir}/etc/fstab"
     done
 
     for f in $add_fstab; do
@@ -1468,15 +1485,13 @@ dinfo "*** Creating image file ***"
 if [[ $create_early_cpio = yes ]]; then
     echo 1 > "$early_cpio_dir/d/early_cpio"
     # The microcode blob is _before_ the initramfs blob, not after
-    (cd "$early_cpio_dir/d";     find . -print0 | cpio --null $cpio_owner_root -H newc -o --quiet >../early.cpio)
-    mv $early_cpio_dir/early.cpio $outfile.$$
+    (cd "$early_cpio_dir/d";     find . -print0 | cpio --null $cpio_owner_root -H newc -o --quiet > $outfile)
 fi
 if ! ( umask 077; cd "$initdir"; find . -print0 | cpio --null $cpio_owner_root -H newc -o --quiet | \
-    $compress >> "$outfile.$$"; ); then
-    dfatal "dracut: creation of $outfile.$$ failed"
+    $compress >> "$outfile"; ); then
+    dfatal "dracut: creation of $outfile failed"
     exit 1
 fi
-mv -- "$outfile.$$" "$outfile"
 dinfo "*** Creating image file done ***"
 
 if (( maxloglvl >= 5 )); then

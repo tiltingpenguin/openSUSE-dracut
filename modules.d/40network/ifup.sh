@@ -80,13 +80,22 @@ fi
 # in netroot case we prefer netroot to bringup $netif automaticlly
 [ -n "$2" -a "$2" = "-m" ] && [ -z "$netroot" ] && manualup="$2"
 [ -z "$netroot" ] && [ -z "$manualup" ] && exit 0
-[ -n "$manualup" ] && >/tmp/net.$netif.manualup
+if [ -n "$manualup" ]; then
+    >/tmp/net.$netif.manualup
+else
+    [ -e /tmp/net.${netif}.did-setup ] && exit 0
+    [ -e /sys/class/net/$netif/address ] && \
+        [ -e /tmp/net.$(cat /sys/class/net/$netif/address).did-setup ] && exit 0
+fi
 
 # Run dhclient
 do_dhcp() {
     # dhclient-script will mark the netif up and generate the online
     # event for nfsroot
     # XXX add -V vendor class and option parsing per kernel
+
+    [ -e /tmp/dhclient.$netif.pid ] && return 0
+
     if ! iface_has_link $netif; then
         echo "No carrier detected"
         return 1
@@ -129,6 +138,7 @@ do_static() {
     if strstr $ip '*:*:*'; then
         # note no ip addr flush for ipv6
         ip addr add $ip/$mask ${srv:+peer $srv} dev $netif
+        wait_for_ipv6_dad $netif
     else
         ip addr flush dev $netif
         ip addr add $ip/$mask ${srv:+peer $srv} brd + dev $netif
@@ -137,7 +147,6 @@ do_static() {
     [ -n "$gw" ] && echo ip route add default via $gw dev $netif > /tmp/net.$netif.gw
     [ -n "$hostname" ] && echo "echo $hostname > /proc/sys/kernel/hostname" > /tmp/net.$netif.hostname
 
-    > /tmp/setup_net_${netif}.ok
     return 0
 }
 
@@ -264,18 +273,15 @@ if [ "$netif" = "$vlanname" ] && [ ! -e /tmp/net.$vlanname.up ]; then
     ip link set "$vlanname" up
 fi
 
-# setup nameserver
-namesrv=$(getargs nameserver)
-if  [ -n "$namesrv" ] ; then
-    for s in $namesrv; do
-        echo nameserver $s
-    done
-fi >> /tmp/net.$netif.resolv.conf
-
 # No ip lines default to dhcp
 ip=$(getarg ip)
 
 if [ -z "$ip" ]; then
+    namesrv=$(getargs nameserver)
+    for s in $namesrv; do
+        echo nameserver $s >> /tmp/net.$netif.resolv.conf
+    done
+
     if [ "$netroot" = "dhcp6" ]; then
         do_dhcp -6
     else
@@ -307,8 +313,14 @@ for p in $(getargs ip=); do
     [ "$use_bridge" != 'true' ] && \
     [ "$use_vlan" != 'true' ] && continue
 
+    # setup nameserver
+    namesrv="$dns1 $dns2 $(getargs nameserver)"
+    for s in $namesrv; do
+        echo nameserver $s >> /tmp/net.$netif.resolv.conf
+    done
+
     # Store config for later use
-    for i in ip srv gw mask hostname macaddr; do
+    for i in ip srv gw mask hostname macaddr dns1 dns2; do
         eval '[ "$'$i'" ] && echo '$i'="$'$i'"'
     done > /tmp/net.$netif.override
 
@@ -316,12 +328,15 @@ for p in $(getargs ip=); do
         dhcp|on|any)
             do_dhcp -4 ;;
         dhcp6)
+            load_ipv6
             do_dhcp -6 ;;
         auto6)
             do_ipv6auto ;;
         *)
             do_static ;;
     esac
+
+    > /tmp/net.${netif}.up
 
     case $autoconf in
         dhcp|on|any|dhcp6)
@@ -348,7 +363,7 @@ if [ -n "$DO_BOND_SETUP" -o -n "$DO_TEAM_SETUP" -o -n "$DO_VLAN_SETUP" ]; then
 fi
 
 # no ip option directed at our interface?
-if [ ! -e /tmp/setup_net_${netif}.ok ]; then
+if [ ! -e /tmp/net.${netif}.up ]; then
     do_dhcp -4
 fi
 
