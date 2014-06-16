@@ -1,3 +1,14 @@
+dracut (037-2) unstable; urgency=low
+
+  * add i18n support for Debian using new module 09-console-setup,
+    Closes: #640101, Thanks to Anton Zinoviev for the patches
+  * add README.Debian, which includes info about i18n in Debian
+  * disable module 10i18n, Closes: #664678
+  * control: add pkg-config to depends, Closes: #748084
+  * add dracut-version.sh to package, Closes: #749849
+
+ -- Thomas Lange <lange@debian.org>  Mon, 16 Jun 2014 14:37:52 +0200
+
 dracut (037-1) unstable; urgency=low
 
   * new upstream
