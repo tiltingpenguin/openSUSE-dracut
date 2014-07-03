@@ -21,6 +21,7 @@ depends() {
 
 installkernel() {
     instmods autofs4 ipv6
+    instmods -s efivarfs
 }
 
 # called by dracut
@@ -44,6 +45,7 @@ install() {
         $systemdutildir/systemd-modules-load \
         $systemdutildir/systemd-vconsole-setup \
         $systemdutildir/system-generators/systemd-fstab-generator \
+        $systemdutildir/system-generators/systemd-gpt-auto-generator \
         \
         $systemdsystemunitdir/cryptsetup.target \
         $systemdsystemunitdir/emergency.target \
@@ -105,6 +107,7 @@ install() {
         $systemdsystemunitdir/sockets.target.wants/systemd-udevd-control.socket \
         $systemdsystemunitdir/sockets.target.wants/systemd-udevd-kernel.socket \
         $systemdsystemunitdir/sockets.target.wants/systemd-journald.socket \
+        $systemdsystemunitdir/sockets.target.wants/systemd-journald-dev-log.socket \
         $systemdsystemunitdir/sysinit.target.wants/systemd-udevd.service \
         $systemdsystemunitdir/sysinit.target.wants/systemd-udev-trigger.service \
         $systemdsystemunitdir/sysinit.target.wants/kmod-static-nodes.service \
@@ -149,7 +152,7 @@ install() {
     [[ $_mods ]] && instmods $_mods
 
     if [[ $hostonly ]]; then
-        inst_multiple -o \
+        inst_multiple -H -o \
             /etc/systemd/journald.conf \
             /etc/systemd/system.conf \
             /etc/hostname \
@@ -184,6 +187,7 @@ install() {
     ln_r "${systemdsystemunitdir}/initrd.target" "${systemdsystemunitdir}/default.target"
 
     inst_script "$moddir/dracut-cmdline.sh" /bin/dracut-cmdline
+    inst_script "$moddir/dracut-cmdline-ask.sh" /bin/dracut-cmdline-ask
     inst_script "$moddir/dracut-pre-udev.sh" /bin/dracut-pre-udev
     inst_script "$moddir/dracut-pre-trigger.sh" /bin/dracut-pre-trigger
     inst_script "$moddir/dracut-initqueue.sh" /bin/dracut-initqueue
@@ -191,7 +195,7 @@ install() {
     inst_script "$moddir/dracut-mount.sh" /bin/dracut-mount
     inst_script "$moddir/dracut-pre-pivot.sh" /bin/dracut-pre-pivot
 
-    inst_script "$moddir/rootfs-generator.sh" /lib/systemd/system-generators/dracut-rootfs-generator
+    inst_script "$moddir/rootfs-generator.sh" $systemdutildir/system-generators/dracut-rootfs-generator
 
     inst_binary true
     ln_r $(type -P true) "/usr/bin/loginctl"
@@ -213,6 +217,7 @@ install() {
     mkdir -p "${initdir}/$systemdsystemunitdir/initrd.target.wants"
     for i in \
         dracut-cmdline.service \
+        dracut-cmdline-ask.service \
         dracut-initqueue.service \
         dracut-mount.service \
         dracut-pre-mount.service \

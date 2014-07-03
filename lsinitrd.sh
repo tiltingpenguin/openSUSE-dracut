@@ -27,6 +27,7 @@ usage()
         echo
         echo "-h, --help                  print a help message and exit."
         echo "-s, --size                  sort the contents of the initramfs by size."
+        echo "-m, --mod                   list modules."
         echo "-f, --file <filename>       print the contents of <filename>."
         echo "-k, --kver <kernel version> inspect the initramfs of <kernel version>."
         echo
@@ -37,13 +38,15 @@ usage()
 [[ $dracutbasedir ]] || dracutbasedir=/usr/lib/dracut
 
 sorted=0
+modules=0
 declare -A filenames
 
 unset POSIXLY_CORRECT
 TEMP=$(getopt \
-    -o "shf:k:" \
+    -o "shmf:k:" \
     --long kver: \
     --long file: \
+    --long mod \
     --long help \
     --long size \
     -- "$@")
@@ -61,6 +64,7 @@ while (($# > 0)); do
         -f|--file)  filenames[${2#/}]=1; shift;;
         -s|--size)  sorted=1;;
         -h|--help)  usage; exit 0;;
+        -m|--mod)   modules=1;;
         --)         shift;break;;
         *)          usage; exit 1;;
     esac
@@ -119,6 +123,13 @@ extract_files()
     done
 }
 
+list_modules()
+{
+    echo "dracut modules:"
+    $CAT "$image" | cpio --extract --verbose --quiet --to-stdout -- 'lib/dracut/modules.txt' 'usr/lib/dracut/modules.txt' 2>/dev/null
+    ((ret+=$?))
+}
+
 list_files()
 {
     echo "========================================================================"
@@ -160,27 +171,38 @@ case $bin in
         ;;
 esac
 
-if [[ $SKIP ]]; then
-    read -N 6 bin < <($SKIP "$image")
-fi
-
-case $bin in
-    $'\x1f\x8b'*)
-        CAT="zcat --";;
-    BZh*)
-        CAT="bzcat --";;
-    $'\x71\xc7'*|070701)
-        CAT="cat --"
-        ;;
-    $'\x02\x21'*)
-        CAT="lz4 -d -c";;
-    *)
-        CAT="xzcat --";
-        if echo "test"|xz|xzcat --single-stream >/dev/null 2>&1; then
-            CAT="xzcat --single-stream --"
-        fi
-        ;;
-esac
+CAT=$({
+        if [[ $SKIP ]]; then
+            $SKIP "$image"
+        else
+            cat "$image"
+        fi } | {
+        read -N 6 bin
+        case $bin in
+            $'\x1f\x8b'*)
+                echo "zcat --"
+                ;;
+            BZh*)
+                echo "bzcat --"
+                ;;
+            $'\x71\xc7'*|070701)
+                echo "cat --"
+                ;;
+            $'\x02\x21'*)
+                echo "lz4 -d -c"
+                ;;
+            $'\x89'LZO$'\0'*)
+                echo "lzop -d -c"
+                ;;
+            *)
+                if echo "test"|xz|xzcat --single-stream >/dev/null 2>&1; then
+                    echo "xzcat --single-stream --"
+                else
+                    echo "xzcat --"
+                fi
+                ;;
+        esac
+    })
 
 skipcpio()
 {
@@ -201,13 +223,16 @@ else
     ((ret+=$?))
     echo "Version: $version"
     echo
-    echo -n "Arguments: "
-    $CAT "$image" | cpio --extract --verbose --quiet --to-stdout -- 'lib/dracut/build-parameter.txt' 'usr/lib/dracut/build-parameter.txt' 2>/dev/null
-    echo
-    echo "dracut modules:"
-    $CAT "$image" | cpio --extract --verbose --quiet --to-stdout -- 'lib/dracut/modules.txt' 'usr/lib/dracut/modules.txt' 2>/dev/null
-    ((ret+=$?))
-    list_files
+    if [ "$modules" -eq 1 ]; then
+        list_modules
+        echo "========================================================================"
+    else
+        echo -n "Arguments: "
+        $CAT "$image" | cpio --extract --verbose --quiet --to-stdout -- 'lib/dracut/build-parameter.txt' 'usr/lib/dracut/build-parameter.txt' 2>/dev/null
+        echo
+        list_modules
+        list_files
+    fi
 fi
 
 exit $ret

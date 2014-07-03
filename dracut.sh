@@ -769,6 +769,7 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 [[ $prefix = "/" ]] && unset prefix
 [[ $hostonly_l ]] && hostonly=$hostonly_l
 [[ $hostonly_cmdline_l ]] && hostonly_cmdline=$hostonly_cmdline_l
+[[ "$hostonly" == "yes" ]] && ! [[ $hostonly_cmdline ]] && hostonly_cmdline="yes"
 [[ $persistent_policy_l ]] && persistent_policy=$persistent_policy_l
 [[ $use_fstab_l ]] && use_fstab=$use_fstab_l
 [[ $mdadmconf_l ]] && mdadmconf=$mdadmconf_l
@@ -833,6 +834,13 @@ trap 'exit 1;' SIGINT
 
 export DRACUT_KERNEL_LAZY="1"
 export DRACUT_RESOLVE_LAZY="1"
+
+if [[ $print_cmdline ]]; then
+    stdloglvl=0
+    sysloglvl=0
+    fileloglvl=0
+    kmsgloglvl=0
+fi
 
 if [[ -f $dracutbasedir/dracut-functions.sh ]]; then
     . $dracutbasedir/dracut-functions.sh
@@ -907,6 +915,7 @@ for ((i=0; i < ${#dracut_args[@]}; i++)); do
         dracut_args[$i]="\"${dracut_args[$i]}\""
         #" keep vim happy
 done
+
 dinfo "Executing: $0 ${dracut_args[@]}"
 
 [[ $do_list = yes ]] && {
@@ -1340,6 +1349,15 @@ if [[ $kernel_only != yes ]]; then
         | xargs -r -0 $DRACUT_INSTALL ${initdir:+-D "$initdir"} -R ${DRACUT_FIPS_MODE:+-H} --
         dinfo "*** Resolving executable dependencies done***"
     fi
+
+    # libpthread workaround: pthread_cancel wants to dlopen libgcc_s.so
+    for _dir in $libdirs; do
+        for _f in "$_dir/libpthread.so"*; do
+            [[ -e "$_f" ]] || continue
+            inst_libdir_file "libgcc_s.so*"
+            break 2
+        done
+    done
 fi
 
 while pop include_src src && pop include_target tgt; do

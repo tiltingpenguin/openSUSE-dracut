@@ -20,19 +20,33 @@ debug_on() {
     [ "$RD_DEBUG" = "yes" ] && set -x
 }
 
-# returns OK if $1 contains $2
+# returns OK if $1 contains literal string $2 (and isn't empty)
 strstr() {
-    [ "${1#*$2*}" != "$1" ]
+    [ "${1##*"$2"*}" != "$1" ]
 }
 
-# returns OK if $1 contains $2 at the beginning
+# returns OK if $1 matches (completely) glob pattern $2
+# An empty $1 will not be considered matched, even if $2 is * which technically
+# matches; as it would match anything, it's not an interesting case.
+strglob() {
+    [ -n "$1" -a -z "${1##$2}" ]
+}
+
+# returns OK if $1 contains (anywhere) a match of glob pattern $2
+# An empty $1 will not be considered matched, even if $2 is * which technically
+# matches; as it would match anything, it's not an interesting case.
+strglobin() {
+    [ -n "$1" -a -z "${1##*$2*}" ]
+}
+
+# returns OK if $1 contains literal string $2 at the beginning, and isn't empty
 str_starts() {
-    [ "${1#$2*}" != "$1" ]
+    [ "${1#"$2"*}" != "$1" ]
 }
 
-# returns OK if $1 contains $2 at the end
+# returns OK if $1 contains literal string $2 at the end, and isn't empty
 str_ends() {
-    [ "${1%*$2}" != "$1" ]
+    [ "${1%*"$2"}" != "$1" ]
 }
 
 if [ -z "$DRACUT_SYSTEMD" ]; then
@@ -85,9 +99,9 @@ str_replace() {
     local out=''
 
     while strstr "${in}" "$s"; do
-        chop="${in%%$s*}"
+        chop="${in%%"$s"*}"
         out="${out}${chop}$r"
-        in="${in#*$s}"
+        in="${in#*"$s"}"
     done
     echo "${out}${in}"
 }
@@ -555,7 +569,7 @@ nfsroot_to_var() {
     arg="${arg##$nfs:}"
 
     # check if we have a server
-    if strstr "$arg" ':/*' ; then
+    if strstr "$arg" ':/' ; then
         server="${arg%%:/*}"
         arg="/${arg##*:/}"
     fi
@@ -737,11 +751,18 @@ $(readlink -e -q "$d")" || return 255
 
 
 usable_root() {
-    local _d
-    [ -d $1 ] || return 1
-    for _d in proc sys dev; do
-        [ -e "$1"/$_d ] || return 1
+    local _i
+
+    [ -d "$1" ] || return 1
+
+    for _i in "$1"/usr/lib*/ld-*.so "$1"/lib*/ld-*.so; do
+        [ -e "$_i" ] && return 0
     done
+
+    for _i in proc sys dev; do
+        [ -e "$1"/$_i ] || return 1
+    done
+
     return 0
 }
 
@@ -870,6 +891,8 @@ wait_for_dev()
 
     _name="$(str_replace "$1" '/' '\x2f')"
 
+    type mark_hostonly >/dev/null 2>&1 && mark_hostonly "$hookdir/initqueue/finished/devexists-${_name}.sh"
+
     [ -e "${PREFIX}$hookdir/initqueue/finished/devexists-${_name}.sh" ] && return 0
 
     printf '[ -e "%s" ]\n' $1 \
@@ -884,6 +907,7 @@ wait_for_dev()
         if ! [ -L ${PREFIX}/etc/systemd/system/initrd.target.wants/${_name}.device ]; then
             [ -d ${PREFIX}/etc/systemd/system/initrd.target.wants ] || mkdir -p ${PREFIX}/etc/systemd/system/initrd.target.wants
             ln -s ../${_name}.device ${PREFIX}/etc/systemd/system/initrd.target.wants/${_name}.device
+            type mark_hostonly >/dev/null 2>&1 && mark_hostonly /etc/systemd/system/initrd.target.wants/${_name}.device
             _needreload=1
         fi
 
@@ -893,6 +917,7 @@ wait_for_dev()
                 echo "[Unit]"
                 echo "JobTimeoutSec=0"
             } > ${PREFIX}/etc/systemd/system/${_name}.device.d/timeout.conf
+            type mark_hostonly >/dev/null 2>&1 && mark_hostonly /etc/systemd/system/${_name}.device.d/timeout.conf
             _needreload=1
         fi
 
@@ -969,6 +994,7 @@ if ! command -v pidof >/dev/null 2>/dev/null; then
         local _cmd
         local _exe
         local _rl
+        local _ret=1
         local i
         _cmd="$1"
         [ -z "$_cmd" ] && return 1
@@ -983,8 +1009,9 @@ if ! command -v pidof >/dev/null 2>/dev/null; then
             fi
             i=${i%/exe}
             echo ${i##/proc/}
+            _ret=0
         done
-        return 0
+        return $_ret
     }
 fi
 
@@ -1226,4 +1253,14 @@ show_memstats()
             cat /proc/iomem
             ;;
     esac
+}
+
+remove_hostonly_files() {
+    rm -fr /etc/cmdline /etc/cmdline.d/*.conf
+    if [ -f /lib/dracut/hostonly-files ]; then
+        while read line; do
+            [ -e "$line" ] || continue
+            rm -f "$line"
+        done < /lib/dracut/hostonly-files
+    fi
 }

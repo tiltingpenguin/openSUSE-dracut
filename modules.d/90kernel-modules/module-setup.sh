@@ -6,7 +6,7 @@
 installkernel() {
     if [[ -z $drivers ]]; then
         block_module_filter() {
-            local _blockfuncs='ahci_init_controller|ata_scsi_ioctl|scsi_add_host|blk_cleanup_queue|register_mtd_blktrans|scsi_esp_register|register_virtio_device|usb_stor_disconnect'
+            local _blockfuncs='ahci_platform_get_resources|ata_scsi_ioctl|scsi_add_host|blk_cleanup_queue|register_mtd_blktrans|scsi_esp_register|register_virtio_device|usb_stor_disconnect|mmc_add_host|sdhci_pltfm_init'
             # subfunctions inherit following FDs
             local _merge=8 _side2=9
             function bmf1() {
@@ -51,9 +51,9 @@ installkernel() {
 
         if [[ "$(uname -p)" == arm* ]]; then
             # arm specific modules
-            hostonly='' instmods sdhci_esdhc_imx mmci sdhci_tegra mvsdio omap omapdrm \
-                omap_hsmmc panel-tfp410 sdhci_dove ahci_platform pata_imx sata_mv \
-                ehci-tegra mmc_block usb_storage
+            hostonly='' instmods omapdrm panel-tfp410
+            instmods i2c-tegra gpio-regulator as3722-regulator \
+                    phy-tegra-usb ehci-tegra sdhci-tegra
         fi
 
         # install virtual machine support
@@ -81,7 +81,7 @@ installkernel() {
 # called by dracut
 install() {
     inst_multiple -o /lib/modprobe.d/*.conf
-    [[ $hostonly ]] && inst_multiple -o /etc/modprobe.d/*.conf /etc/modprobe.conf
+    [[ $hostonly ]] && inst_multiple -H -o /etc/modprobe.d/*.conf /etc/modprobe.conf
     if ! dracut_module_included "systemd"; then
         inst_hook cmdline 01 "$moddir/parse-kernel.sh"
     fi

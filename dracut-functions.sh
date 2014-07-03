@@ -33,7 +33,11 @@ if [[ $initdir ]] && ! [[ -d $initdir ]]; then
 fi
 
 # Generic substring function.  If $2 is in $1, return 0.
-strstr() { [[ $1 = *$2* ]]; }
+strstr() { [[ $1 = *"$2"* ]]; }
+# Generic glob matching function. If glob pattern $2 matches anywhere in $1, OK
+strglobin() { [[ $1 = *$2* ]]; }
+# Generic glob matching function. If glob pattern $2 matches all of $1, OK
+strglob() { [[ $1 = $2 ]]; }
 
 # helper function for check() in module-setup.sh
 # to check for required installed binaries
@@ -49,7 +53,7 @@ require_binaries() {
 
     for cmd in "$@"; do
         if ! find_binary "$cmd" &>/dev/null; then
-            dinfo "$_module_name: Could not find command '$cmd'!"
+            dinfo "dracut module '${_module_name#[0-9][0-9]}' will not be installed, because command '$cmd' could not be found!"
             ((_ret++))
         fi
     done
@@ -221,7 +225,7 @@ print_vars() {
 
     for _var in "$@"
     do
-        eval printf -v _value "%s" "\$$_var"
+        eval printf -v _value "%s" \""\$$_var"\"
         [[ ${_value} ]] && printf '%s="%s"\n' "$_var" "$_value"
     done
 }
@@ -759,8 +763,8 @@ inst_dir() {
 inst() {
     [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
         #dinfo "$DRACUT_INSTALL -l $@"
-    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l} ${DRACUT_FIPS_MODE:+-H} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l} ${DRACUT_FIPS_MODE:+-H} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l} ${DRACUT_FIPS_MODE:+-f} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l} ${DRACUT_FIPS_MODE:+-f} "$@" || :
 }
 
 inst_simple() {
@@ -773,16 +777,16 @@ inst_simple() {
 inst_symlink() {
     [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
     [[ -L $1 ]] || return 1
-    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@" || :
 }
 
 inst_multiple() {
     local ret
         #dinfo "initdir=$initdir $DRACUT_INSTALL -l $@"
-    $DRACUT_INSTALL ${initdir:+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@"
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@"
     ret=$?
-    (($ret != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@" || :
+    (($ret != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@" || :
     return $ret
 }
 
@@ -793,18 +797,24 @@ dracut_install() {
 inst_library() {
     [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
     [[ -e $1 ]] || return 1  # no source
-    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@" || :
 }
 
 inst_binary() {
-    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@" || :
 }
 
 inst_script() {
-    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-H} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@" || :
+}
+
+mark_hostonly() {
+    for i in "$@"; do
+        echo "$i" >> "$initdir/lib/dracut/hostonly-files"
+    done
 }
 
 # find symlinks linked to given library file

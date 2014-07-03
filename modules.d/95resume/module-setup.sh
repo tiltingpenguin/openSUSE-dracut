@@ -17,12 +17,12 @@ check() {
 
 # called by dracut
 cmdline() {
-    local _activated
-    declare -A _activated
+    local _resume
 
     for dev in "${!host_fs_types[@]}"; do
         [[ ${host_fs_types[$dev]} =~ ^(swap|swsuspend|swsupend)$ ]] || continue
-        printf "resume=%s " "$(shorten_persistent_dev "$(get_persistent_dev "$dev")")"
+        _resume=$(shorten_persistent_dev "$(get_persistent_dev "$dev")")
+        [[ -n ${_resume} ]] && printf " resume=%s" "${_resume}"
     done
 }
 
@@ -30,15 +30,17 @@ cmdline() {
 install() {
     local _bin
 
-    cmdline  >> "${initdir}/etc/cmdline.d/95resume.conf"
-    echo  >> "${initdir}/etc/cmdline.d/95resume.conf"
+    if [[ $hostonly_cmdline == "yes" ]]; then
+        cmdline  >> "${initdir}/etc/cmdline.d/95resume.conf"
+        echo  >> "${initdir}/etc/cmdline.d/95resume.conf"
+    fi
 
     # Optional uswsusp support
     for _bin in /usr/sbin/resume /usr/lib/suspend/resume /usr/lib/uswsusp/resume
     do
         [[ -x "${_bin}" ]] && {
             inst "${_bin}" /usr/sbin/resume
-            [[ -f /etc/suspend.conf ]] && inst /etc/suspend.conf
+            [[ $hostonly ]] && [[ -f /etc/suspend.conf ]] && inst -H /etc/suspend.conf
             break
         }
     done
