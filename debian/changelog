@@ -1,3 +1,11 @@
+dracut (038-1) unstable; urgency=low
+
+  * new upstream
+  * remove 10i18n patch, not needed any more
+  * update standards version, no changes needed
+
+ -- Thomas Lange <lange@debian.org>  Thu, 03 Jul 2014 15:12:26 +0200
+
 dracut (037-2) unstable; urgency=low
 
   * add i18n support for Debian using new module 09-console-setup,
