@@ -1,3 +1,9 @@
+dracut (038-2) unstable; urgency=low
+
+  * control: change depends on kbd to console-setup
+
+ -- Thomas Lange <lange@debian.org>  Thu, 17 Jul 2014 13:40:08 +0200
+
 dracut (038-1) unstable; urgency=low
 
   * new upstream
