@@ -1,3 +1,11 @@
+dracut (038-3) unstable; urgency=low
+
+  * add systemd units to package Closes: #764393
+  * add patch for dracut-initramfs-restore, Closes: #764393
+    Thanks to Lukas Wunner for the patch
+
+ -- Thomas Lange <lange@debian.org>  Wed, 08 Oct 2014 11:55:35 +0200
+
 dracut (038-2) unstable; urgency=low
 
   * control: change depends on kbd to console-setup
