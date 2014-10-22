@@ -1,6 +1,4 @@
 #!/bin/bash
-# -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
-# ex: ts=8 sw=4 sts=4 et filetype=sh
 #
 # Generator script for a dracut initramfs
 # Tries to retain some degree of compatibility with the command line
@@ -81,6 +79,10 @@ Creates initial ramdisk images for preloading modules
                          exclusively include in the initramfs.
   --add-drivers [LIST]  Specify a space-separated list of kernel
                          modules to add to the initramfs.
+  --force-drivers [LIST] Specify a space-separated list of kernel
+                         modules to add to the initramfs and make sure they
+                         are tried to be loaded via modprobe same as passing
+                         rd.driver.pre=DRIVER kernel parameter.
   --omit-drivers [LIST] Specify a space-separated list of kernel
                          modules not to add to the initramfs.
   --filesystems [LIST]  Specify a space-separated list of kernel filesystem
@@ -158,6 +160,8 @@ Creates initial ramdisk images for preloading modules
                          in the final initramfs.
   -I, --install [LIST]  Install the space separated list of files into the
                          initramfs.
+  --install-optional [LIST]  Install the space separated list of files into the
+                         initramfs, if they exist.
   --gzip                Compress the generated initramfs using gzip.
                          This will be done by default, unless another
                          compression option or --no-compress is passed.
@@ -170,10 +174,10 @@ Creates initial ramdisk images for preloading modules
   --xz                  Compress the generated initramfs using xz.
                          Make sure that your kernel has xz support compiled
                          in, otherwise you will not be able to boot.
-  --lzo                  Compress the generated initramfs using lzop.
+  --lzo                 Compress the generated initramfs using lzop.
                          Make sure that your kernel has lzo support compiled
                          in, otherwise you will not be able to boot.
-  --lz4                  Compress the generated initramfs using lz4.
+  --lz4                 Compress the generated initramfs using lz4.
                          Make sure that your kernel has lz4 support compiled
                          in, otherwise you will not be able to boot.
   --compress [COMPRESSION] Compress the generated initramfs with the
@@ -189,6 +193,8 @@ Creates initial ramdisk images for preloading modules
   --printsize           Print out the module install size
   --sshkey [SSHKEY]     Add ssh key to initramfs (use with ssh-client module)
   --logfile [FILE]      Logfile to use (overrides configuration setting)
+  --reproducible        Create reproducible images
+  --loginstall [DIR]    Log all files installed from the host to [DIR]
 
 If [LIST] has multiple arguments, then you have to put these in quotes.
 
@@ -299,12 +305,14 @@ rearrange_params()
         --long add: \
         --long force-add: \
         --long add-drivers: \
+        --long force-drivers: \
         --long omit-drivers: \
         --long modules: \
         --long omit: \
         --long drivers: \
         --long filesystems: \
         --long install: \
+        --long install-optional: \
         --long fwdir: \
         --long libdirs: \
         --long fscks: \
@@ -369,6 +377,8 @@ rearrange_params()
         --long noimageifnotneeded \
         --long early-microcode \
         --long no-early-microcode \
+        --long reproducible \
+        --long loginstall: \
         -- "$@")
 
     if (( $? != 0 )); then
@@ -463,12 +473,16 @@ while :; do
         -a|--add)      push add_dracutmodules_l  "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
         --force-add)   push force_add_dracutmodules_l  "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
         --add-drivers) push add_drivers_l        "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
+        --force-drivers) push force_drivers_l    "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
         --omit-drivers) push omit_drivers_l      "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
         -m|--modules)  push dracutmodules_l      "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
         -o|--omit)     push omit_dracutmodules_l "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
         -d|--drivers)  push drivers_l            "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
         --filesystems) push filesystems_l        "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
         -I|--install)  push install_items_l      "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
+        --install-optional)
+                       push install_optional_items_l \
+                                                 "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
         --fwdir)       push fw_dir_l             "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
         --libdirs)     push libdirs_l            "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
         --fscks)       push fscks_l              "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
@@ -486,6 +500,7 @@ while :; do
         -L|--stdlog)   stdloglvl_l="$2";               PARMS_TO_STORE+=" '$2'"; shift;;
         --compress)    compress_l="$2";                PARMS_TO_STORE+=" '$2'"; shift;;
         --prefix)      prefix_l="$2";                  PARMS_TO_STORE+=" '$2'"; shift;;
+        --loginstall)  loginstall_l="$2";              PARMS_TO_STORE+=" '$2'"; shift;;
         --rebuild)     if [ $rebuild_file == $outfile ]; then
                            force=yes
                        fi
@@ -551,7 +566,7 @@ while :; do
         --printsize)   printsize="yes";;
         --regenerate-all) regenerate_all="yes";;
         --noimageifnotneeded) noimageifnotneeded="yes";;
-
+        --reproducible) reproducible_l="yes";;
         --) shift; break;;
 
         *)  # should not even reach this point
@@ -620,21 +635,10 @@ if ! [[ $outfile ]]; then
     fi
 fi
 
-for i in /usr/sbin /sbin /usr/bin /bin; do
-    rl=$i
-    if [ -L "$i" ]; then
-        rl=$(readlink -f $i)
-    fi
-    if [[ "$NPATH" != *:$rl* ]] ; then
-        NPATH+=":$rl"
-    fi
-done
-export PATH="${NPATH#:}"
 unset LC_MESSAGES
 unset LC_CTYPE
 export LC_ALL=C
 export LANG=C
-unset NPATH
 unset LD_LIBRARY_PATH
 unset LD_PRELOAD
 unset GREP_OPTIONS
@@ -679,6 +683,20 @@ for f in $(dropindirs_sort ".conf" "$confdir" "$dracutbasedir/dracut.conf.d"); d
     [[ -e $f ]] && . "$f"
 done
 
+DRACUT_PATH=${DRACUT_PATH:-/sbin /bin /usr/sbin /usr/bin}
+
+for i in $DRACUT_PATH; do
+    rl=$i
+    if [ -L "$i" ]; then
+        rl=$(readlink -f $i)
+    fi
+    if [[ "$NPATH" != *:$rl* ]] ; then
+        NPATH+=":$rl"
+    fi
+done
+export PATH="${NPATH#:}"
+unset NPATH
+
 # these optins add to the stuff in the config file
 if (( ${#add_dracutmodules_l[@]} )); then
     while pop add_dracutmodules_l val; do
@@ -713,6 +731,12 @@ fi
 if (( ${#install_items_l[@]} )); then
     while pop install_items_l val; do
         install_items+=" $val "
+    done
+fi
+
+if (( ${#install_optional_items_l[@]} )); then
+    while pop install_optional_items_l val; do
+        install_optional_items+=" $val "
     done
 fi
 
@@ -786,6 +810,9 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 [[ $early_microcode_l ]] && early_microcode=$early_microcode_l
 [[ $early_microcode ]] || early_microcode=no
 [[ $logfile_l ]] && logfile="$logfile_l"
+[[ $reproducible_l ]] && reproducible="$reproducible_l"
+[[ $loginstall_l ]] && loginstall="$loginstall_l"
+
 # eliminate IFS hackery when messing with fw_dir
 fw_dir=${fw_dir//:/ }
 
@@ -795,7 +822,7 @@ case $compress in
     bzip2) compress="bzip2 -9";;
     lzma)  compress="lzma -9 -T0";;
     xz)    compress="xz --check=crc32 --lzma2=dict=1MiB -T0";;
-    gzip)  compress="gzip -9"; command -v pigz > /dev/null 2>&1 && compress="pigz -9";;
+    gzip)  compress="gzip -n -9 --rsyncable"; command -v pigz > /dev/null 2>&1 && compress="pigz -9 -n -T -R";;
     lzo)   compress="lzop -9";;
     lz4)   compress="lz4 -l -9";;
 esac
@@ -805,6 +832,8 @@ fi
 
 [[ $hostonly = yes ]] && hostonly="-h"
 [[ $hostonly != "-h" ]] && unset hostonly
+
+[[ $reproducible == yes ]] && DRACUT_REPRODUCIBLE=1
 
 readonly TMPDIR="$tmpdir"
 readonly initdir="$(mktemp --tmpdir="$TMPDIR/" -d -t initramfs.XXXXXX)"
@@ -842,6 +871,10 @@ if [[ $print_cmdline ]]; then
     kmsgloglvl=0
 fi
 
+if [[ -f $dracutbasedir/dracut-version.sh ]]; then
+    . $dracutbasedir/dracut-version.sh
+fi
+
 if [[ -f $dracutbasedir/dracut-functions.sh ]]; then
     . $dracutbasedir/dracut-functions.sh
 else
@@ -858,10 +891,6 @@ if ! [[ $print_cmdline ]]; then
         export DRACUT_RESOLVE_DEPS=1
     fi
     rm -fr -- ${initdir}/*
-fi
-
-if [[ -f $dracutbasedir/dracut-version.sh ]]; then
-    . $dracutbasedir/dracut-version.sh
 fi
 
 # Verify bash version, current minimum is 3.1
@@ -888,6 +917,13 @@ if (( ${#add_drivers_l[@]} )); then
 fi
 add_drivers=${add_drivers/-/_}
 
+if (( ${#force_drivers_l[@]} )); then
+    while pop force_drivers_l val; do
+        force_drivers+=" $val "
+    done
+fi
+force_drivers=${force_drivers/-/_}
+
 if (( ${#omit_drivers_l[@]} )); then
     while pop omit_drivers_l val; do
         omit_drivers+=" $val "
@@ -904,6 +940,7 @@ fi
 omit_drivers_corrected=""
 for d in $omit_drivers; do
     [[ " $drivers $add_drivers " == *\ $d\ * ]] && continue
+    [[ " $drivers $force_drivers " == *\ $d\ * ]] && continue
     omit_drivers_corrected+="$d|"
 done
 omit_drivers="${omit_drivers_corrected%|}"
@@ -960,6 +997,36 @@ if [[ ! $print_cmdline ]]; then
         dfatal "No permission to write $outfile."
         exit 1
     fi
+
+    if [[ $loginstall ]]; then
+        if ! mkdir -p "$loginstall"; then
+            dfatal "Could not create directory to log installed files to '$loginstall'."
+            exit 1
+        fi
+        loginstall=$(readlink -f "$loginstall")
+    fi
+fi
+
+if [[ $acpi_override = yes ]] && ! check_kernel_config CONFIG_ACPI_INITRD_TABLE_OVERRIDE; then
+    dwarn "Disabling ACPI override, because kernel does not support it. CONFIG_ACPI_INITRD_TABLE_OVERRIDE!=y"
+    unset acpi_override
+fi
+
+if [[ $early_microcode = yes ]]; then
+    if [[ $hostonly ]]; then
+        [[ $(get_cpu_vendor) == "AMD" ]] \
+            && ! check_kernel_config CONFIG_MICROCODE_AMD_EARLY \
+            && unset early_microcode
+        [[ $(get_cpu_vendor) == "Intel" ]] \
+            && ! check_kernel_config CONFIG_MICROCODE_INTEL_EARLY \
+            && unset early_microcode
+    else
+        ! check_kernel_config CONFIG_MICROCODE_AMD_EARLY \
+            && ! check_kernel_config CONFIG_MICROCODE_INTEL_EARLY \
+            && unset early_microcode
+    fi
+    [[ $early_microcode != yes ]] \
+        && dwarn "Disabling early microcode, because kernel does not support it. CONFIG_MICROCODE_[AMD|INTEL]_EARLY!=y"
 fi
 
 # Need to be able to have non-root users read stuff (rpcbind etc)
@@ -1161,7 +1228,7 @@ export initdir dracutbasedir dracutmodules \
     debug host_fs_types host_devs sshkey add_fstab \
     DRACUT_VERSION udevdir prefix filesystems drivers \
     systemdutildir systemdsystemunitdir systemdsystemconfdir \
-    host_modalias host_modules hostonly_cmdline
+    host_modalias host_modules hostonly_cmdline loginstall
 
 mods_to_load=""
 # check all our modules to see if they should be sourced.
@@ -1296,6 +1363,13 @@ if [[ $no_kernel != yes ]]; then
     if [[ $add_drivers ]]; then
         hostonly='' instmods -c $add_drivers
     fi
+    if [[ $force_drivers ]]; then
+        hostonly='' instmods -c $force_drivers
+        rm -f $initdir/etc/cmdline.d/20-force_driver.conf
+        for mod in $force_drivers; do
+            echo "rd.driver.pre=$mod" >>$initdir/etc/cmdline.d/20-force_drivers.conf
+        done
+    fi
     if [[ $filesystems ]]; then
         hostonly='' instmods -c $filesystems
     fi
@@ -1317,6 +1391,7 @@ fi
 
 if [[ $kernel_only != yes ]]; then
     (( ${#install_items[@]} > 0 )) && inst_multiple ${install_items[@]}
+    (( ${#install_optional_items[@]} > 0 )) && inst_multiple -o ${install_optional_items[@]}
 
     [[ $kernel_cmdline ]] && printf "%s\n" "$kernel_cmdline" >> "${initdir}/etc/cmdline.d/01-default.conf"
 
@@ -1400,20 +1475,18 @@ if [[ $kernel_only != yes ]]; then
     fi
 fi
 
-if [[ $do_prelink == yes ]]; then
-    PRELINK_BIN="$(command -v prelink)"
-    if [[ $UID = 0 ]] && [[ $PRELINK_BIN ]]; then
-        if [[ $DRACUT_FIPS_MODE ]]; then
-            dinfo "*** Installing prelink files ***"
-            inst_multiple -o prelink /etc/prelink.conf /etc/prelink.conf.d/*.conf /etc/prelink.cache
-        else
-            dinfo "*** Pre-linking files ***"
-            inst_multiple -o prelink /etc/prelink.conf /etc/prelink.conf.d/*.conf
-            chroot "$initdir" "$PRELINK_BIN" -a
-            rm -f -- "$initdir/$PRELINK_BIN"
-            rm -fr -- "$initdir"/etc/prelink.*
-            dinfo "*** Pre-linking files done ***"
-        fi
+PRELINK_BIN="$(command -v prelink)"
+if [[ $UID = 0 ]] && [[ $PRELINK_BIN ]]; then
+    if [[ $DRACUT_FIPS_MODE ]]; then
+        dinfo "*** Installing prelink files ***"
+        inst_multiple -o prelink /etc/prelink.conf /etc/prelink.conf.d/*.conf /etc/prelink.cache
+    elif [[ $do_prelink == yes ]]; then
+        dinfo "*** Pre-linking files ***"
+        inst_multiple -o prelink /etc/prelink.conf /etc/prelink.conf.d/*.conf
+        chroot "$initdir" "$PRELINK_BIN" -a
+        rm -f -- "$initdir/$PRELINK_BIN"
+        rm -fr -- "$initdir"/etc/prelink.*
+        dinfo "*** Pre-linking files done ***"
     fi
 fi
 
@@ -1484,7 +1557,7 @@ if [[ $acpi_override = yes ]] && [[ -d $acpi_table_dir ]]; then
     mkdir -p $_dest_dir
     for table in $acpi_table_dir/*.aml; do
         dinfo "   Adding ACPI table: $table"
-        cp $table $_dest_dir
+        cp -a $table $_dest_dir
         create_early_cpio="yes"
     done
 fi
@@ -1498,15 +1571,37 @@ fi
 rm -f -- "$outfile"
 dinfo "*** Creating image file ***"
 
+if [[ $DRACUT_REPRODUCIBLE ]]; then
+    find "$initdir" -newer "$dracutbasedir/dracut-functions.sh" -print0 \
+        | xargs -r -0 touch -h -m -c -r "$dracutbasedir/dracut-functions.sh"
+
+    [[ "$(cpio --help)" == *--reproducible* ]] && CPIO_REPRODUCIBLE=1
+fi
+
 [[ "$UID" != 0 ]] && cpio_owner_root="-R 0:0"
 
 if [[ $create_early_cpio = yes ]]; then
     echo 1 > "$early_cpio_dir/d/early_cpio"
+
+    if [[ $DRACUT_REPRODUCIBLE ]]; then
+        find "$early_cpio_dir/d" -newer "$dracutbasedir/dracut-functions.sh" -print0 \
+            | xargs -r -0 touch -h -m -c -r "$dracutbasedir/dracut-functions.sh"
+    fi
+
     # The microcode blob is _before_ the initramfs blob, not after
-    (cd "$early_cpio_dir/d";     find . -print0 | cpio --null $cpio_owner_root -H newc -o --quiet > $outfile)
+    (
+        cd "$early_cpio_dir/d"
+        find . -print0 | sort -z \
+            | cpio ${CPIO_REPRODUCIBLE:+--reproducible} --null $cpio_owner_root -H newc -o --quiet > $outfile
+    )
 fi
-if ! ( umask 077; cd "$initdir"; find . -print0 | cpio --null $cpio_owner_root -H newc -o --quiet | \
-    $compress >> "$outfile"; ); then
+
+if ! (
+        umask 077; cd "$initdir"
+        find . -print0 | sort -z \
+            | cpio ${CPIO_REPRODUCIBLE:+--reproducible} --null $cpio_owner_root -H newc -o --quiet \
+            | $compress >> "$outfile"
+    ); then
     dfatal "dracut: creation of $outfile failed"
     exit 1
 fi

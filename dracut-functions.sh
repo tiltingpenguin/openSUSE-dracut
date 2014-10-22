@@ -1,6 +1,4 @@
 #!/bin/bash
-# -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
-# ex: ts=8 sw=4 sts=4 et filetype=sh
 #
 # functions used by dracut and other tools.
 #
@@ -109,12 +107,11 @@ ldconfig_paths()
     local a i
     declare -A a
     for i in $(
-        ldconfig -pN 2>/dev/null | while read a b c d; do
-            [[ "$c" != "=>" ]] && continue
-            printf "%s\n" ${d%/*};
+        ldconfig -pN 2>/dev/null | grep -F '=>' | grep -E -v '/(lib|lib64|usr/lib|usr/lib64)/[^/]*$' | while read a b c d; do
+            d=${d%/*}
+            printf "%s\n" "$d";
         done
     ); do
-        [[ "$i" = "/lib" || "$i" = "/usr/lib" || "$i" = "/lib64" || "$i" = "/usr/lib64" ]] && continue
         a["$i"]=1;
     done;
     printf "%s\n" ${!a[@]}
@@ -389,6 +386,7 @@ get_persistent_dev() {
             return
         fi
     done
+    printf -- "%s" "$1"
 }
 
 expand_persistent_dev() {
@@ -739,7 +737,6 @@ fs_get_option() {
     done
 }
 
-
 if ! [[ $DRACUT_INSTALL ]]; then
     DRACUT_INSTALL=$(find_binary dracut-install)
 fi
@@ -761,33 +758,46 @@ inst_dir() {
 }
 
 inst() {
+    local _hostonly_install
+    if [[ "$1" == "-H" ]]; then
+        _hostonly_install="-H"
+        shift
+    fi
     [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
-        #dinfo "$DRACUT_INSTALL -l $@"
-    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l} ${DRACUT_FIPS_MODE:+-f} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l} ${DRACUT_FIPS_MODE:+-f} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} ${DRACUT_RESOLVE_DEPS:+-l} ${DRACUT_FIPS_MODE:+-f} ${_hostonly_install:+-H} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} ${DRACUT_RESOLVE_DEPS:+-l} ${DRACUT_FIPS_MODE:+-f} ${_hostonly_install:+-H} "$@" || :
 }
 
 inst_simple() {
+    local _hostonly_install
+    if [[ "$1" == "-H" ]]; then
+        _hostonly_install="-H"
+        shift
+    fi
     [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
     [[ -e $1 ]] || return 1  # no source
-    $DRACUT_INSTALL ${initdir:+-D "$initdir"} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} ${_hostonly_install:+-H} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} ${_hostonly_install:+-H} "$@" || :
 }
 
 inst_symlink() {
+    local _hostonly_install
+    if [[ "$1" == "-H" ]]; then
+        _hostonly_install="-H"
+        shift
+    fi
     [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
     [[ -L $1 ]] || return 1
-    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} ${_hostonly_install:+-H} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} ${_hostonly_install:+-H} "$@" || :
 }
 
 inst_multiple() {
-    local ret
-        #dinfo "initdir=$initdir $DRACUT_INSTALL -l $@"
-    $DRACUT_INSTALL ${initdir:+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@"
-    ret=$?
-    (($ret != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} -a ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@" || :
-    return $ret
+    local _ret
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} -a ${loginstall:+-L "$loginstall"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@"
+    _ret=$?
+    (($_ret != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} -a ${loginstall:+-L "$loginstall"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} ${_hostonly_install:+-H} "$@" || :
+    return $_ret
 }
 
 dracut_install() {
@@ -795,20 +805,25 @@ dracut_install() {
 }
 
 inst_library() {
+    local _hostonly_install
+    if [[ "$1" == "-H" ]]; then
+        _hostonly_install="-H"
+        shift
+    fi
     [[ -e ${initdir}/"${2:-$1}" ]] && return 0  # already there
     [[ -e $1 ]] || return 1  # no source
-    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} ${_hostonly_install:+-H} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} ${_hostonly_install:+-H} "$@" || :
 }
 
 inst_binary() {
-    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@" || :
 }
 
 inst_script() {
-    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@"
-    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@" || :
+    $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} ${DRACUT_RESOLVE_DEPS:+-l} ${DRACUT_FIPS_MODE:+-f} "$@"
+    (($? != 0)) && derror $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} ${DRACUT_RESOLVE_DEPS:+-l}  ${DRACUT_FIPS_MODE:+-f} "$@" || :
 }
 
 mark_hostonly() {
@@ -1398,11 +1413,17 @@ for_each_module_dir() {
 
     # Report any missing dracut modules, the user has specified
     _modcheck="$add_dracutmodules $force_add_dracutmodules"
-    [[ $dracutmodules != all ]] && _modcheck="$m $dracutmodules"
+    [[ $dracutmodules != all ]] && _modcheck="$_modcheck $dracutmodules"
     for _mod in $_modcheck; do
         [[ " $mods_to_load " == *\ $_mod\ * ]] && continue
-        [[ " $omit_dracutmodules " == *\ $_mod\ * ]] && continue
+
+        [[ " $force_add_dracutmodules " != *\ $_mod\ * ]] \
+            && [[ " $omit_dracutmodules " == *\ $_mod\ * ]] \
+            && continue
+
         derror "dracut module '$_mod' cannot be found or installed."
+        [[ " $force_add_dracutmodules " == *\ $_mod\ * ]] && exit 1
+        [[ " $add_dracutmodules " == *\ $_mod\ * ]] && exit 1
     done
 }
 
@@ -1505,7 +1526,7 @@ dracut_kernel_post() {
 
         (
             if [[ $DRACUT_INSTALL ]] && [[ -z $_moddirname ]]; then
-                xargs -r $DRACUT_INSTALL ${initdir:+-D "$initdir"} -a < "$DRACUT_KERNEL_LAZY_HASHDIR/lazylist.dep"
+                xargs -r $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} -a < "$DRACUT_KERNEL_LAZY_HASHDIR/lazylist.dep"
             else
                 while read _modpath; do
                     local _destpath=$_modpath
@@ -1524,7 +1545,7 @@ dracut_kernel_post() {
                 for _fwdir in $fw_dir; do
                     echo $_fwdir/$line;
                 done;
-            done | xargs -r $DRACUT_INSTALL ${initdir:+-D "$initdir"} -a -o
+            done | xargs -r $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} -a -o
         else
             for _fw in $(xargs -r modinfo -k $kernel -F firmware < "$DRACUT_KERNEL_LAZY_HASHDIR/lazylist.dep"); do
                 for _fwdir in $fw_dir; do
@@ -1722,6 +1743,24 @@ instmods() {
     _ret=$?
     return $_ret
 }
+
+check_kernel_config()
+{
+    local _config_opt="$1"
+    local _config_file
+    [[ -f /boot/config-$kernel ]] \
+        && _config_file="/boot/config-$kernel"
+    [[ -f /lib/modules/$kernel/config ]] \
+        && _config_file="/lib/modules/$kernel/config"
+
+    # no kernel config file, so return true
+    [[ $_config_file ]] || return 0
+
+    grep -q -F "${_config_opt}=" "$_config_file" && return 0
+    return 1
+}
+
+
 # get_cpu_vendor
 # Only two values are returned: AMD or Intel
 get_cpu_vendor ()

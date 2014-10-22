@@ -1,6 +1,4 @@
 #!/bin/sh
-# -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
-# ex: ts=8 sw=4 sts=4 et filetype=sh
 
 export DRACUT_SYSTEMD
 export NEWROOT
@@ -866,6 +864,11 @@ wait_for_mount()
 
 dev_unit_name()
 {
+    if command -v systemd-escape >/dev/null; then
+        systemd-escape -p  "$1"
+        return
+    fi
+
     _name="${1%%/}"
     _name="${_name##/}"
     _name="$(str_replace "$_name" '-' '\x2d')"
@@ -930,7 +933,7 @@ wait_for_dev()
 cancel_wait_for_dev()
 {
     local _name
-    _name="$(str_replace "$1" '/' '\\x2f')"
+    _name="$(str_replace "$1" '/' '\x2f')"
     rm -f -- "$hookdir/initqueue/finished/devexists-${_name}.sh"
     rm -f -- "$hookdir/emergency/80-${_name}.sh"
     if [ -n "$DRACUT_SYSTEMD" ]; then
@@ -991,13 +994,17 @@ wait_for_loginit()
 # pidof version for root
 if ! command -v pidof >/dev/null 2>/dev/null; then
     pidof() {
+        debug_off
         local _cmd
         local _exe
         local _rl
         local _ret=1
         local i
         _cmd="$1"
-        [ -z "$_cmd" ] && return 1
+        if [ -z "$_cmd" ]; then
+            debug_on
+            return 1
+        fi
         _exe=$(type -P "$1")
         for i in /proc/*/exe; do
             [ -e "$i" ] || continue
@@ -1011,6 +1018,7 @@ if ! command -v pidof >/dev/null 2>/dev/null; then
             echo ${i##/proc/}
             _ret=0
         done
+        debug_on
         return $_ret
     }
 fi

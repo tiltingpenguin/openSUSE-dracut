@@ -1,6 +1,4 @@
 #!/bin/bash
-# -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
-# ex: ts=8 sw=4 sts=4 et filetype=sh
 
 # called by dracut
 check() {
@@ -247,7 +245,7 @@ install() {
     if checks; then
         install_base
 
-        if [[ ${hostonly} ]] && ! [[ ${i18n_install_all} ]]; then
+        if [[ ${hostonly} ]] && ! [[ ${i18n_install_all} == "yes" ]]; then
             install_local_i18n || install_all_kbd
         else
             install_all_kbd

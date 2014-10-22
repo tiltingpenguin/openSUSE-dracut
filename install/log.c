@@ -1,5 +1,3 @@
-/*-*- Mode: C; c-basic-offset: 8; indent-tabs-mode: nil -*-*/
-
 /***
   This file is part of systemd.
 
@@ -103,11 +101,10 @@ void log_set_facility(int facility) {
 static int write_to_console(
                 int level,
                 const char*file,
-                int line,
+                unsigned int line,
                 const char *func,
                 const char *buffer) {
 
-        char location[64];
         struct iovec iovec[5];
         unsigned n = 0;
 
@@ -119,7 +116,9 @@ static int write_to_console(
         IOVEC_SET_STRING(iovec[n++], "dracut-install: ");
 
         if (show_location) {
-                snprintf(location, sizeof(location), "(%s:%u) ", file, line);
+                char location[64];
+                if (snprintf(location, sizeof(location), "(%s:%u) ", file, line) <= 0)
+                        return -errno;
                 IOVEC_SET_STRING(iovec[n++], location);
         }
 

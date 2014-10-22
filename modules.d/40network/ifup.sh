@@ -1,6 +1,4 @@
 #!/bin/sh
-# -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
-# ex: ts=8 sw=4 sts=4 et filetype=sh
 #
 # We don't need to check for ip= errors here, that is handled by the
 # cmdline parser script
@@ -60,7 +58,7 @@ fi
 # bridge this interface?
 if [ -e /tmp/bridge.info ]; then
     . /tmp/bridge.info
-    for ethname in $ethnames ; do
+    for ethname in $bridgeslaves ; do
         if [ "$netif" = "$ethname" ]; then
             if [ "$netif" = "$bondname" ] && [ -n "$DO_BOND_SETUP" ] ; then
                 : # We need to really setup bond (recursive call)
@@ -145,7 +143,7 @@ do_static() {
         ip addr add $ip/$mask ${srv:+peer $srv} brd + dev $netif
     fi
 
-    [ -n "$gw" ] && echo ip route add default via $gw dev $netif > /tmp/net.$netif.gw
+    [ -n "$gw" ] && echo ip route replace default via $gw dev $netif > /tmp/net.$netif.gw
     [ -n "$hostname" ] && echo "echo $hostname > /proc/sys/kernel/hostname" > /tmp/net.$netif.hostname
 
     return 0
@@ -236,7 +234,7 @@ if [ -e /tmp/bridge.info ]; then
     if [ "$netif" = "$bridgename" ] && [ ! -e /tmp/net.$bridgename.up ]; then
         brctl addbr $bridgename
         brctl setfd $bridgename 0
-        for ethname in $ethnames ; do
+        for ethname in $bridgeslaves ; do
             if [ "$ethname" = "$bondname" ] ; then
                 DO_BOND_SETUP=yes ifup $bondname -m
             elif [ "$ethname" = "$teammaster" ] ; then

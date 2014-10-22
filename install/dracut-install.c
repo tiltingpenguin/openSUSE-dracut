@@ -1,5 +1,3 @@
-/*-*- Mode: C; c-basic-offset: 8; indent-tabs-mode: nil -*-*/
-
 /* dracut-install.c  -- install files and executables
 
    Copyright (C) 2012 Harald Hoyer
@@ -55,7 +53,9 @@ static bool arg_resolvelazy = false;
 static bool arg_resolvedeps = false;
 static bool arg_hostonly = false;
 static char *destrootdir = NULL;
-
+static char *logdir = NULL;
+static char *logfile = NULL;
+FILE *logfile_f = NULL;
 static Hashmap *items = NULL;
 static Hashmap *items_failed = NULL;
 
@@ -222,7 +222,8 @@ static int cp(const char *src, const char *dst)
                 if (ret == 0) {
                         struct timeval tv[2];
                         if (fchown(dest_desc, sb.st_uid, sb.st_gid) != 0)
-                                fchown(dest_desc, (__uid_t) - 1, sb.st_gid);
+                                if(fchown(dest_desc, (__uid_t) - 1, sb.st_gid) != 0)
+                                    log_error("Failed to chown %s: %m", dst);
                         tv[0].tv_sec = sb.st_atime;
                         tv[0].tv_usec = 0;
                         tv[1].tv_sec = sb.st_mtime;
@@ -328,10 +329,14 @@ static int resolve_deps(const char *src)
 {
         int ret = 0;
 
-        _cleanup_free_ char *buf = malloc(LINE_MAX);
+        _cleanup_free_ char *buf = NULL;
         size_t linesize = LINE_MAX;
         _cleanup_pclose_ FILE *fptr = NULL;
         _cleanup_free_ char *cmd = NULL;
+
+	buf = malloc(LINE_MAX);
+	if (buf == NULL)
+		return -errno;
 
         if (strstr(src, ".so") == 0) {
                 _cleanup_close_ int fd = -1;
@@ -339,7 +344,10 @@ static int resolve_deps(const char *src)
                 if (fd < 0)
                         return -errno;
 
-                read(fd, buf, LINE_MAX);
+                ret = read(fd, buf, LINE_MAX);
+                if (ret == -1)
+                        return -errno;
+
                 buf[LINE_MAX - 1] = '\0';
                 if (buf[0] == '#' && buf[1] == '!') {
                         /* we have a shebang */
@@ -367,7 +375,7 @@ static int resolve_deps(const char *src)
         fptr = popen(cmd, "r");
 
         while (!feof(fptr)) {
-                char *p, *q;
+                char *p;
 
                 if (getline(&buf, &linesize, fptr) <= 0)
                         continue;
@@ -401,6 +409,8 @@ static int resolve_deps(const char *src)
 
                 p = strchr(p, '/');
                 if (p) {
+                        char *q;
+
                         for (q = p; *q && *q != ' ' && *q != '\n'; q++) ;
                         *q = '\0';
 
@@ -488,7 +498,14 @@ void mark_hostonly(const char *path)
         }
 
         fprintf(f, "%s\n", path);
+}
 
+void dracut_log_cp(const char *path)
+{
+        int ret;
+        ret = fprintf(logfile_f, "%s\n", path);
+        if (ret < 0)
+                log_error("Could not append '%s' to logfile '%s': %m", path, logfile);
 }
 
 static int dracut_install(const char *src, const char *dst, bool isdir, bool resolvedeps, bool hashdst)
@@ -657,6 +674,8 @@ static int dracut_install(const char *src, const char *dst, bool isdir, bool res
                 mark_hostonly(dst);
 
         ret += cp(src, fulldstpath);
+        if (ret == 0 && logfile_f)
+                dracut_log_cp(src);
 
         log_debug("dracut_install ret = %d", ret);
 
@@ -682,6 +701,7 @@ static void usage(int status)
                "  -o --optional       If SOURCE does not exist, do not fail\n"
                "  -d --dir            SOURCE is a directory\n"
                "  -l --ldd            Also install shebang executables and libraries\n"
+               "  -L --logdir <DIR>   Log files, which were installed from the host to <DIR>\n"
                "  -R --resolvelazy    Only install shebang executables and libraries\n"
                "                      for all SOURCE files\n"
                "  -H --fips           Also install all '.SOURCE.hmac' files\n"
@@ -738,10 +758,11 @@ static int parse_argv(int argc, char *argv[])
                 {"all", no_argument, NULL, 'a'},
                 {"fips", no_argument, NULL, 'f'},
                 {"destrootdir", required_argument, NULL, 'D'},
+                {"logdir", required_argument, NULL, 'L'},
                 {NULL, 0, NULL, 0}
         };
 
-        while ((c = getopt_long(argc, argv, "adfhloD:HR", options, NULL)) != -1) {
+        while ((c = getopt_long(argc, argv, "adfhlL:oD:HR", options, NULL)) != -1) {
                 switch (c) {
                 case ARG_VERSION:
                         puts(PROGRAM_VERSION_STRING);
@@ -769,6 +790,9 @@ static int parse_argv(int argc, char *argv[])
                         break;
                 case 'D':
                         destrootdir = strdup(optarg);
+                        break;
+                case 'L':
+                        logdir = strdup(optarg);
                         break;
                 case 'f':
                         arg_hmac = true;
@@ -878,9 +902,9 @@ static int install_one(const char *src, const char *dst)
         int ret = 0;
 
         if (strchr(src, '/') == NULL) {
-                char **q = NULL;
                 char **p = find_binary(src);
                 if (p) {
+			char **q = NULL;
                         STRV_FOREACH(q, p) {
                                 char *newsrc = *q;
                                 log_debug("dracut_install '%s' '%s'", newsrc, dst);
@@ -914,9 +938,9 @@ static int install_all(int argc, char **argv)
                 log_debug("Handle '%s'", argv[i]);
 
                 if (strchr(argv[i], '/') == NULL) {
-                        char **q = NULL;
                         char **p = find_binary(argv[i]);
                         if (p) {
+				char **q = NULL;
                                 STRV_FOREACH(q, p) {
                                         char *newsrc = *q;
                                         log_debug("dracut_install '%s'", newsrc);
@@ -994,6 +1018,23 @@ int main(int argc, char **argv)
                 goto finish;
         }
 
+        if (logdir) {
+                int ret;
+
+                ret = asprintf(&logfile, "%s/%d.log", logdir, getpid());
+                if (ret < 0) {
+                        log_error("Out of memory!");
+                        exit(EXIT_FAILURE);
+                }
+
+                logfile_f = fopen(logfile, "a");
+                if (logfile_f == NULL) {
+                        log_error("Could not open %s for logging: %m", logfile);
+                        r = EXIT_FAILURE;
+                        goto finish;
+                }
+        }
+
         r = EXIT_SUCCESS;
 
         if (((optind + 1) < argc) && (strcmp(argv[optind + 1], destrootdir) == 0)) {
@@ -1022,6 +1063,8 @@ int main(int argc, char **argv)
                 r = EXIT_SUCCESS;
 
  finish:
+        if (logfile_f)
+                fclose(logfile_f);
 
         while ((i = hashmap_steal_first(items)))
                 item_free(i);

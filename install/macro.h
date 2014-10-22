@@ -1,5 +1,3 @@
-/*-*- Mode: C; c-basic-offset: 8; indent-tabs-mode: nil -*-*/
-
 #pragma once
 
 /***
@@ -207,7 +205,7 @@ static inline size_t IOVEC_INCREMENT(struct iovec *i, unsigned n, size_t k) {
         for (j = 0; j < n; j++) {
                 size_t sub;
 
-                if (_unlikely_(k <= 0))
+                if (_unlikely_(k == 0))
                         break;
 
                 sub = MIN(i[j].iov_len, k);

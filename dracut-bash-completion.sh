@@ -1,7 +1,4 @@
 #
-# -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
-# ex: ts=8 sw=4 sts=4 et filetype=sh
-#
 # Copyright 2013 Red Hat, Inc.  All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify
@@ -34,13 +31,16 @@ _dracut() {
                               --local --hostonly --no-hostonly --fstab --help --bzip2 --lzma
                               --xz --no-compress --gzip --list-modules --show-modules --keep
                               --printsize --regenerate-all --noimageifnotneeded --early-microcode
-                              --no-early-microcode --print-cmdline --prelink --noprelink'
+                              --no-early-microcode --print-cmdline --prelink --noprelink --reproducible
+                              '
 
                        [ARG]='-a -m -o -d -I -k -c -L --kver --add --force-add --add-drivers
                               --omit-drivers --modules --omit --drivers --filesystems --install
                               --fwdir --libdirs --fscks --add-fstab --mount --device --nofscks
                               --kmoddir --conf --confdir --tmpdir --stdlog --compress --prefix
-                              --kernel-cmdline --sshkey --persistent-policy'
+                              --kernel-cmdline --sshkey --persistent-policy --install-optional
+                              --loginstall
+                              '
         )
 
         if __contains_word "$prev" ${OPTS[ARG]}; then
@@ -49,7 +49,7 @@ _dracut() {
                                 comps=$(compgen -d -- "$cur")
                                 compopt -o filenames
                         ;;
-                        -c|--conf|--sshkey|--add-fstab|--add-device|-I|--install)
+                        -c|--conf|--sshkey|--add-fstab|--add-device|-I|--install|--install-optional)
                                 comps=$(compgen -f -- "$cur")
                                 compopt -o filenames
                         ;;

@@ -13,7 +13,7 @@ sysconfdir ?= ${prefix}/etc
 bindir ?= ${prefix}/bin
 mandir ?= ${prefix}/share/man
 CFLAGS ?= -O2 -g -Wall
-CFLAGS += -std=gnu99  -D_FILE_OFFSET_BITS=64
+CFLAGS += -std=gnu99  -D_FILE_OFFSET_BITS=64 -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 
 bashcompletiondir ?= ${datadir}/bash-completion/completions
 
 man1pages = lsinitrd.1
@@ -125,9 +125,9 @@ endif
 	if [ -n "$(systemdsystemunitdir)" ]; then \
 		mkdir -p $(DESTDIR)$(systemdsystemunitdir); \
 		ln -srf $(DESTDIR)$(pkglibdir)/modules.d/98systemd/dracut-shutdown.service $(DESTDIR)$(systemdsystemunitdir)/dracut-shutdown.service; \
-		mkdir -p $(DESTDIR)$(systemdsystemunitdir)/shutdown.target.wants; \
+		mkdir -p $(DESTDIR)$(systemdsystemunitdir)/sysinit.target.wants; \
 		ln -s ../dracut-shutdown.service \
-		$(DESTDIR)$(systemdsystemunitdir)/shutdown.target.wants/dracut-shutdown.service; \
+		$(DESTDIR)$(systemdsystemunitdir)/sysinit.target.wants/dracut-shutdown.service; \
 		mkdir -p $(DESTDIR)$(systemdsystemunitdir)/initrd.target.wants; \
 		for i in \
 		    dracut-cmdline.service \
@@ -188,7 +188,9 @@ rpm: dracut-$(VERSION).tar.xz syncheck
 	rpmbuild=$$(mktemp -d -t rpmbuild-dracut.XXXXXX); src=$$(pwd); \
 	cp dracut-$(VERSION).tar.xz "$$rpmbuild"; \
 	LC_MESSAGES=C $$src/git2spec.pl $(VERSION) "$$rpmbuild" < dracut.spec > $$rpmbuild/dracut.spec; \
-	(cd "$$rpmbuild"; rpmbuild --define "_topdir $$PWD" --define "_sourcedir $$PWD" \
+	(cd "$$rpmbuild"; \
+	wget https://www.gnu.org/licenses/lgpl-2.1.txt; \
+	rpmbuild --define "_topdir $$PWD" --define "_sourcedir $$PWD" \
 	        --define "_specdir $$PWD" --define "_srcrpmdir $$PWD" \
 		--define "_rpmdir $$PWD" -ba dracut.spec; ) && \
 	( mv "$$rpmbuild"/$$(arch)/*.rpm .; mv "$$rpmbuild"/*.src.rpm .;rm -fr -- "$$rpmbuild"; ls *.rpm )

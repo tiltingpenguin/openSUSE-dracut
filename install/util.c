@@ -1,5 +1,3 @@
-/*-*- Mode: C; c-basic-offset: 8; indent-tabs-mode: nil -*-*/
-
 /***
   This file is part of systemd.
 
@@ -224,7 +222,7 @@ char *strappend(const char *s, const char *suffix) {
 char *strjoin(const char *x, ...) {
         va_list ap;
         size_t l;
-        char *r, *p;
+        char *r;
 
         va_start(ap, x);
 
@@ -257,6 +255,8 @@ char *strjoin(const char *x, ...) {
                 return NULL;
 
         if (x) {
+                char *p;
+
                 p = stpcpy(r, x);
 
                 va_start(ap, x);

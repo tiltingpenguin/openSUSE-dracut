@@ -1,6 +1,4 @@
 #!/bin/bash
-# -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
-# ex: ts=8 sw=4 sts=4 et filetype=sh
 #
 # Licensed under the GPLv2
 #
@@ -29,7 +27,7 @@ depends() {
 # called by dracut
 install() {
     inst_dir /lib/modules/keys
-    inst_binary /usr/bin/keyctl
+    inst_binary keyctl
 
     inst_hook pre-trigger 01 "$moddir/load-modsign-keys.sh"
 

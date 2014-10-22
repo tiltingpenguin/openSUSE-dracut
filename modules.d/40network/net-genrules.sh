@@ -1,6 +1,4 @@
 #!/bin/sh
-# -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
-# ex: ts=8 sw=4 sts=4 et filetype=sh
 
 getargbool 0 rd.neednet && NEEDNET=1
 
@@ -16,7 +14,7 @@ command -v fix_bootif >/dev/null || . /lib/net-lib.sh
     # bridge: attempt only the defined interface
     if [ -e /tmp/bridge.info ]; then
         . /tmp/bridge.info
-        IFACES="$IFACES ${ethnames%% *}"
+        IFACES="$IFACES ${bridgeslaves%% *}"
         MASTER_IFACES="$MASTER_IFACES $bridgename"
     fi
 

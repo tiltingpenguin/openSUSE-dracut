@@ -1,6 +1,4 @@
 #!/bin/bash
-# -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
-# ex: ts=8 sw=4 sts=4 et filetype=sh
 
 # called by dracut
 installkernel() {
@@ -45,15 +43,19 @@ installkernel() {
 
         instmods yenta_socket scsi_dh_rdac scsi_dh_emc \
             atkbd i8042 usbhid hid-apple hid-sunplus hid-cherry hid-logitech \
-            hid-logitech-dj hid-microsoft firewire-ohci \
+            hid-logitech-dj hid-microsoft hid-lcpower firewire-ohci \
             pcmcia usb_storage nvme hid-hyperv hv-vmbus \
             sdhci_acpi
 
         if [[ "$(uname -p)" == arm* ]]; then
             # arm specific modules
-            hostonly='' instmods omapdrm panel-tfp410
-            instmods i2c-tegra gpio-regulator as3722-regulator \
-                    phy-tegra-usb ehci-tegra sdhci-tegra
+            instmods \
+                "=drivers/i2c/busses" \
+                "=drivers/regulator" \
+                "=drivers/rtc" \
+                "=drivers/usb/host" \
+                "=drivers/usb/phy" \
+                ${NULL}
         fi
 
         # install virtual machine support

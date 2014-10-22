@@ -1,5 +1,3 @@
-/*-*- Mode: C; c-basic-offset: 8; indent-tabs-mode: nil -*-*/
-
 /***
   This file is part of systemd.
 
@@ -84,7 +82,7 @@ char **strv_copy(char * const *l) {
         return r;
 }
 
-unsigned strv_length(char * const *l) {
+unsigned int strv_length(char * const *l) {
         unsigned n = 0;
 
         if (!l)
@@ -299,7 +297,7 @@ char **strv_split_quoted(const char *s) {
 
 char **strv_split_newlines(const char *s) {
         char **l;
-        unsigned n;
+        unsigned int n;
 
         assert(s);
 
@@ -311,7 +309,7 @@ char **strv_split_newlines(const char *s) {
                 return NULL;
 
         n = strv_length(l);
-        if (n <= 0)
+        if (n == 0)
                 return l;
 
         if (isempty(l[n-1])) {
@@ -491,9 +489,9 @@ char **strv_parse_nulstr(const char *s, size_t l) {
         unsigned c = 0, i = 0;
         char **v;
 
-        assert(s || l <= 0);
+        assert(s || l == 0);
 
-        if (l <= 0)
+        if (l == 0)
                 return new0(char*, 1);
 
         for (p = s; p < s + l; p++)

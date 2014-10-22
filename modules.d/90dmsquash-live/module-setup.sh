@@ -1,6 +1,4 @@
 #!/bin/bash
-# -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
-# ex: ts=8 sw=4 sts=4 et filetype=sh
 
 # called by dracut
 check() {
@@ -13,7 +11,7 @@ check() {
 depends() {
     # if dmsetup is not installed, then we cannot support fedora/red hat
     # style live images
-    echo dm rootfs-block
+    echo dm rootfs-block img-lib
     return 0
 }
 
