@@ -8,12 +8,12 @@ KVERSION=${KVERSION-$(uname -r)}
 test_run() {
     DISKIMAGE=$TESTDIR/TEST-15-BTRFSRAID-root.img
     $testdir/run-qemu \
-	-hda $DISKIMAGE \
+	-drive format=raw,index=0,media=disk,file=$DISKIMAGE \
 	-m 256M  -smp 2 -nographic \
-	-net none -kernel /boot/vmlinuz-$KVERSION \
+	-net none \
 	-append "root=LABEL=root rw rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
-    dd if=$DISKIMAGE bs=512 count=2 | grep -F -m 1 -q dracut-root-block-success $DISKIMAGE || return 1
+    dd if=$DISKIMAGE bs=512 count=4 skip=2048 | grep -F -m 1 -q dracut-root-block-success $DISKIMAGE || return 1
 }
 
 test_setup() {
@@ -69,19 +69,19 @@ test_setup() {
 	-m "dash btrfs udev-rules base rootfs-block fs-lib kernel-modules" \
 	-d "piix ide-gd_mod ata_piix btrfs sd_mod" \
         --nomdadmconf \
+        --no-hostonly-cmdline -N \
 	-f $TESTDIR/initramfs.makeroot $KVERSION || return 1
 
     rm -rf -- $TESTDIR/overlay
 
     # Invoke KVM and/or QEMU to actually create the target filesystem.
     $testdir/run-qemu \
-	-hda $DISKIMAGE \
+	-drive format=raw,index=0,media=disk,file=$DISKIMAGE \
 	-m 256M  -smp 2 -nographic -net none \
-	-kernel "/boot/vmlinuz-$kernel" \
 	-append "root=/dev/fakeroot rw quiet console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.makeroot  || return 1
 
-    dd if=$DISKIMAGE bs=512 count=2 | grep -F -m 1 -q dracut-root-block-created || return 1
+    dd if=$DISKIMAGE bs=512 count=4 skip=2048 | grep -F -m 1 -q dracut-root-block-created || return 1
 
    (
         export initdir=$TESTDIR/overlay
@@ -91,9 +91,10 @@ test_setup() {
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-o "plymouth network" \
+	-o "plymouth network kernel-network-modules" \
 	-a "debug" \
 	-d "piix ide-gd_mod ata_piix btrfs sd_mod" \
+        --no-hostonly-cmdline -N \
 	-f $TESTDIR/initramfs.testing $KVERSION || return 1
 }
 

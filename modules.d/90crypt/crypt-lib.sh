@@ -7,7 +7,7 @@ crypttab_contains() {
     local luks="$1"
     local l d rest
     if [ -f /etc/crypttab ]; then
-        while read l d rest; do
+        while read l d rest || [ -n "$l" ]; do
             strstr "${l##luks-}" "${luks##luks-}" && return 0
             strstr "$d" "${luks##luks-}" && return 0
         done < /etc/crypttab
@@ -42,10 +42,10 @@ ask_for_password() {
 
     while [ $# -gt 0 ]; do
         case "$1" in
-            --cmd) ply_cmd="$2"; tty_cmd="$2" shift;;
+            --cmd) ply_cmd="$2"; tty_cmd="$2"; shift;;
             --ply-cmd) ply_cmd="$2"; shift;;
             --tty-cmd) tty_cmd="$2"; shift;;
-            --prompt) ply_prompt="$2"; tty_prompt="$2" shift;;
+            --prompt) ply_prompt="$2"; tty_prompt="$2"; shift;;
             --ply-prompt) ply_prompt="$2"; shift;;
             --tty-prompt) tty_prompt="$2"; shift;;
             --tries) ply_tries="$2"; tty_tries="$2"; shift;;
@@ -155,7 +155,7 @@ getkey() {
     [ -f "$keys_file" ] || return 1
 
     local IFS=:
-    while read luks_dev key_dev key_path; do
+    while read luks_dev key_dev key_path || [ -n "$luks_dev" ]; do
         if match_dev "$luks_dev" "$for_dev"; then
             echo "${key_dev}:${key_path}"
             return 0

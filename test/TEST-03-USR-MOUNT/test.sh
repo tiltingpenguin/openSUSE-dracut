@@ -15,11 +15,11 @@ client_run() {
 
     dd if=/dev/zero of=$TESTDIR/result bs=1M count=1
     $testdir/run-qemu \
-	-hda $TESTDIR/root.btrfs \
-	-hdb $TESTDIR/usr.btrfs \
-	-hdc $TESTDIR/result \
+	-drive format=raw,index=0,media=disk,file=$TESTDIR/root.btrfs \
+	-drive format=raw,index=1,media=disk,file=$TESTDIR/usr.btrfs \
+	-drive format=raw,index=2,media=disk,file=$TESTDIR/result \
 	-m 256M -smp 2 -nographic \
-	-net none -kernel /boot/vmlinuz-$KVERSION \
+	-net none \
 	-watchdog i6300esb -watchdog-action poweroff \
 	-append "root=LABEL=dracut $client_opts quiet rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
@@ -101,6 +101,7 @@ test_setup() {
 	-d "piix ide-gd_mod ata_piix btrfs sd_mod" \
         --nomdadmconf \
         --nohardlink \
+        --no-hostonly-cmdline -N \
 	-f $TESTDIR/initramfs.makeroot $KVERSION || return 1
 
     # Invoke KVM and/or QEMU to actually create the target filesystem.
@@ -111,10 +112,9 @@ test_setup() {
     rm -rf -- $TESTDIR/overlay
 
     $testdir/run-qemu \
-	-hda $TESTDIR/root.btrfs \
-	-hdb $TESTDIR/usr.btrfs \
+	-drive format=raw,index=0,media=disk,file=$TESTDIR/root.btrfs \
+	-drive format=raw,index=1,media=disk,file=$TESTDIR/usr.btrfs \
 	-m 256M -smp 2 -nographic -net none \
-	-kernel "/boot/vmlinuz-$kernel" \
 	-append "root=/dev/dracut/root rw rootfstype=btrfs quiet console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.makeroot  || return 1
     grep -F -m 1 -q dracut-root-block-created $TESTDIR/root.btrfs || return 1
@@ -129,8 +129,9 @@ test_setup() {
     )
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
 	-a "debug watchdog" \
-        -o "network" \
+        -o "network kernel-network-modules" \
 	-d "piix ide-gd_mod ata_piix btrfs sd_mod i6300esb ib700wdt" \
+        --no-hostonly-cmdline -N \
 	-f $TESTDIR/initramfs.testing $KVERSION || return 1
 
     rm -rf -- $TESTDIR/overlay

@@ -12,18 +12,20 @@ case "$COMMAND" in
         if [[ -f ${INITRD_IMAGE_PREGENERATED} ]]; then
             # we found an initrd at the same place as the kernel
             # use this and don't generate a new one
-            cp "$INITRD_IMAGE_PREGENERATED" "$BOOT_DIR_ABS/initrd" \
+            cp --reflink=auto "$INITRD_IMAGE_PREGENERATED" "$BOOT_DIR_ABS/initrd" \
                 && chown root:root "$BOOT_DIR_ABS/initrd" \
                 && chmod 0600 "$BOOT_DIR_ABS/initrd" \
                 && exit 0
         fi
 
         if [[ -f /etc/kernel/cmdline ]]; then
-            readarray -t BOOT_OPTIONS < /etc/kernel/cmdline
+            read -r -d '' -a BOOT_OPTIONS < /etc/kernel/cmdline
+        elif [[ -f /usr/lib/kernel/cmdline ]]; then
+            read -r -d '' -a BOOT_OPTIONS < /usr/lib/kernel/cmdline
         fi
 
-        if ! [[ "${BOOT_OPTIONS[@]}" ]]; then
-            read -ar BOOT_OPTIONS < /proc/cmdline
+        if ! [[ ${BOOT_OPTIONS[*]} ]]; then
+            read -r -d '' -a BOOT_OPTIONS < /proc/cmdline
         fi
 
         unset noimageifnotneeded

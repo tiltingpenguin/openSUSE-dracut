@@ -15,7 +15,7 @@ depends() {
 install() {
     local _d
 
-    inst_multiple mount mknod mkdir sleep chroot \
+    inst_multiple mount mknod mkdir sleep chroot chown \
         sed ls flock cp mv dmesg rm ln rmmod mkfifo umount readlink setsid
     inst $(command -v modprobe) /sbin/modprobe
 
@@ -43,15 +43,11 @@ install() {
     mkdir -p ${initdir}/tmp
 
     inst_simple "$moddir/dracut-lib.sh" "/lib/dracut-lib.sh"
+    mkdir -p "${initdir}/var"
 
     if ! dracut_module_included "systemd"; then
         inst_multiple switch_root || dfatal "Failed to install switch_root"
         inst_hook cmdline 10 "$moddir/parse-root-opts.sh"
-    fi
-
-    mkdir -p "${initdir}/var"
-
-    if ! dracut_module_included "systemd"; then
         inst_multiple -o $systemdutildir/systemd-timestamp
     fi
 
@@ -88,8 +84,10 @@ install() {
         echo VERSION_ID=$VERSION_ID
         echo PRETTY_NAME=\"$PRETTY_NAME\"
         echo ANSI_COLOR=\"$ANSI_COLOR\"
-    } > $initdir/etc/initrd-release
+    } > $initdir/usr/lib/initrd-release
     echo dracut-$DRACUT_VERSION > $initdir/lib/dracut/dracut-$DRACUT_VERSION
+    ln -sf ../usr/lib/initrd-release $initdir/etc/initrd-release
+    ln -sf initrd-release $initdir/usr/lib/os-release
     ln -sf initrd-release $initdir/etc/os-release
 
     ## save host_devs which we need bring up
@@ -105,6 +103,14 @@ install() {
 
                 for _dev in ${host_devs[@]}; do
                     [[ "$_dev" == "$root_dev" ]] && continue
+
+                    # We only actually wait for real devs - swap is only needed
+                    # for resume and udev rules generated when parsing resume=
+                    # argument take care of the waiting for us
+                    for _dev2 in ${swap_devs[@]}; do
+                      [[ "$_dev" == "$_dev2" ]] && continue 2
+                    done
+
                     _pdev=$(get_persistent_dev $_dev)
 
                     case "$_pdev" in

@@ -10,11 +10,11 @@ KVERSION=${KVERSION-$(uname -r)}
 client_run() {
     echo "CLIENT TEST START: $@"
     $testdir/run-qemu \
-	-hda $TESTDIR/root.ext2 \
-	-hdb $TESTDIR/disk1 \
-	-hdc $TESTDIR/disk2 \
+	-drive format=raw,index=0,media=disk,file=$TESTDIR/root.ext2 \
+	-drive format=raw,index=1,media=disk,file=$TESTDIR/disk1 \
+	-drive format=raw,index=2,media=disk,file=$TESTDIR/disk2 \
 	-m 256M -nographic \
-	-net none -kernel /boot/vmlinuz-$KVERSION \
+	-net none \
 	-append "$* root=LABEL=root rw debug rd.retry=5 rd.debug console=ttyS0,115200n81 selinux=0 rd.info $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
     if ! grep -F -m 1 -q dracut-root-block-success $TESTDIR/root.ext2; then
@@ -95,15 +95,15 @@ test_setup() {
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
 	-m "dash lvm mdraid dmraid udev-rules base rootfs-block fs-lib kernel-modules" \
 	-d "piix ide-gd_mod ata_piix ext2 sd_mod dm-multipath dm-crypt dm-round-robin faulty linear multipath raid0 raid10 raid1 raid456" \
+        --no-hostonly-cmdline -N \
 	-f $TESTDIR/initramfs.makeroot $KVERSION || return 1
     rm -rf -- $TESTDIR/overlay
     # Invoke KVM and/or QEMU to actually create the target filesystem.
     $testdir/run-qemu \
-	-hda $TESTDIR/root.ext2 \
-	-hdb $TESTDIR/disk1 \
-	-hdc $TESTDIR/disk2 \
+	-drive format=raw,index=0,media=disk,file=$TESTDIR/root.ext2 \
+	-drive format=raw,index=1,media=disk,file=$TESTDIR/disk1 \
+	-drive format=raw,index=2,media=disk,file=$TESTDIR/disk2 \
 	-m 256M -nographic -net none \
-	-kernel "/boot/vmlinuz-$kernel" \
 	-append "root=/dev/dracut/root rw rootfstype=ext2 quiet console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.makeroot  || return 1
     grep -F -m 1 -q dracut-root-block-created $TESTDIR/root.ext2 || return 1
@@ -117,9 +117,10 @@ test_setup() {
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-o "plymouth network" \
+	-o "plymouth network kernel-network-modules" \
 	-a "debug" \
 	-d "piix ide-gd_mod ata_piix ext2 sd_mod" \
+        --no-hostonly-cmdline -N \
 	-f $TESTDIR/initramfs.testing $KVERSION || return 1
 }
 

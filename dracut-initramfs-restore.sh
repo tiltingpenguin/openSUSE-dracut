@@ -2,6 +2,10 @@
 
 set -e
 
+# do some sanity checks first
+[ -e /run/initramfs/bin/sh ] && exit 0
+[ -e /run/initramfs/.need_shutdown ] || exit 0
+
 KERNEL_VERSION="$(uname -r)"
 
 [[ $dracutbasedir ]] || dracutbasedir=/usr/lib/dracut
@@ -9,6 +13,8 @@ SKIP="$dracutbasedir/skipcpio"
 [[ -x $SKIP ]] || SKIP=cat
 
 [[ -f /etc/machine-id ]] && read MACHINE_ID < /etc/machine-id
+
+mount -o ro /boot &>/dev/null
 
 if [[ $MACHINE_ID ]] && [[ -d /boot/${MACHINE_ID} || -L /boot/${MACHINE_ID} ]] ; then
     IMG="/boot/${MACHINE_ID}/${KERNEL_VERSION}/initrd"
@@ -18,6 +24,7 @@ fi
 cd /run/initramfs
 
 [ -f .need_shutdown -a -f "$IMG" ] || exit 1
+
 if $SKIP "$IMG" | zcat | cpio -id --no-absolute-filenames --quiet >/dev/null; then
     rm -f -- .need_shutdown
 elif $SKIP "$IMG" | xzcat | cpio -id --no-absolute-filenames --quiet >/dev/null; then

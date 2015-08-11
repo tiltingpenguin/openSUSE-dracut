@@ -18,10 +18,10 @@ test_run() {
     "$testdir"/run-qemu \
 	-boot order=d \
 	-cdrom "$TESTDIR"/livecd.iso \
-	-hda "$TESTDIR"/root.img \
+	-drive format=raw,index=0,media=disk,file="$TESTDIR"/root.img \
 	-m 256M -smp 2 -nographic \
-	-net none -kernel /boot/vmlinuz-"$KVERSION" \
-	-append "root=live:CDLABEL=LiveCD live rw quiet rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug $DEBUGFAIL" \
+	-net none \
+	-append "root=live:CDLABEL=LiveCD live rw quiet rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug systemd.log_level=debug systemd.log_target=console $DEBUGFAIL" \
 	-initrd "$TESTDIR"/initramfs.testing
     grep -F -m 1 -q dracut-root-block-success -- "$TESTDIR"/root.img || return 1
 }
@@ -41,6 +41,7 @@ test_setup() {
     sudo $basedir/dracut.sh -l -i "$TESTDIR"/overlay / \
 	-a "debug dmsquash-live" \
 	-d "piix ide-gd_mod ata_piix ext3 sd_mod" \
+        --no-hostonly-cmdline -N \
 	-f "$TESTDIR"/initramfs.testing "$KVERSION" || return 1
 
     mkdir -p -- "$TESTDIR"/root-source
@@ -73,7 +74,17 @@ test_setup() {
         inst_simple /etc/os-release
 	inst ./test-init.sh /sbin/init
 	inst "$TESTDIR"/initramfs.testing "/boot/initramfs-$KVERSION.img"
-	inst /boot/vmlinuz-"$KVERSION"
+        [[ -f /etc/machine-id ]] && read MACHINE_ID < /etc/machine-id
+
+	VMLINUZ="/lib/modules/${KVERSION}/vmlinuz"
+        if ! [[ -e $VMLINUZ ]]; then
+            if [[ $MACHINE_ID ]] && ( [[ -d /boot/${MACHINE_ID} ]] || [[ -L /boot/${MACHINE_ID} ]] ); then
+                VMLINUZ="/boot/${MACHINE_ID}/$KVERSION/linux"
+            fi
+        fi
+        [[ -e $VMLINUZ ]] || VMLINUZ="/boot/vmlinuz-${KVERSION}"
+
+	inst "$VMLINUZ" "/boot/vmlinuz-${KVERSION}"
 	find_binary plymouth >/dev/null && inst_multiple plymouth
 	cp -a -- /etc/ld.so.conf* "$initdir"/etc
 	sudo ldconfig -r -- "$initdir"

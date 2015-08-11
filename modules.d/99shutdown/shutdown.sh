@@ -38,7 +38,7 @@ killall_proc_mountpoint /oldroot
 
 umount_a() {
     local _did_umount="n"
-    while read a mp a; do
+    while read a mp a || [ -n "$mp" ]; do
         if strstr "$mp" oldroot; then
             if umount "$mp"; then
                 _did_umount="y"
@@ -84,22 +84,25 @@ fi
 
 _check_shutdown() {
     local __f
-    local __s=1
+    local __s=0
     for __f in $hookdir/shutdown/*.sh; do
         [ -e "$__f" ] || continue
         ( . "$__f" $1 )
         if [ $? -eq 0 ]; then
             rm -f -- $__f
-            __s=0
+        else
+            __s=1
         fi
     done
     return $__s
 }
 
-while _check_shutdown; do
-:
+_cnt=0
+while [ $_cnt -le 40 ]; do
+    _check_shutdown && break
+    _cnt=$(($_cnt+1))
 done
-_check_shutdown final
+[ $_cnt -ge 40 ] && _check_shutdown final
 
 getarg 'rd.break=shutdown' && emergency_shell --shutdown shutdown "Break before shutdown"
 

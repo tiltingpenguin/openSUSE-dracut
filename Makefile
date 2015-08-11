@@ -13,8 +13,9 @@ sysconfdir ?= ${prefix}/etc
 bindir ?= ${prefix}/bin
 mandir ?= ${prefix}/share/man
 CFLAGS ?= -O2 -g -Wall
-CFLAGS += -std=gnu99  -D_FILE_OFFSET_BITS=64 -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2
+CFLAGS += -std=gnu99 -D_FILE_OFFSET_BITS=64 -Wformat -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2
 bashcompletiondir ?= ${datadir}/bash-completion/completions
+pkgconfigdatadir ?= $(datadir)/pkgconfig
 
 man1pages = lsinitrd.1
 
@@ -28,20 +29,20 @@ man8pages = dracut.8 \
             dracut-catimages.8 \
             mkinitrd.8 \
             mkinitrd-suse.8 \
-            modules.d/98systemd/dracut-cmdline.service.8 \
-            modules.d/98systemd/dracut-initqueue.service.8 \
-            modules.d/98systemd/dracut-mount.service.8 \
-            modules.d/98systemd/dracut-shutdown.service.8 \
-            modules.d/98systemd/dracut-pre-mount.service.8 \
-            modules.d/98systemd/dracut-pre-pivot.service.8 \
-            modules.d/98systemd/dracut-pre-trigger.service.8 \
-            modules.d/98systemd/dracut-pre-udev.service.8
+            modules.d/98dracut-systemd/dracut-cmdline.service.8 \
+            modules.d/98dracut-systemd/dracut-initqueue.service.8 \
+            modules.d/98dracut-systemd/dracut-mount.service.8 \
+            modules.d/98dracut-systemd/dracut-shutdown.service.8 \
+            modules.d/98dracut-systemd/dracut-pre-mount.service.8 \
+            modules.d/98dracut-systemd/dracut-pre-pivot.service.8 \
+            modules.d/98dracut-systemd/dracut-pre-trigger.service.8 \
+            modules.d/98dracut-systemd/dracut-pre-udev.service.8
 
 manpages = $(man1pages) $(man5pages) $(man7pages) $(man8pages)
 
 .PHONY: install clean archive rpm testimage test all check AUTHORS doc dracut-version.sh
 
-all: dracut-version.sh dracut-install skipcpio/skipcpio
+all: dracut-version.sh dracut.pc dracut-install skipcpio/skipcpio
 
 DRACUT_INSTALL_OBJECTS = \
         install/dracut-install.o \
@@ -96,7 +97,15 @@ dracut.html: dracut.asc $(manpages) dracut.css dracut.usage.asc
 		http://docbook.sourceforge.net/release/xsl/current/xhtml/docbook.xsl dracut.xml
 	rm -f -- dracut.xml
 
-install: dracut-version.sh
+dracut.pc: Makefile.inc Makefile
+	@echo "Name: dracut" > dracut.pc
+	@echo "Description: dracut" >> dracut.pc
+	@echo "Version: $(VERSION)$(GITVERSION)" >> dracut.pc
+	@echo "dracutdir=$(pkglibdir)" >> dracut.pc
+	@echo "dracutmodulesdir=$(pkglibdir)/modules.d" >> dracut.pc
+	@echo "dracutconfdir=$(pkglibdir)/dracut.conf.d" >> dracut.pc
+
+install: all
 	mkdir -p $(DESTDIR)$(pkglibdir)
 	mkdir -p $(DESTDIR)$(bindir)
 	mkdir -p $(DESTDIR)$(sysconfdir)
@@ -124,7 +133,7 @@ ifneq ($(enable_documentation),no)
 endif
 	if [ -n "$(systemdsystemunitdir)" ]; then \
 		mkdir -p $(DESTDIR)$(systemdsystemunitdir); \
-		ln -srf $(DESTDIR)$(pkglibdir)/modules.d/98systemd/dracut-shutdown.service $(DESTDIR)$(systemdsystemunitdir)/dracut-shutdown.service; \
+		ln -srf $(DESTDIR)$(pkglibdir)/modules.d/98dracut-systemd/dracut-shutdown.service $(DESTDIR)$(systemdsystemunitdir)/dracut-shutdown.service; \
 		mkdir -p $(DESTDIR)$(systemdsystemunitdir)/sysinit.target.wants; \
 		ln -s ../dracut-shutdown.service \
 		$(DESTDIR)$(systemdsystemunitdir)/sysinit.target.wants/dracut-shutdown.service; \
@@ -138,7 +147,7 @@ endif
 		    dracut-pre-trigger.service \
 		    dracut-pre-udev.service \
 		    ; do \
-			ln -srf $(DESTDIR)$(pkglibdir)/modules.d/98systemd/$$i $(DESTDIR)$(systemdsystemunitdir); \
+			ln -srf $(DESTDIR)$(pkglibdir)/modules.d/98dracut-systemd/$$i $(DESTDIR)$(systemdsystemunitdir); \
 			ln -s ../$$i \
 			$(DESTDIR)$(systemdsystemunitdir)/initrd.target.wants/$$i; \
 		done \
@@ -155,6 +164,8 @@ endif
 	mkdir -p $(DESTDIR)${bashcompletiondir}
 	install -m 0644 dracut-bash-completion.sh $(DESTDIR)${bashcompletiondir}/dracut
 	install -m 0644 lsinitrd-bash-completion.sh $(DESTDIR)${bashcompletiondir}/lsinitrd
+	mkdir -p $(DESTDIR)${pkgconfigdatadir}
+	install -m 0644 dracut.pc $(DESTDIR)${pkgconfigdatadir}/dracut.pc
 
 dracut-version.sh:
 	@echo "DRACUT_VERSION=$(VERSION)$(GITVERSION)" > dracut-version.sh
@@ -212,7 +223,7 @@ check: all syncheck rpm
 	@$(MAKE) -C test check
 
 testimage: all
-	./dracut.sh -l -a debug -f test-$(shell uname -r).img $(shell uname -r)
+	./dracut.sh -N -l -a debug -f test-$(shell uname -r).img $(shell uname -r)
 	@echo wrote  test-$(shell uname -r).img
 
 debugtestimage: all
@@ -234,7 +245,7 @@ hostimage: all
 	@echo wrote  test-$(shell uname -r).img
 
 AUTHORS:
-	git shortlog  --numbered --summary -e |while read a rest; do echo $$rest;done > AUTHORS
+	git shortlog  --numbered --summary -e |while read a rest || [ -n "$$rest" ]; do echo $$rest;done > AUTHORS
 
 dracut.html.sign: dracut-$(VERSION).tar.xz dracut.html
 	gpg-sign-all dracut-$(VERSION).tar.xz dracut.html

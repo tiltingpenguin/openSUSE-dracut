@@ -28,6 +28,15 @@ depends() {
 }
 
 # called by dracut
+cmdline() {
+    for m in scsi_dh_alua scsi_dh_emc scsi_dh_rdac ; do
+        if module_is_host_only $m ; then
+            printf 'rd.driver.pre=%s ' "$m"
+        fi
+    done
+}
+
+# called by dracut
 installkernel() {
     local _ret
     local _arch=$(uname -m)
@@ -37,7 +46,7 @@ installkernel() {
         local _merge=8 _side2=9
         function bmf1() {
             local _f
-            while read _f; do
+            while read _f || [ -n "$_f" ]; do
                 case "$_f" in
                     *.ko)    [[ $(<         $_f) =~ $_funcs ]] && echo "$_f" ;;
                     *.ko.gz) [[ $(gzip -dc <$_f) =~ $_funcs ]] && echo "$_f" ;;
@@ -49,7 +58,7 @@ installkernel() {
 
         function rotor() {
             local _f1 _f2
-            while read _f1; do
+            while read _f1 || [ -n "$_f1" ]; do
                 echo "$_f1"
                 if read _f2; then
                     echo "$_f2" 1>&${_side2}
@@ -87,12 +96,17 @@ install() {
     inst $(command -v partx) /sbin/partx
 
     inst_libdir_file "libmultipath*" "multipath/*"
+    inst_libdir_file 'libgcc_s.so*'
+
+    if [[ $hostonly_cmdline ]] ; then
+        local _conf=$(cmdline)
+        [[ $_conf ]] && echo "$_conf" >> "${initdir}/etc/cmdline.d/90multipath.conf"
+    fi
 
     if dracut_module_included "systemd"; then
-        inst_multiple \
-            $systemdsystemunitdir/multipathd.service
-        mkdir -p "${initdir}${systemdsystemconfdir}/sysinit.target.wants"
-        ln -rfs "${initdir}${systemdsystemunitdir}/multipathd.service" "${initdir}${systemdsystemconfdir}/sysinit.target.wants/multipathd.service"
+        inst_simple "${moddir}/multipathd.service" "${systemdsystemunitdir}/multipathd.service"
+        mkdir -p "${initdir}${systemdsystemunitdir}/sysinit.target.wants"
+        ln -rfs "${initdir}${systemdsystemunitdir}/multipathd.service" "${initdir}${systemdsystemunitdir}/sysinit.target.wants/multipathd.service"
     else
         inst_hook pre-trigger 02 "$moddir/multipathd.sh"
         inst_hook cleanup   02 "$moddir/multipathd-stop.sh"
@@ -100,6 +114,9 @@ install() {
 
     inst_hook cleanup   80 "$moddir/multipathd-needshutdown.sh"
 
-    inst_rules 40-multipath.rules 62-multipath.rules 65-multipath.rules 66-kpartx.rules
+    inst_rules 40-multipath.rules 56-multipath.rules \
+	62-multipath.rules 65-multipath.rules \
+	66-kpartx.rules 67-kpartx-compat.rules \
+	11-dm-mpath.rules
 }
 

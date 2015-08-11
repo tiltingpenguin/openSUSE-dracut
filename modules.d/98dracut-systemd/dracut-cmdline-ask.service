@@ -8,22 +8,23 @@
 # See systemd.special(7) for details
 
 [Unit]
-Description=Rescue Shell
+Description=dracut ask for additional cmdline parameters
 DefaultDependencies=no
+Before=dracut-cmdline.service
+After=systemd-journald.socket
+Wants=systemd-journald.socket
+ConditionPathExists=/usr/lib/initrd-release
+ConditionKernelCommandLine=rd.cmdline=ask
 
 [Service]
-Environment=HOME=/
 Environment=DRACUT_SYSTEMD=1
 Environment=NEWROOT=/sysroot
-WorkingDirectory=/
-ExecStartPre=-/bin/plymouth quit
-ExecStart=-/bin/sh -i -l
-ExecStopPost=-/bin/rm -f -- /.console_lock
-ExecStopPost=-/usr/bin/systemctl --fail --no-block default
-Type=idle
-StandardInput=tty-force
+Type=oneshot
+ExecStart=-/bin/dracut-cmdline-ask
+StandardInput=tty
 StandardOutput=inherit
 StandardError=inherit
+RemainAfterExit=yes
 KillMode=process
 IgnoreSIGPIPE=no
 

@@ -1,3 +1,63 @@
+dracut-043
+==========
+- add missing dmsquash-generator
+
+dracut-042
+==========
+- fixed dmsetup shutdown
+- new kernel command line option "rd.live.overlay.thin"
+    This option changes the underlying mechanism for the overlay in the
+    dmsquash module.
+    Instead of a plain dm snapshot a dm thin snapshot is used. The advantage
+    of the thin snapshot is, that the TRIM command is recognized, which
+    means that at runtime, only the occupied blocks will be claimed from
+    memory, and freed blocks will really be freed in ram.
+- dmsquash: Add squashfs support to rd.live.fsimg
+    Previously rd.live.fsimg only supported filesystems residing in
+    (compressed) archives.
+    Now rd.live.fsimg can also be used when a squashfs image is used.
+    This is achieved by extracting the rootfs image from the squashfs and
+    then continue with the default routines for rd.live.fsimg.
+- lvm: add support for LVM system id
+- split up the systemd dracut module
+    Basic systemd functionality is in 00systemd now.
+    Switching root and the initrd.target is in 00systemd-initrd.
+    Dracut additions to the systemd initrd are in 98dracut-systemd.
+- support for creating a UEFI boot executable via argument "--uefi"
+    With an EFI stub, the kernel, the initramfs and a kernel cmdline can be
+    glued together to a single UEFI executable, which can be booted by a
+    UEFI BIOS.
+- network: split out kernel-network-modules, now in 90kernel-network-modules
+- support for ethernet point-to-point connections configured via DHCP
+- kernel-modules: install all HID drivers
+- dracut.pc pkg-config file
+- mount /dev, /dev/shm and /run noexec
+
+dracut-041
+==========
+- fixed the shutdown loop
+- fixed gzip compression for versions, which do not have --rsyncable
+- fixed ifcfg generation for persistent interface names
+- multipath:
+  * new option to turn off multipath "rd.multipath=0" completly
+  * preload scsi dh modules
+  * start multipathd via systemd service
+- do not fail, if user pressed ESC during media check
+- fixed systemd-journal by symlinking /var/log to /run/initramfs/log
+- initrd-release moved to /usr/lib
+- lots of iSCSI fixes
+- new "rd.timeout" to specify the systemd JobTimeoutSec for devices
+- if $initrd/etc/cmdline.d/* has a "root=" and the kernel cmdline does not,
+  generate a mount unit for it
+- increased the initqueue timeout for non systemd initramfs to 180s
+- $initrd/etc/cmdline.d/ hostonly files are now generated for NFS
+- make use of systemd-hibernate-resume, if available
+- fixed ldconfig parsing for hwcap output
+- network: add support for comma separated autoconf options like ip=eth0:auto6,dhcp
+- new parameter "rd.live.overlay.size" to specify the overlay for live images
+- changed the test suite for the new sfdisk syntax
+- added cache tools for dm-cache setups
+
 dracut-040
 ==========
 - fixed dracut module dependency checks

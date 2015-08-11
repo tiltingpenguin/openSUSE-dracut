@@ -43,7 +43,13 @@ setup_interface() {
         valid_lft ${lease_time} preferred_lft ${lease_time} \
         dev $netif
 
-    [ -n "$gw" ] && echo ip route replace default via $gw dev $netif > /tmp/net.$netif.gw
+    if [ -n "$gw" ] ; then
+        if [ "$mask" == "255.255.255.255" ] ; then
+            # point-to-point connection => set explicit route to gateway
+            echo ip route add $gw dev $netif > /tmp/net.$netif.gw
+        fi
+        echo ip route replace default via $gw dev $netif >> /tmp/net.$netif.gw
+    fi
 
     [ -n "${search}${domain}" ] && echo "search $search $domain" > /tmp/net.$netif.resolv.conf
     if  [ -n "$namesrv" ] ; then
@@ -93,8 +99,9 @@ case $reason in
         ;;
 
     PREINIT6)
-        echo "dhcp: PREINIT $netif up"
+        echo "dhcp: PREINIT6 $netif up"
         linkup $netif
+        wait_for_ipv6_dad $netif
         ;;
 
     BOUND)
@@ -111,7 +118,7 @@ case $reason in
         fi
         unset layer2
         setup_interface
-        set | while read line; do
+        set | while read line || [ -n "$line" ]; do
             [ "${line#new_}" = "$line" ] && continue
             echo "$line"
         done >/tmp/dhclient.$netif.dhcpopts
@@ -132,7 +139,7 @@ case $reason in
         echo "dhcp: BOND6 setting $netif"
         setup_interface6
 
-        set | while read line; do
+        set | while read line || [ -n "$line" ]; do
             [ "${line#new_}" = "$line" ] && continue
             echo "$line"
         done >/tmp/dhclient.$netif.dhcpopts

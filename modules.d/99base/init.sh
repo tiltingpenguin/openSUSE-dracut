@@ -38,7 +38,7 @@ RD_DEBUG=""
 setdebug
 
 if ! ismounted /dev; then
-    mount -t devtmpfs -o mode=0755,nosuid,strictatime devtmpfs /dev >/dev/null
+    mount -t devtmpfs -o mode=0755,noexec,nosuid,strictatime devtmpfs /dev >/dev/null
 fi
 
 if ! ismounted /dev; then
@@ -59,12 +59,12 @@ fi
 
 if ! ismounted /dev/shm; then
     mkdir -m 0755 /dev/shm
-    mount -t tmpfs -o mode=1777,nosuid,nodev,strictatime tmpfs /dev/shm >/dev/null
+    mount -t tmpfs -o mode=1777,noexec,nosuid,nodev,strictatime tmpfs /dev/shm >/dev/null
 fi
 
 if ! ismounted /run; then
     mkdir -m 0755 /newrun
-    mount -t tmpfs -o mode=0755,nosuid,nodev,strictatime tmpfs /newrun >/dev/null
+    mount -t tmpfs -o mode=0755,noexec,nosuid,nodev,strictatime tmpfs /newrun >/dev/null
     cp -a /run/* /newrun >/dev/null 2>&1
     mount --move /newrun /run
     rm -fr -- /newrun
@@ -72,16 +72,17 @@ fi
 
 if command -v kmod >/dev/null 2>/dev/null; then
     kmod static-nodes --format=tmpfiles 2>/dev/null | \
-        while read type file mode a a a majmin; do
-        case $type in
-            d)
-                mkdir -m $mode -p $file
-                ;;
-            c)
-                mknod -m $mode $file $type ${majmin%:*} ${majmin#*:}
-                ;;
-        esac
-    done
+        while read type file mode a a a majmin || [ -n "$type" ]; do
+            type=${type%\!}
+            case $type in
+                d)
+                    mkdir -m $mode -p $file
+                    ;;
+                c)
+                    mknod -m $mode $file $type ${majmin%:*} ${majmin#*:}
+                    ;;
+            esac
+        done
 fi
 
 trap "action_on_fail Signal caught!" 0
@@ -105,14 +106,14 @@ else
     exec 0<>/dev/console 1<>/dev/console 2<>/dev/console
 fi
 
-[ -f /etc/initrd-release ] && . /etc/initrd-release
+[ -f /usr/lib/initrd-release ] && . /usr/lib/initrd-release
 [ -n "$VERSION_ID" ] && info "$NAME-$VERSION_ID"
 
 source_conf /etc/conf.d
 
 if getarg "rd.cmdline=ask"; then
     echo "Enter additional kernel command line parameter (end with ctrl-d or .)"
-    while read -p "> " line; do
+    while read -p "> " line || [ -n "$line" ]; do
         [ "$line" = "." ] && break
         echo "$line" >> /etc/cmdline.d/99-cmdline-ask.conf
     done
@@ -137,19 +138,19 @@ make_trace_mem "hook pre-udev" '1:shortmem' '2+:mem' '3+:slab'
 getarg 'rd.break=pre-udev' -d 'rdbreak=pre-udev' && emergency_shell -n pre-udev "Break before pre-udev"
 source_hook pre-udev
 
-# start up udev and trigger cold plugs
-$systemdutildir/systemd-udevd --daemon --resolve-names=never
+UDEV_LOG=err
+getargbool 0 rd.udev.info -d -y rdudevinfo && UDEV_LOG=info
+getargbool 0 rd.udev.debug -d -y rdudevdebug && UDEV_LOG=debug
 
-UDEV_LOG_PRIO_ARG=--log-priority
+# start up udev and trigger cold plugs
+UDEV_LOG=$UDEV_LOG $systemdutildir/systemd-udevd --daemon --resolve-names=never
+
 UDEV_QUEUE_EMPTY="udevadm settle --timeout=0"
 
 if [ $UDEVVERSION -lt 140 ]; then
-    UDEV_LOG_PRIO_ARG=--log_priority
     UDEV_QUEUE_EMPTY="udevadm settle --timeout=1"
 fi
 
-getargbool 0 rd.udev.info -d -y rdudevinfo && udevadm control "$UDEV_LOG_PRIO_ARG=info"
-getargbool 0 rd.udev.debug -d -y rdudevdebug && udevadm control "$UDEV_LOG_PRIO_ARG=debug"
 udevproperty "hookdir=$hookdir"
 
 make_trace_mem "hook pre-trigger" '1:shortmem' '2+:mem' '3+:slab'
@@ -165,7 +166,7 @@ make_trace_mem "hook initqueue" '1:shortmem' '2+:mem' '3+:slab'
 getarg 'rd.break=initqueue' -d 'rdbreak=initqueue' && emergency_shell -n initqueue "Break before initqueue"
 
 RDRETRY=$(getarg rd.retry -d 'rd_retry=')
-RDRETRY=${RDRETRY:-30}
+RDRETRY=${RDRETRY:-180}
 RDRETRY=$(($RDRETRY*2))
 export RDRETRY
 main_loop=0
@@ -253,7 +254,7 @@ done
 
 {
     echo -n "Mounted root filesystem "
-    while read dev mp rest; do [ "$mp" = "$NEWROOT" ] && echo $dev; done < /proc/mounts
+    while read dev mp rest || [ -n "$dev" ]; do [ "$mp" = "$NEWROOT" ] && echo $dev; done < /proc/mounts
 } | vinfo
 
 # pre pivot scripts are sourced just before we doing cleanup and switch over

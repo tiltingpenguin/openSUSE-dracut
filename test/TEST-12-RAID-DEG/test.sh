@@ -15,10 +15,10 @@ client_run() {
     cp --sparse=always --reflink=auto $TESTDIR/disk3.img $TESTDIR/disk3.img.new
 
     $testdir/run-qemu \
-	-hda $TESTDIR/root.ext2 -m 256M -nographic  -smp 2 \
-	-hdc $TESTDIR/disk2.img.new \
-	-hdd $TESTDIR/disk3.img.new \
-	-net none -kernel /boot/vmlinuz-$KVERSION \
+	-drive format=raw,index=0,media=disk,file=$TESTDIR/root.ext2 -m 256M -nographic  -smp 2 \
+	-drive format=raw,index=2,media=disk,file=$TESTDIR/disk2.img.new \
+	-drive format=raw,index=3,media=disk,file=$TESTDIR/disk3.img.new \
+	-net none \
 	-append "$* root=LABEL=root rw rd.retry=10 rd.info console=ttyS0,115200n81 selinux=0 rd.debug $DEBUGFAIL " \
 	-initrd $TESTDIR/initramfs.testing
     if ! grep -F -m 1 -q dracut-root-block-success $TESTDIR/root.ext2; then
@@ -107,16 +107,16 @@ test_setup() {
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
 	-m "dash crypt lvm mdraid udev-rules base rootfs-block fs-lib kernel-modules" \
 	-d "piix ide-gd_mod ata_piix ext2 sd_mod" \
+        --no-hostonly-cmdline -N \
 	-f $TESTDIR/initramfs.makeroot $KVERSION || return 1
     rm -rf -- $TESTDIR/overlay
     # Invoke KVM and/or QEMU to actually create the target filesystem.
     $testdir/run-qemu \
-	-hda $TESTDIR/root.ext2 \
-	-hdb $TESTDIR/disk1.img \
-	-hdc $TESTDIR/disk2.img \
-	-hdd $TESTDIR/disk3.img \
+	-drive format=raw,index=0,media=disk,file=$TESTDIR/root.ext2 \
+	-drive format=raw,index=1,media=disk,file=$TESTDIR/disk1.img \
+	-drive format=raw,index=2,media=disk,file=$TESTDIR/disk2.img \
+	-drive format=raw,index=3,media=disk,file=$TESTDIR/disk3.img \
 	-m 256M -smp 2 -nographic -net none \
-	-kernel "/boot/vmlinuz-$kernel" \
 	-append "root=/dev/fakeroot rw rootfstype=ext2 quiet console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.makeroot  || return 1
 
@@ -139,9 +139,10 @@ test_setup() {
     )
 
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-o "plymouth network" \
+	-o "plymouth network kernel-network-modules" \
 	-a "debug" \
 	-d "piix ide-gd_mod ata_piix ext2 sd_mod" \
+        --no-hostonly-cmdline -N \
 	-f $TESTDIR/initramfs.testing $KVERSION || return 1
 }
 

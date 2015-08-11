@@ -9,10 +9,10 @@ KVERSION=${KVERSION-$(uname -r)}
 test_run() {
     dd if=/dev/zero of=$TESTDIR/result bs=1M count=1
     $testdir/run-qemu \
-	-hda $TESTDIR/root.ext3 \
-	-hdb $TESTDIR/result \
+	-drive format=raw,index=0,media=disk,file=$TESTDIR/root.ext3 \
+	-drive format=raw,index=1,media=disk,file=$TESTDIR/result \
 	-m 256M -smp 2 -nographic \
-	-net none -kernel /boot/vmlinuz-$KVERSION \
+	-net none \
 	-watchdog i6300esb -watchdog-action poweroff \
 	-append "root=LABEL=dracut rw systemd.log_level=debug systemd.log_target=console rd.retry=3 rd.debug console=ttyS0,115200n81 $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing || return 1
@@ -72,14 +72,14 @@ test_setup() {
 	-m "dash udev-rules base rootfs-block fs-lib kernel-modules fs-lib" \
 	-d "piix ide-gd_mod ata_piix ext3 sd_mod" \
         --nomdadmconf \
+        --no-hostonly-cmdline -N \
 	-f $TESTDIR/initramfs.makeroot $KVERSION || return 1
     rm -rf -- $TESTDIR/overlay
     # Invoke KVM and/or QEMU to actually create the target filesystem.
 
     $testdir/run-qemu \
-	-hda $TESTDIR/root.ext3 \
+	-drive format=raw,index=0,media=disk,file=$TESTDIR/root.ext3 \
 	-m 256M -smp 2 -nographic -net none \
-	-kernel "/boot/vmlinuz-$kernel" \
 	-append "root=/dev/dracut/root rw rootfstype=ext3 quiet console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.makeroot  || return 1
     grep -F -m 1 -q dracut-root-block-created $TESTDIR/root.ext3 || return 1
@@ -95,6 +95,7 @@ test_setup() {
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
 	-a "debug watchdog" \
 	-d "piix ide-gd_mod ata_piix ext3 sd_mod i6300esb ib700wdt" \
+        --no-hostonly-cmdline -N \
 	-f $TESTDIR/initramfs.testing $KVERSION || return 1
 
 #	-o "plymouth network md dmraid multipath fips caps crypt btrfs resume dmsquash-live dm"

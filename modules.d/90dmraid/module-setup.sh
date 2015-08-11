@@ -64,8 +64,8 @@ install() {
     local _i
 
     if [[ $hostonly_cmdline == "yes" ]]; then
-        cmdline >> "${initdir}/etc/cmdline.d/90dmraid.conf"
-        echo >> "${initdir}/etc/cmdline.d/90dmraid.conf"
+        local _raidconf=$(cmdline)
+        [[ $_raidconf ]] && printf "%s\n" "$_raidconf" >> "${initdir}/etc/cmdline.d/90dmraid.conf"
     fi
 
     inst_multiple dmraid
@@ -73,8 +73,6 @@ install() {
     inst $(command -v partx) /sbin/partx
 
     inst "$moddir/dmraid.sh" /sbin/dmraid_scan
-
-    inst_rules 64-md-raid.rules
 
     inst_libdir_file "libdmraid-events*.so*"
 

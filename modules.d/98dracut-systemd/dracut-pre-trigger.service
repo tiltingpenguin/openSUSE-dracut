@@ -8,25 +8,26 @@
 # See systemd.special(7) for details
 
 [Unit]
-Description=dracut ask for additional cmdline parameters
+Description=dracut pre-trigger hook
+Documentation=man:dracut-pre-trigger.service(8)
 DefaultDependencies=no
-Before=dracut-cmdline.service
-After=systemd-journald.socket
-Wants=systemd-journald.socket
-ConditionPathExists=/etc/initrd-release
-ConditionKernelCommandLine=rd.cmdline=ask
+Before=systemd-udev-trigger.service dracut-initqueue.service
+After=dracut-pre-udev.service systemd-udevd.service systemd-tmpfiles-setup-dev.service
+Wants=dracut-pre-udev.service systemd-udevd.service
+ConditionPathExists=/usr/lib/initrd-release
+ConditionDirectoryNotEmpty=|/lib/dracut/hooks/pre-trigger
+ConditionKernelCommandLine=|rd.break=pre-trigger
 
 [Service]
 Environment=DRACUT_SYSTEMD=1
 Environment=NEWROOT=/sysroot
 Type=oneshot
-ExecStart=-/bin/dracut-cmdline-ask
-StandardInput=tty
-StandardOutput=inherit
-StandardError=inherit
-RemainAfterExit=yes
+ExecStart=-/bin/dracut-pre-trigger
+StandardInput=null
+StandardOutput=syslog
+StandardError=syslog+console
 KillMode=process
-IgnoreSIGPIPE=no
+RemainAfterExit=yes
 
 # Bash ignores SIGTERM, so we send SIGHUP instead, to ensure that bash
 # terminates cleanly.

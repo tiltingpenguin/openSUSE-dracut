@@ -40,12 +40,22 @@ fi
 [[ -f /etc/machine-id ]] && read MACHINE_ID < /etc/machine-id
 
 if [[ -f /etc/kernel/cmdline ]]; then
-    readarray -t BOOT_OPTIONS < /etc/kernel/cmdline
+    read -r -d '' -a BOOT_OPTIONS < /etc/kernel/cmdline
+elif [[ -f /usr/lib/kernel/cmdline ]]; then
+    read -r -d '' -a BOOT_OPTIONS < /usr/lib/kernel/cmdline
 fi
+
 if ! [[ "${BOOT_OPTIONS[@]}" ]]; then
-    read -ar BOOT_OPTIONS < /proc/cmdline
+    read -r -d '' -a line < /proc/cmdline
+    for i in "${line[@]}"; do
+        [[ "${i#initrd=*}" != "$i" ]] && continue
+        BOOT_OPTIONS+=("$i")
+    done
 fi
-if ! [[ $BOOT_OPTIONS ]]; then
+
+if ! [[ ${BOOT_OPTIONS[*]} ]]; then
+    echo "Could not determine the kernel command line parameters." >&2
+    echo "Please specify the kernel command line in /etc/kernel/cmdline!" >&2
     exit 1
 fi
 
@@ -69,7 +79,7 @@ case "$COMMAND" in
 
         [[ -d "$BOOT_DIR_ABS" ]] || mkdir -p "$BOOT_DIR_ABS"
 
-        if ! cp "$KERNEL_IMAGE" "$BOOT_DIR_ABS"/linux; then
+        if ! cp --reflink=auto "$KERNEL_IMAGE" "$BOOT_DIR_ABS"/linux; then
             echo "Can't copy '$KERNEL_IMAGE to '$BOOT_DIR_ABS/linux'!" >&2
         fi
 

@@ -94,18 +94,18 @@ setup_net() {
     [ -e "/tmp/net.ifaces" ] && read IFACES < /tmp/net.ifaces
     [ -z "$IFACES" ] && IFACES="$netif"
     # run the scripts written by ifup
-    [ -e /tmp/net.$netif.gw ]            && . /tmp/net.$netif.gw
     [ -e /tmp/net.$netif.hostname ]      && . /tmp/net.$netif.hostname
     [ -e /tmp/net.$netif.override ]      && . /tmp/net.$netif.override
     [ -e /tmp/dhclient.$netif.dhcpopts ] && . /tmp/dhclient.$netif.dhcpopts
     # set up resolv.conf
     [ -e /tmp/net.$netif.resolv.conf ] && \
         cp -f /tmp/net.$netif.resolv.conf /etc/resolv.conf
+    [ -e /tmp/net.$netif.gw ]            && . /tmp/net.$netif.gw
 
     # add static route
     for _p in $(getargs rd.route); do
         route_to_var "$_p" || continue
-        [ -n "$route_dev" ] && [ "$route_dev" != "$netif"] && continue
+        [ -n "$route_dev" ] && [ "$route_dev" != "$netif" ] && continue
         ip route add "$route_mask" ${route_gw:+via "$route_gw"} ${route_dev:+dev "$route_dev"}
         if strstr ":" "$route_mask"; then
             printf -- "%s\n" "$route_mask ${route_gw:+via $route_gw} ${route_dev:+dev $route_dev}" \
@@ -308,6 +308,23 @@ parse_iscsi_root()
             ;;
     esac
 
+    unset iscsi_target_name
+    # extract target name
+    case "$v" in
+        *:iqn.*)
+            iscsi_target_name=iqn.${v##*:iqn.}
+            v=${v%:iqn.*}:
+            ;;
+        *:eui.*)
+            iscsi_target_name=eui.${v##*:eui.}
+            v=${v%:eui.*}:
+            ;;
+        *:naa.*)
+            iscsi_target_name=naa.${v##*:naa.}
+            v=${v%:naa.*}:
+            ;;
+    esac
+
     # parse the rest
     OLDIFS="$IFS"
     IFS=:
@@ -317,24 +334,33 @@ parse_iscsi_root()
     iscsi_protocol=$1; shift # ignored
     iscsi_target_port=$1; shift
 
+    if [ -n "$iscsi_target_name" ]; then
+        if [ $# -eq 3 ]; then
+            iscsi_iface_name=$1; shift
+        fi
+        if [ $# -eq 2 ]; then
+            iscsi_netdev_name=$1; shift
+        fi
+        iscsi_lun=$1; shift
+        if [ $# -ne 0 ]; then
+            warn "Invalid parameter in iscsi: parameter!"
+            return 1
+        fi
+        return 0
+    fi
+
+
     if [ $# -gt 3 ] && [ -n "$1$2" ]; then
-        iscsi_iface_name=$1; shift
-        iscsi_netdev_name=$1; shift
+        if [ -z "$3" ] || [ "$3" -ge 0 ]  2>/dev/null ; then
+            iscsi_iface_name=$1; shift
+            iscsi_netdev_name=$1; shift
+        fi
     fi
 
     iscsi_lun=$1; shift
 
-    if [ $# -gt 2 ]; then
-        warn "Invalid parameter in iscsi: parameter!"
-        return 1
-    fi
-
-    if [ $# -eq 2 ]; then
-        iscsi_target_name="$1:$2"
-    else
-        iscsi_target_name="$1"
-    fi
-
+    iscsi_target_name=$(printf "%s:" "$@")
+    iscsi_target_name=${iscsi_target_name%:}
 }
 
 ip_to_var() {
@@ -494,7 +520,7 @@ wait_for_ipv6_dad() {
     local cnt=0
     local li
     while [ $cnt -lt 500 ]; do
-        li=$(ip -6 addr show dev $1)
+        li=$(ip -6 addr show dev $1 scope link)
         strstr "$li" "tentative" || return 0
         sleep 0.1
         cnt=$(($cnt+1))
@@ -528,13 +554,18 @@ type hostname >/dev/null 2>&1 || \
 }
 
 iface_has_link() {
+    local cnt=0
     local interface="$1" flags=""
     [ -n "$interface" ] || return 2
     interface="/sys/class/net/$interface"
     [ -d "$interface" ] || return 2
     linkup "$1"
-    [ "$(cat $interface/carrier)" = 1 ] || return 1
-    # XXX Do we need to reset the flags here? anaconda never bothered..
+    while [ $cnt -lt 50 ]; do
+        [ "$(cat $interface/carrier)" = 1 ] && return 0
+        sleep 0.1
+        cnt=$(($cnt+1))
+    done
+    return 1
 }
 
 find_iface_with_link() {
@@ -551,7 +582,19 @@ find_iface_with_link() {
 }
 
 is_persistent_ethernet_name() {
-    case "$1" in
+    local _netif="$1"
+    local _name_assign_type="0"
+
+    [ -f "/sys/class/net/$_netif/name_assign_type" ] \
+        && _name_assign_type=$(cat "/sys/class/net/$_netif/name_assign_type")
+
+    # NET_NAME_ENUM 1
+    [ "$_name_assign_type" = "1" ] && return 1
+
+    # NET_NAME_PREDICTABLE 2
+    [ "$_name_assign_type" = "2" ] && return 0
+
+    case "$_netif" in
         # udev persistent interface names
         eno[0-9]|eno[0-9][0-9]|eno[0-9][0-9][0-9]*)
             ;;
@@ -570,4 +613,36 @@ is_persistent_ethernet_name() {
             return 1
     esac
     return 0
+}
+
+is_kernel_ethernet_name() {
+    local _netif="$1"
+    local _name_assign_type="1"
+
+    if [ -e "/sys/class/net/$_netif/name_assign_type" ]; then
+        _name_assign_type=$(cat "/sys/class/net/$_netif/name_assign_type")
+
+        case "$_name_assign_type" in
+            2|3|4)
+                # NET_NAME_PREDICTABLE 2
+                # NET_NAME_USER 3
+                # NET_NAME_RENAMED 4
+                return 1
+                ;;
+            1|*)
+                # NET_NAME_ENUM 1
+                return 0
+                ;;
+        esac
+    fi
+
+    # fallback to error prone manual name check
+    case "$_netif" in
+        eth[0-9]|eth[0-9][0-9]|eth[0-9][0-9][0-9]*)
+            return 0
+            ;;
+        *)
+            return 1
+    esac
+
 }

@@ -46,7 +46,7 @@ cmdline() {
 
         UUID=$(
             /sbin/mdadm --examine --export $dev \
-                | while read line; do
+                | while read line || [ -n "$line" ]; do
                 [[ ${line#MD_UUID=} = $line ]] && continue
                 printf "%s" "${line#MD_UUID=} "
             done
@@ -71,8 +71,8 @@ install() {
     inst $(command -v mdadm) /sbin/mdadm
 
     if [[ $hostonly_cmdline == "yes" ]]; then
-        cmdline  >> "${initdir}/etc/cmdline.d/90mdraid.conf"
-        echo  >> "${initdir}/etc/cmdline.d/90mdraid.conf"
+        local _raidconf=$(cmdline)
+        [[ $_raidconf ]] && printf "%s\n" "$_raidconf" >> "${initdir}/etc/cmdline.d/90mdraid.conf"
     fi
 
     # <mdadm-3.3 udev rule
@@ -86,7 +86,7 @@ install() {
     for rule in 64-md-raid.rules 64-md-raid-assembly.rules; do
         rule_path="${initdir}${udevdir}/rules.d/${rule}"
         [ -f "${rule_path}" ] && sed -i -r \
-            -e '/RUN\+?="[[:alpha:]/]*mdadm[[:blank:]]+(--incremental|-I)[[:blank:]]+(\$env\{DEVNAME\}|\$tempnode|\$devnode)/d' \
+            -e '/(RUN|IMPORT\{program\})\+?="[[:alpha:]/]*mdadm[[:blank:]]+(--incremental|-I)[[:blank:]]+(--export )?(\$env\{DEVNAME\}|\$tempnode|\$devnode)/d' \
             "${rule_path}"
     done
 

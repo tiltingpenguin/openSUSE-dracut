@@ -22,7 +22,7 @@ installkernel() {
         local _merge=8 _side2=9
         function nmf1() {
             local _fname _fcont
-            while read _fname; do
+            while read _fname || [ -n "$_fname" ]; do
                 case "$_fname" in
                     *.ko)    _fcont="$(<        $_fname)" ;;
                     *.ko.gz) _fcont="$(gzip -dc $_fname)" ;;
@@ -35,7 +35,7 @@ installkernel() {
         }
         function rotor() {
             local _f1 _f2
-            while read _f1; do
+            while read _f1 || [ -n "$_f1" ]; do
                 echo "$_f1"
                 if read _f2; then
                     echo "$_f2" 1>&${_side2}
@@ -60,6 +60,8 @@ installkernel() {
             ${NULL}
     fi
 
+    instmods amdkfd hyperv_fb
+
     for _modname in $(find_kernel_modules_by_path drivers/gpu/drm \
         | drm_module_filter) ; do
         # if the hardware is present, include module even if it is not currently loaded,
@@ -68,6 +70,10 @@ installkernel() {
         if [[ $hostonly ]] && modinfo -F alias $_modname | sed -e 's,\?,\.,g' -e 's,\*,\.\*,g' \
             | grep -qxf - /sys/bus/{pci/devices,soc/devices/soc?}/*/modalias 2>/dev/null; then
             hostonly='' instmods $_modname
+            # if radeon.ko is installed, we want amdkfd also
+            if strstr "$_modname" radeon.ko; then
+                hostonly='' instmods amdkfd
+            fi
             continue
         fi
         instmods $_modname
