@@ -18,8 +18,10 @@ debian/09console-setup          usr/lib/dracut/modules.d
 modules.d/00dash		usr/lib/dracut/modules.d
 modules.d/00bash		usr/lib/dracut/modules.d
 modules.d/00bootchart		usr/lib/dracut/modules.d
+modules.d/00systemd		usr/lib/dracut/modules.d
 modules.d/00systemd-bootchart	usr/lib/dracut/modules.d
 modules.d/01fips		usr/lib/dracut/modules.d
+modules.d/01systemd-initrd	usr/lib/dracut/modules.d
 modules.d/02caps		usr/lib/dracut/modules.d
 modules.d/02fips-aesni		usr/lib/dracut/modules.d
 modules.d/03modsign		usr/lib/dracut/modules.d
@@ -54,12 +56,12 @@ modules.d/95udev-rules		usr/lib/dracut/modules.d
 modules.d/96securityfs		usr/lib/dracut/modules.d
 modules.d/97biosdevname		usr/lib/dracut/modules.d
 modules.d/97masterkey		usr/lib/dracut/modules.d
+modules.d/98dracut-systemd	usr/lib/dracut/modules.d
 modules.d/98ecryptfs		usr/lib/dracut/modules.d
 modules.d/98integrity		usr/lib/dracut/modules.d
 modules.d/98pollcdrom		usr/lib/dracut/modules.d
 modules.d/98selinux		usr/lib/dracut/modules.d
 modules.d/98syslog		usr/lib/dracut/modules.d
-modules.d/98systemd		usr/lib/dracut/modules.d
 modules.d/98usrmount		usr/lib/dracut/modules.d
 modules.d/99base		usr/lib/dracut/modules.d
 modules.d/99fs-lib		usr/lib/dracut/modules.d
