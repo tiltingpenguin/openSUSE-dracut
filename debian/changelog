@@ -1,13 +1,14 @@
-dracut (043-1) UNRELEASED; urgency=medium
+dracut (043-1) unstable; urgency=medium
 
+  * new upstream, Closes: #771413
   * control: add packages dracut-config-{rescue,generic} which include
     config files how dracut will build the initrd
-  * new upstream, Closes: #771413
+  * 10-debian.conf: generate hostonly initrd by default
   * aufs module: transform aufs patch to files in a directory, use --bind
     instead of --move, move module from dracut-network to dracut,
     make aufs independent of nfs
 
- -- Thomas Lange <lange@debian.org>  Wed, 12 Aug 2015 18:51:00 +0200
+ -- Thomas Lange <lange@debian.org>  Wed, 12 Aug 2015 19:21:07 +0200
 
 dracut (040+1-1) unstable; urgency=low
 
