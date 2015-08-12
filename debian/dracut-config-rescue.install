@@ -1,1 +1,1 @@
-debian/etc/02-rescue.conf       etc/dracut.conf.d
+debian/etc/20-rescue.conf       etc/dracut.conf.d
