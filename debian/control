@@ -42,3 +42,14 @@ Description: Low-level tool for generating an initramfs image
  Having the root on MD, LVM2, LUKS is supported as well as NFS, iSCSI,
  NBD and FCOE with dracut-network.
 
+Package: dracut-config-generic
+Architecture: all
+Depends: dracut
+Description: Low-level tool for generating an initramfs image
+ This is the dracut configuration to turn off hostonly image generation
+
+Package: dracut-config-rescue
+Architecture: all
+Depends: dracut
+Description: Low-level tool for generating an initramfs image
+ This is the dracut configuration to turn on rescue image generation
