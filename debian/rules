@@ -9,3 +9,6 @@ override_dh_auto_configure:
 	dh_auto_configure -- --systemdsystemunitdir=/lib/systemd/system
 
 override_dh_auto_test:
+
+override_dh_clean:
+	dh_clean dracut.pc
