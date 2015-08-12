@@ -1,12 +1,15 @@
 #!/bin/bash
 
 depends() {
-    # We depend on nfs modules being loaded
-    echo nfs
+    # We do not depend on any modules - just some root
     return 0
 }
 
-install() {
+# called by dracut
+installkernel() {
+    instmods aufs
+}
 
+install() {
     inst_hook pre-pivot 10 "$moddir/aufs-mount.sh"
 }
