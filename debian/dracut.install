@@ -15,6 +15,7 @@ debian/kernel                   etc
 debian/etc/10-debian.conf	etc/dracut.conf.d
 etc/dracut.conf                 etc
 debian/09console-setup          usr/lib/dracut/modules.d
+debian/90aufs			usr/lib/dracut/modules.d
 modules.d/00dash		usr/lib/dracut/modules.d
 modules.d/00bash		usr/lib/dracut/modules.d
 modules.d/00bootchart		usr/lib/dracut/modules.d
