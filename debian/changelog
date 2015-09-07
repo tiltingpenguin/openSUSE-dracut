@@ -2,7 +2,7 @@ dracut (043-3) unstable; urgency=low
 
   * dracut-network: activate ifcfg module
 
- -- Thomas Lange <lange@debian.org>  Mon, 07 Sep 2015 11:26:42 +0200
+ -- Thomas Lange <lange@debian.org>  Mon, 07 Sep 2015 12:56:46 +0200
 
 dracut (043-2) unstable; urgency=medium
 
