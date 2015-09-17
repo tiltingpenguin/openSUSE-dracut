@@ -1,3 +1,9 @@
+dracut (043-4) unstable; urgency=low
+
+  * add more man pages to package
+
+ -- Thomas Lange <lange@debian.org>  Thu, 17 Sep 2015 03:34:44 +0200
+
 dracut (043-3) unstable; urgency=low
 
   * dracut-network: activate ifcfg module
