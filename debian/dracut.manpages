@@ -6,11 +6,4 @@ dracut.cmdline.7
 dracut-catimages.8
 lsinitrd.1
 mkinitrd.8
-dracut-cmdline.service.8
-dracut-initqueue.service.8
-dracut-mount.service.8
-dracut-pre-trigger.service.8
-dracut-pre-mount.service.8
-dracut-pre-pivot.service.8
-dracut-shutdown.service.8
-dracut-pre-udev.service.8
+debian/tmp/usr/share/man/man8/*
