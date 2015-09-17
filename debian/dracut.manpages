@@ -6,7 +6,6 @@ dracut.cmdline.7
 dracut-catimages.8
 lsinitrd.1
 mkinitrd.8
-dracut.kernel.7
 dracut-cmdline.service.8
 dracut-initqueue.service.8
 dracut-mount.service.8
