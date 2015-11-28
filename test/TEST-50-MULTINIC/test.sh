@@ -146,7 +146,7 @@ test_setup() {
 
     (
         export initdir="$TESTDIR"/mnt
-        . "$basedir"/dracut-functions.sh
+        . "$basedir"/dracut-init.sh
 
         (
             cd "$initdir";
@@ -205,14 +205,14 @@ test_setup() {
         inst /etc/group /etc/group
 
         cp -a -- /etc/ld.so.conf* "$initdir"/etc
-        sudo ldconfig -r -- "$initdir"
+        ldconfig -r "$initdir"
         dracut_kernel_post
     )
 
     # Make client root inside server root
     (
         export initdir="$TESTDIR"/mnt/nfs/client
-        . "$basedir"/dracut-functions.sh
+        . "$basedir"/dracut-init.sh
         (
             cd "$initdir"
             mkdir -p dev sys proc etc run
@@ -256,7 +256,7 @@ test_setup() {
     # Make an overlay with needed tools for the test harness
     (
         export initdir="$TESTDIR"/overlay
-        . "$basedir"/dracut-functions.sh
+        . "$basedir"/dracut-init.sh
         inst_multiple poweroff shutdown
         inst_hook emergency 000 ./hard-off.sh
         inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules

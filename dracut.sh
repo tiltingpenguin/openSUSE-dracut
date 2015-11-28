@@ -22,7 +22,15 @@
 #
 
 # store for logging
+
+# Verify bash version, current minimum is 4
+if (( BASH_VERSINFO[0] < 4 )); then
+    printf -- 'You need at least Bash 4 to use dracut, sorry.' >&2
+    exit 1
+fi
+
 dracut_args=( "$@" )
+readonly dracut_cmd="$(readlink -f $0)"
 
 set -o pipefail
 
@@ -34,7 +42,7 @@ usage() {
 
 #                                                       80x25 linebreak here ^
     cat << EOF
-Usage: $0 [OPTION]... [<initramfs> [<kernel-version>]]
+Usage: $dracut_cmd [OPTION]... [<initramfs> [<kernel-version>]]
 
 Version: $DRACUT_VERSION
 
@@ -59,7 +67,7 @@ long_usage() {
 
 #                                                       80x25 linebreak here ^
     cat << EOF
-Usage: $0 [OPTION]... [<initramfs> [<kernel-version>]]
+Usage: $dracut_cmd [OPTION]... [<initramfs> [<kernel-version>]]
 
 Version: $DRACUT_VERSION
 
@@ -152,6 +160,8 @@ Creates initial ramdisk images for preloading modules
   --mount "[DEV] [MP] [FSTYPE] [FSOPTS]"
                         Mount device [DEV] on mountpoint [MP] with filesystem
                         [FSTYPE] and options [FSOPTS] in the initramfs
+  --mount "[MP]"	Same as above, but [DEV], [FSTYPE] and [FSOPTS] are
+			determined by looking at the current mounts.
   --add-device "[DEV]"  Bring up [DEV] in initramfs
   -i, --include [SOURCE] [TARGET]
                         Include the files in the SOURCE directory into the
@@ -194,6 +204,7 @@ Creates initial ramdisk images for preloading modules
   --sshkey [SSHKEY]     Add ssh key to initramfs (use with ssh-client module)
   --logfile [FILE]      Logfile to use (overrides configuration setting)
   --reproducible        Create reproducible images
+  --no-reproducible     Do not create reproducible images
   --loginstall [DIR]    Log all files installed from the host to [DIR]
   --uefi                Create an UEFI executable with the kernel cmdline and
                         kernel combined
@@ -209,55 +220,13 @@ For example:
 EOF
 }
 
-# function push()
-# push values to a stack
-# $1 = stack variable
-# $2.. values
-# example:
-# push stack 1 2 "3 4"
-push() {
-    local _i
-    local __stack=$1; shift
-    for _i in "$@"; do
-        eval ${__stack}'[${#'${__stack}'[@]}]="$_i"'
-    done
-}
-
 # Fills up host_devs stack variable and makes sure there are no duplicates
 push_host_devs() {
     local _dev
-    for _dev in ${host_devs[@]}; do
-        [ "$_dev" = "$1" ] && return
+    for _dev in "$@"; do
+        [[ " ${host_devs[@]} " == *" $_dev "* ]] && return
+        host_devs+=( "$_dev" )
     done
-    push host_devs "$1"
-}
-
-
-# function pop()
-# pops the last value from a stack
-# assigns value to second argument variable
-# or echo to stdout, if no second argument
-# $1 = stack variable
-# $2 = optional variable to store the value
-# example:
-# pop stack val
-# val=$(pop stack)
-pop() {
-    local __stack=$1; shift
-    local __resultvar=$1
-    local _value;
-    # check for empty stack
-    eval '[[ ${#'${__stack}'[@]} -eq 0 ]] && return 1'
-
-    eval _value='${'${__stack}'[${#'${__stack}'[@]}-1]}'
-
-    if [[ "$__resultvar" ]]; then
-        eval $__resultvar="'$_value'"
-    else
-        printf "%s" "$_value"
-    fi
-    eval unset ${__stack}'[${#'${__stack}'[@]}-1]'
-    return 0
 }
 
 # Little helper function for reading args from the commandline.
@@ -392,10 +361,13 @@ rearrange_params()
         --long early-microcode \
         --long no-early-microcode \
         --long reproducible \
+        --long no-reproducible \
         --long loginstall: \
         --long uefi \
         --long uefi-stub: \
         --long kernel-image: \
+        --long no-hostonly-i18n \
+        --long hostonly-i18n \
         -- "$@")
 
     if (( $? != 0 )); then
@@ -486,28 +458,25 @@ while :; do
         PARMS_TO_STORE+=" $1";
     fi
     case $1 in
-        --kver)        kernel="$2";                    PARMS_TO_STORE+=" '$2'"; shift;;
-        -a|--add)      push add_dracutmodules_l  "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        --force-add)   push force_add_dracutmodules_l  "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        --add-drivers) push add_drivers_l        "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        --force-drivers) push force_drivers_l    "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        --omit-drivers) push omit_drivers_l      "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        -m|--modules)  push dracutmodules_l      "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        -o|--omit)     push omit_dracutmodules_l "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        -d|--drivers)  push drivers_l            "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        --filesystems) push filesystems_l        "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        -I|--install)  push install_items_l      "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        --install-optional)
-                       push install_optional_items_l \
-                                                 "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        --fwdir)       push fw_dir_l             "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        --libdirs)     push libdirs_l            "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        --fscks)       push fscks_l              "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        --add-fstab)   push add_fstab_l          "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        --mount)       push fstab_lines          "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        --add-device|--device)
-                       push add_device_l         "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
-        --kernel-cmdline) push kernel_cmdline_l  "$2"; PARMS_TO_STORE+=" '$2'"; shift;;
+        --kver)        kernel="$2";                           PARMS_TO_STORE+=" '$2'"; shift;;
+        -a|--add)      add_dracutmodules_l+=("$2");           PARMS_TO_STORE+=" '$2'"; shift;;
+        --force-add)   force_add_dracutmodules_l+=("$2");     PARMS_TO_STORE+=" '$2'"; shift;;
+        --add-drivers) add_drivers_l+=("$2");                 PARMS_TO_STORE+=" '$2'"; shift;;
+        --force-drivers) force_drivers_l+=("$2");             PARMS_TO_STORE+=" '$2'"; shift;;
+        --omit-drivers) omit_drivers_l+=("$2");               PARMS_TO_STORE+=" '$2'"; shift;;
+        -m|--modules)  dracutmodules_l+=("$2");               PARMS_TO_STORE+=" '$2'"; shift;;
+        -o|--omit)     omit_dracutmodules_l+=("$2");          PARMS_TO_STORE+=" '$2'"; shift;;
+        -d|--drivers)  drivers_l+=("$2");                     PARMS_TO_STORE+=" '$2'"; shift;;
+        --filesystems) filesystems_l+=("$2");                 PARMS_TO_STORE+=" '$2'"; shift;;
+        -I|--install)  install_items_l+=("$2");               PARMS_TO_STORE+=" '$2'"; shift;;
+        --install-optional) install_optional_items_l+=("$2"); PARMS_TO_STORE+=" '$2'"; shift;;
+        --fwdir)       fw_dir_l+=("$2");                      PARMS_TO_STORE+=" '$2'"; shift;;
+        --libdirs)     libdirs_l+=("$2");                     PARMS_TO_STORE+=" '$2'"; shift;;
+        --fscks)       fscks_l+=("$2");                       PARMS_TO_STORE+=" '$2'"; shift;;
+        --add-fstab)   add_fstab_l+=("$2");                   PARMS_TO_STORE+=" '$2'"; shift;;
+        --mount)       fstab_lines+=("$2");                   PARMS_TO_STORE+=" '$2'"; shift;;
+        --add-device|--device) add_device_l+=("$2");          PARMS_TO_STORE+=" '$2'"; shift;;
+        --kernel-cmdline) kernel_cmdline_l+=("$2");           PARMS_TO_STORE+=" '$2'"; shift;;
         --nofscks)     nofscks_l="yes";;
         --ro-mnt)      ro_mnt_l="yes";;
         -k|--kmoddir)  drivers_dir_l="$2";             PARMS_TO_STORE+=" '$2'"; shift;;
@@ -551,7 +520,7 @@ while :; do
         -q|--quiet)    ((verbosity_mod_l--));;
         -l|--local)
                        allowlocal="yes"
-                       [[ -f "$(readlink -f "${0%/*}")/dracut-functions.sh" ]] \
+                       [[ -f "$(readlink -f "${0%/*}")/dracut-init.sh" ]] \
                            && dracutbasedir="$(readlink -f "${0%/*}")"
                        ;;
         -H|--hostonly|--host-only)
@@ -560,13 +529,17 @@ while :; do
                        hostonly_l="no" ;;
         --hostonly-cmdline)
                        hostonly_cmdline_l="yes" ;;
+        --hostonly-i18n)
+                       i18n_install_all_l="no" ;;
+        --no-hostonly-i18n)
+                       i18n_install_all_l="yes" ;;
         --no-hostonly-cmdline)
                        hostonly_cmdline_l="no" ;;
         --persistent-policy)
                        persistent_policy_l="$2";       PARMS_TO_STORE+=" '$2'"; shift;;
         --fstab)       use_fstab_l="yes" ;;
         -h|--help)     long_usage; exit 1 ;;
-        -i|--include)  push include_src "$2";          PARMS_TO_STORE+=" '$2'";
+        -i|--include)  include_src+=("$2");          PARMS_TO_STORE+=" '$2'";
                        shift;;
         --bzip2)       compress_l="bzip2";;
         --lzma)        compress_l="lzma";;
@@ -584,6 +557,7 @@ while :; do
         --regenerate-all) regenerate_all="yes";;
         --noimageifnotneeded) noimageifnotneeded="yes";;
         --reproducible) reproducible_l="yes";;
+        --no-reproducible) reproducible_l="no";;
         --uefi)        uefi="yes";;
         --uefi-stub)
                        uefi_stub_l="$2";               PARMS_TO_STORE+=" '$2'"; shift;;
@@ -602,8 +576,8 @@ done
 
 while (($# > 0)); do
     if [ "${1%%=*}" == "++include" ]; then
-        push include_src "$2"
-        push include_target "$3"
+        include_src+=("$2")
+        include_target+=("$3")
         PARMS_TO_STORE+=" --include '$2' '$3'"
         shift 2
     fi
@@ -631,7 +605,7 @@ if [[ $regenerate_all == "yes" ]]; then
     cd /lib/modules
     for i in *; do
         [[ -f $i/modules.dep ]] || [[ -f $i/modules.dep.bin ]] || continue
-        dracut --kver="$i" "${dracut_args[@]}"
+        "$dracut_cmd" --kver="$i" "${dracut_args[@]}"
         ((ret+=$?))
     done
     exit $ret
@@ -719,84 +693,21 @@ done
 export PATH="${NPATH#:}"
 unset NPATH
 
-# these optins add to the stuff in the config file
-if (( ${#add_dracutmodules_l[@]} )); then
-    while pop add_dracutmodules_l val; do
-        add_dracutmodules+=" $val "
-    done
-fi
-
-if (( ${#force_add_dracutmodules_l[@]} )); then
-    while pop force_add_dracutmodules_l val; do
-        force_add_dracutmodules+=" $val "
-    done
-fi
-
-if (( ${#fscks_l[@]} )); then
-    while pop fscks_l val; do
-        fscks+=" $val "
-    done
-fi
-
-if (( ${#add_fstab_l[@]} )); then
-    while pop add_fstab_l val; do
-        add_fstab+=" $val "
-    done
-fi
-
-if (( ${#fstab_lines_l[@]} )); then
-    while pop fstab_lines_l val; do
-        push fstab_lines $val
-    done
-fi
-
-if (( ${#install_items_l[@]} )); then
-    while pop install_items_l val; do
-        install_items+=" $val "
-    done
-fi
-
-if (( ${#install_optional_items_l[@]} )); then
-    while pop install_optional_items_l val; do
-        install_optional_items+=" $val "
-    done
-fi
+# these options add to the stuff in the config file
+(( ${#add_dracutmodules_l[@]} )) && add_dracutmodules+=" ${add_dracutmodules_l[@]} "
+(( ${#force_add_dracutmodules_l[@]} )) && force_add_dracutmodules+=" ${force_add_dracutmodules_l[@]} "
+(( ${#fscks_l[@]} )) && fscks+=" ${fscks_l[@]} "
+(( ${#add_fstab_l[@]} )) && add_fstab+=" ${add_fstab_l[@]} "
+(( ${#fstab_lines_l[@]} )) && fstab_lines+=( "${fstab_lines_l[@]}" )
+(( ${#install_items_l[@]} )) && install_items+=" ${install_items_l[@]} "
+(( ${#install_optional_items_l[@]} )) && install_optional_items+=" ${install_optional_items_l[@]} "
 
 # these options override the stuff in the config file
-if (( ${#dracutmodules_l[@]} )); then
-    dracutmodules=''
-    while pop dracutmodules_l val; do
-        dracutmodules+="$val "
-    done
-fi
-
-if (( ${#omit_dracutmodules_l[@]} )); then
-    omit_dracutmodules=''
-    while pop omit_dracutmodules_l val; do
-        omit_dracutmodules+="$val "
-    done
-fi
-
-if (( ${#filesystems_l[@]} )); then
-    filesystems=''
-    while pop filesystems_l val; do
-        filesystems+="$val "
-    done
-fi
-
-if (( ${#fw_dir_l[@]} )); then
-    fw_dir=''
-    while pop fw_dir_l val; do
-        fw_dir+="$val "
-    done
-fi
-
-if (( ${#libdirs_l[@]} )); then
-    libdirs=''
-    while pop libdirs_l val; do
-        libdirs+="$val "
-    done
-fi
+(( ${#dracutmodules_l[@]} )) && dracutmodules="${dracutmodules_l[@]}"
+(( ${#omit_dracutmodules_l[@]} )) && omit_dracutmodules="${omit_dracutmodules_l[@]}"
+(( ${#filesystems_l[@]} )) && filesystems="${filesystems_l[@]}"
+(( ${#fw_dir_l[@]} )) && fw_dir="${fw_dir_l[@]}"
+(( ${#libdirs_l[@]} ))&& libdirs="${libdirs_l[@]}"
 
 [[ $stdloglvl_l ]] && stdloglvl=$stdloglvl_l
 [[ ! $stdloglvl ]] && stdloglvl=4
@@ -816,6 +727,7 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 [[ $hostonly_l ]] && hostonly=$hostonly_l
 [[ $hostonly_cmdline_l ]] && hostonly_cmdline=$hostonly_cmdline_l
 [[ "$hostonly" == "yes" ]] && ! [[ $hostonly_cmdline ]] && hostonly_cmdline="yes"
+[[ $i18n_install_all_l ]] && i18n_install_all=$i18n_install_all_l
 [[ $persistent_policy_l ]] && persistent_policy=$persistent_policy_l
 [[ $use_fstab_l ]] && use_fstab=$use_fstab_l
 [[ $mdadmconf_l ]] && mdadmconf=$mdadmconf_l
@@ -851,25 +763,53 @@ if [[ -n "$logfile" ]];then
 fi
 
 # handle compression options.
-[[ $compress ]] || compress="gzip"
-case $compress in
-    bzip2) compress="bzip2 -9";
-        command -v lbzip2 > /dev/null 2>&1 && compress="lbzip2 -9";;
-    lzma)  compress="lzma -9 -T0";;
-    xz)    compress="xz --check=crc32 --lzma2=dict=1MiB -T0";;
-    gzip)  compress="gzip -n -9";
-        if command -v pigz > /dev/null 2>&1; then
-            compress="pigz -9 -n -T -R"
-        elif command -v gzip --help 2>&1 | grep -q rsyncable; then
-            compress="gzip -n -9 --rsyncable"
-        fi
-        ;;
-    lzo)   compress="lzop -9";;
-    lz4)   compress="lz4 -l -9";;
-esac
 if [[ $_no_compress_l = "cat" ]]; then
     compress="cat"
 fi
+
+if ! [[ $compress ]]; then
+    # check all known compressors, if none specified
+    for i in pigz gzip lz4 lzop lzma xz lbzip2 bzip2 cat; do
+        command -v "$i" &>/dev/null || continue
+        compress="$i"
+        break
+    done
+    if [[ $compress = cat ]]; then
+            printf "%s\n" "dracut: no compression tool available. Initramfs image is going to be big." >&2
+    fi
+fi
+
+# choose the right arguments for the compressor
+case $compress in
+    bzip2|lbzip2)
+        if [[ "$compress" =  lbzip2 ]] || command -v lbzip2 &>/dev/null; then
+            compress="lbzip2 -9"
+        else
+            compress="bzip2 -9"
+        fi
+        ;;
+    lzma)
+        compress="lzma -9 -T0"
+        ;;
+    xz)
+        compress="xz --check=crc32 --lzma2=dict=1MiB -T0"
+        ;;
+    gzip|pigz)
+        if [[ "$compress" = pigz ]] || command -v pigz &>/dev/null; then
+            compress="pigz -9 -n -T -R"
+        elif command -v gzip &>/dev/null && gzip --help 2>&1 | grep -q rsyncable; then
+            compress="gzip -n -9 --rsyncable"
+        else
+            compress="gzip -n -9"
+        fi
+        ;;
+    lzo|lzop)
+        compress="lzop -9"
+        ;;
+    lz4)
+        compress="lz4 -l -9"
+        ;;
+esac
 
 [[ $hostonly = yes ]] && hostonly="-h"
 [[ $hostonly != "-h" ]] && unset hostonly
@@ -877,26 +817,22 @@ fi
 [[ $reproducible == yes ]] && DRACUT_REPRODUCIBLE=1
 
 readonly TMPDIR="$tmpdir"
-readonly initdir="$(mktemp --tmpdir="$TMPDIR/" -d -t initramfs.XXXXXX)"
-[ -d "$initdir" ] || {
-    printf "%s\n" "dracut: mktemp --tmpdir='$TMPDIR/' -d -t initramfs.XXXXXX failed." >&2
+readonly DRACUT_TMPDIR="$(mktemp -p "$TMPDIR/" -d -t dracut.XXXXXX)"
+[ -d "$DRACUT_TMPDIR" ] || {
+    printf "%s\n" "dracut: mktemp -p '$TMPDIR/' -d -t dracut.XXXXXX failed." >&2
     exit 1
 }
+readonly initdir="${DRACUT_TMPDIR}/initramfs"
+mkdir "$initdir"
 
 if [[ $early_microcode = yes ]] || ( [[ $acpi_override = yes ]] && [[ -d $acpi_table_dir ]] ); then
-    readonly early_cpio_dir="$(mktemp --tmpdir="$TMPDIR/" -d -t early_cpio.XXXXXX)"
-    [ -d "$early_cpio_dir" ] || {
-        printf "%s\n" "dracut: mktemp --tmpdir='$TMPDIR/' -d -t early_cpio.XXXXXX failed." >&2
-        exit 1
-    }
+    readonly early_cpio_dir="${DRACUT_TMPDIR}/earlycpio"
+    mkdir "$early_cpio_dir"
 fi
 # clean up after ourselves no matter how we die.
 trap '
     ret=$?;
-    [[ $keep ]] && echo "Not removing $initdir." >&2 || { [[ $initdir ]] && rm -rf -- "$initdir"; };
-    [[ $keep ]] && echo "Not removing $early_cpio_dir." >&2 || { [[ $early_cpio_dir ]] && rm -Rf -- "$early_cpio_dir"; };
-    [[ $keep ]] && echo "Not removing $uefi_outdir." >&2 || { [[ $uefi_outdir ]] && rm -Rf -- "$uefi_outdir"; };
-    [[ $_dlogdir ]] && rm -Rf -- "$_dlogdir";
+    [[ $keep ]] && echo "Not removing $DRACUT_TMPDIR." >&2 || { [[ $DRACUT_TMPDIR ]] && rm -rf -- "$DRACUT_TMPDIR"; };
     exit $ret;
     ' EXIT
 
@@ -917,12 +853,12 @@ if [[ -f $dracutbasedir/dracut-version.sh ]]; then
     . $dracutbasedir/dracut-version.sh
 fi
 
-if [[ -f $dracutbasedir/dracut-functions.sh ]]; then
-    . $dracutbasedir/dracut-functions.sh
+if [[ -f $dracutbasedir/dracut-init.sh ]]; then
+    . $dracutbasedir/dracut-init.sh
 else
-    printf "%s\n" "dracut: Cannot find $dracutbasedir/dracut-functions.sh." >&2
+    printf "%s\n" "dracut: Cannot find $dracutbasedir/dracut-init.sh." >&2
     printf "%s\n" "dracut: Are you running from a git checkout?" >&2
-    printf "%s\n" "dracut: Try passing -l as an argument to $0" >&2
+    printf "%s\n" "dracut: Try passing -l as an argument to $dracut_cmd" >&2
     exit 1
 fi
 
@@ -935,49 +871,22 @@ if ! [[ $print_cmdline ]]; then
     rm -fr -- ${initdir}/*
 fi
 
-# Verify bash version, current minimum is 4
-if (( BASH_VERSINFO[0] < 4 )); then
-    dfatal 'You need at least Bash 4 to use dracut, sorry.'
-    exit 1
-fi
-
 dracutfunctions=$dracutbasedir/dracut-functions.sh
 export dracutfunctions
 
-if (( ${#drivers_l[@]} )); then
-    drivers=''
-    while pop drivers_l val; do
-        drivers+="$val "
-    done
-fi
+(( ${#drivers_l[@]} )) && drivers="${drivers_l[@]}"
 drivers=${drivers/-/_}
 
-if (( ${#add_drivers_l[@]} )); then
-    while pop add_drivers_l val; do
-        add_drivers+=" $val "
-    done
-fi
+(( ${#add_drivers_l[@]} )) && add_drivers+=" ${add_drivers_l[@]} "
 add_drivers=${add_drivers/-/_}
 
-if (( ${#force_drivers_l[@]} )); then
-    while pop force_drivers_l val; do
-        force_drivers+=" $val "
-    done
-fi
+(( ${#force_drivers_l[@]} )) && force_drivers+=" ${force_drivers_l[@]} "
 force_drivers=${force_drivers/-/_}
 
-if (( ${#omit_drivers_l[@]} )); then
-    while pop omit_drivers_l val; do
-        omit_drivers+=" $val "
-    done
-fi
+(( ${#omit_drivers_l[@]} )) && omit_drivers+=" ${omit_drivers_l[@]} "
 omit_drivers=${omit_drivers/-/_}
 
-if (( ${#kernel_cmdline_l[@]} )); then
-    while pop kernel_cmdline_l val; do
-        kernel_cmdline+=" $val "
-    done
-fi
+(( ${#kernel_cmdline_l[@]} )) && kernel_cmdline+=" ${kernel_cmdline_l[@]} "
 
 omit_drivers_corrected=""
 for d in $omit_drivers; do
@@ -995,7 +904,7 @@ for ((i=0; i < ${#dracut_args[@]}; i++)); do
         #" keep vim happy
 done
 
-dinfo "Executing: $0 ${dracut_args[@]}"
+dinfo "Executing: $dracut_cmd ${dracut_args[@]}"
 
 [[ $do_list = yes ]] && {
     for mod in $dracutbasedir/modules.d/*; do
@@ -1014,10 +923,26 @@ esac
 
 abs_outfile=$(readlink -f "$outfile") && outfile="$abs_outfile"
 
-if [[ -d $srcmods ]]; then
-    [[ -f $srcmods/modules.dep ]] || {
-      dwarn "$srcmods/modules.dep is missing. Did you run depmod?"
-    }
+if [[ $no_kernel != yes ]] && [[ -d $srcmods ]]; then
+    if ! [[ -f $srcmods/modules.dep ]]; then
+        dwarn "$srcmods/modules.dep is missing. Did you run depmod?"
+    elif ! ( command -v gzip &>/dev/null && command -v xz &>/dev/null); then
+        read _mod < $srcmods/modules.dep
+        _mod=${_mod%%:*}
+        if [[ -f $srcmods/"$_mod" ]]; then
+            # Check, if kernel modules are compressed, and if we can uncompress them
+            case "$_mod" in
+                *.ko.gz) kcompress=gzip;;
+                *.ko.xz) kcompress=xz;;
+            esac
+            if [[ $kcompress ]]; then
+                if ! command -v "$kcompress" &>/dev/null; then
+                    dfatal "Kernel modules are compressed with $kcompress, but $kcompress is not available."
+                    exit 1
+                fi
+            fi
+        fi
+    fi
 fi
 
 if [[ ! $print_cmdline ]]; then
@@ -1099,18 +1024,18 @@ fi
 if [[ $early_microcode = yes ]]; then
     if [[ $hostonly ]]; then
         [[ $(get_cpu_vendor) == "AMD" ]] \
-            && ! check_kernel_config CONFIG_MICROCODE_AMD_EARLY \
+            && ! check_kernel_config CONFIG_MICROCODE_AMD \
             && unset early_microcode
         [[ $(get_cpu_vendor) == "Intel" ]] \
-            && ! check_kernel_config CONFIG_MICROCODE_INTEL_EARLY \
+            && ! check_kernel_config CONFIG_MICROCODE_INTEL \
             && unset early_microcode
     else
-        ! check_kernel_config CONFIG_MICROCODE_AMD_EARLY \
-            && ! check_kernel_config CONFIG_MICROCODE_INTEL_EARLY \
+        ! check_kernel_config CONFIG_MICROCODE_AMD \
+            && ! check_kernel_config CONFIG_MICROCODE_INTEL \
             && unset early_microcode
     fi
     [[ $early_microcode != yes ]] \
-        && dwarn "Disabling early microcode, because kernel does not support it. CONFIG_MICROCODE_[AMD|INTEL]_EARLY!=y"
+        && dwarn "Disabling early microcode, because kernel does not support it. CONFIG_MICROCODE_[AMD|INTEL]!=y"
 fi
 
 # Need to be able to have non-root users read stuff (rpcbind etc)
@@ -1146,6 +1071,11 @@ for line in "${fstab_lines[@]}"; do
             ;;
     esac
     [ -z "$dev" ] && dwarn "Bad fstab entry $@" && continue
+    if [[ "$3" == btrfs ]]; then
+        for i in $(btrfs_devs "$2"); do
+            push_host_devs "$i"
+        done
+    fi
     push_host_devs "$dev"
     host_fs_types["$dev"]="$3"
 done
@@ -1162,11 +1092,11 @@ for dev in $add_device; do
 done
 
 if (( ${#add_device_l[@]} )); then
-    while pop add_device_l val; do
-        add_device+=" $val "
-        push_host_devs "$val"
-    done
+    add_device+=" ${add_device_l[@]} "
+    push_host_devs "${add_device_l[@]}"
 fi
+
+declare -A host_modules
 
 if [[ $hostonly ]]; then
     # in hostonly mode, determine all devices, which have to be accessed
@@ -1193,9 +1123,14 @@ if [[ $hostonly ]]; then
         _dev=$(find_block_device "$mp")
         _bdev=$(readlink -f "/dev/block/$_dev")
         [[ -b $_bdev ]] && _dev=$_bdev
-        push_host_devs $_dev
-        [[ "$mp" == "/" ]] && root_dev="$_dev"
+        [[ "$mp" == "/" ]] && root_devs+=("$_dev")
         push_host_devs "$_dev"
+        if [[ $(find_mp_fstype "$mp") == btrfs ]]; then
+            for i in $(btrfs_devs "$mp"); do
+                [[ "$mp" == "/" ]] && root_devs+=("$i")
+                push_host_devs "$i"
+            done
+        fi
     done
 
     if [[ -f /proc/swaps ]] && [[ -f /etc/fstab ]]; then
@@ -1226,31 +1161,32 @@ if [[ $hostonly ]]; then
 
                 _dev="$(readlink -f "$dev")"
                 push_host_devs "$_dev"
-                push swap_devs "$_dev"
+                swap_devs+=("$_dev")
                 break
             done < /etc/fstab
         done < /proc/swaps
     fi
-    # record all host modaliases
-    declare -A host_modalias
-    find  /sys/devices/ -name uevent -print > "$initdir/.modalias"
-    while read m || [ -n "$m" ]; do
-        while read line || [ -n "$line" ]; do
-            [[ "$line" != MODALIAS\=* ]] && continue
-            modalias="${line##MODALIAS=}" && [[ $modalias ]] && host_modalias["$modalias"]=1
-            break
-        done < "$m"
-    done < "$initdir/.modalias"
 
-    rm -f -- "$initdir/.modalias"
+    # collect all "x-initrd.mount" entries from /etc/fstab
+    if [[ -f /etc/fstab ]]; then
+        while read _d _m _t _o _r || [ -n "$_d" ]; do
+            [[ "$_d" == \#* ]] && continue
+            [[ $_d ]] || continue
+            [[ "$_o" != *x-initrd.mount* ]] && continue
+            _dev=$(expand_persistent_dev "$_d")
+            _dev="$(readlink -f "$_dev")"
+            [[ -b $_dev ]] || continue
 
-    while read _k _s _v || [ -n "$_k" ]; do
-        [ "$_k" != "name" -a "$_k" != "driver" ] && continue
-        host_modalias["$_v"]=1
-    done </proc/crypto
+            push_host_devs "$_dev"
+            if [[ "$_t" == btrfs ]]; then
+                for i in $(find_btrfs_devs "$_m"); do
+                    push_host_devs "$i"
+                done
+            fi
+        done < /etc/fstab
+    fi
 
     # check /proc/modules
-    declare -A host_modules
     while read m rest || [ -n "$m" ]; do
         host_modules["$m"]=1
     done </proc/modules
@@ -1276,7 +1212,7 @@ _get_fs_type() {
     return 1
 }
 
-for dev in ${host_devs[@]}; do
+for dev in "${host_devs[@]}"; do
     _get_fs_type "$dev"
     check_block_and_slaves_all _get_fs_type "$(get_maj_min "$dev")"
 done
@@ -1300,7 +1236,7 @@ done
 [[ -d $udevdir ]] \
     || udevdir="$(pkg-config udev --variable=udevdir 2>/dev/null)"
 if ! [[ -d "$udevdir" ]]; then
-    [[ -d /lib/udev ]] && udevdir=/lib/udev
+    [[ ! -h /lib ]] && [[ -d /lib/udev ]] && udevdir=/lib/udev
     [[ -d /usr/lib/udev ]] && udevdir=/usr/lib/udev
 fi
 
@@ -1308,7 +1244,7 @@ fi
     || systemdutildir=$(pkg-config systemd --variable=systemdutildir 2>/dev/null)
 
 if ! [[ -d "$systemdutildir" ]]; then
-    [[ -d /lib/systemd ]] && systemdutildir=/lib/systemd
+    [[ ! -h /lib ]] && [[ -d /lib/systemd ]] && systemdutildir=/lib/systemd
     [[ -d /usr/lib/systemd ]] && systemdutildir=/usr/lib/systemd
 fi
 
@@ -1340,7 +1276,7 @@ export initdir dracutbasedir \
     debug host_fs_types host_devs swap_devs sshkey add_fstab \
     DRACUT_VERSION udevdir prefix filesystems drivers \
     systemdutildir systemdsystemunitdir systemdsystemconfdir \
-    host_modalias host_modules hostonly_cmdline loginstall \
+    host_modules hostonly_cmdline loginstall \
     tmpfilesdir
 
 mods_to_load=""
@@ -1516,11 +1452,23 @@ if [[ $kernel_only != yes ]]; then
 
     [[ $kernel_cmdline ]] && printf "%s\n" "$kernel_cmdline" >> "${initdir}/etc/cmdline.d/01-default.conf"
 
-    while pop fstab_lines line; do
+    for line in "${fstab_lines[@]}"; do
         line=($line)
-        [ -z "${line[3]}" ] && line[3]="defaults"
+
+        if [ -z "${line[1]}" ]; then
+            # Determine device and mount options from current system
+            mountpoint -q "${line[0]}" || derror "${line[0]} is not a mount point!"
+            line=($(findmnt --raw -n --target "${line[0]}" --output=source,target,fstype,options))
+            dinfo "Line for ${line[1]}: ${line[@]}"
+        else
+            # Use default options
+            [ -z "${line[3]}" ] && line[3]="defaults"
+        fi
+
+        # Default options for freq and passno
         [ -z "${line[4]}" ] && line[4]="0"
         [ -z "${line[5]}" ] && line[5]="2"
+
         strstr "${line[2]}" "nfs" && line[5]="0"
         echo "${line[@]}" >> "${initdir}/etc/fstab"
     done
@@ -1529,13 +1477,15 @@ if [[ $kernel_only != yes ]]; then
         cat "$f" >> "${initdir}/etc/fstab"
     done
 
-    if [ -d ${initdir}/$systemdutildir ]; then
-        mkdir -p ${initdir}/etc/conf.d
-        {
-            printf "%s\n" "systemdutildir=\"$systemdutildir\""
-            printf "%s\n" "systemdsystemunitdir=\"$systemdsystemunitdir\""
-            printf "%s\n" "systemdsystemconfdir=\"$systemdsystemconfdir\""
-        } > ${initdir}/etc/conf.d/systemd.conf
+    if [[ $systemdutildir ]]; then
+        if [ -d ${initdir}/$systemdutildir ]; then
+            mkdir -p ${initdir}/etc/conf.d
+            {
+                printf "%s\n" "systemdutildir=\"$systemdutildir\""
+                printf "%s\n" "systemdsystemunitdir=\"$systemdsystemunitdir\""
+                printf "%s\n" "systemdsystemconfdir=\"$systemdsystemconfdir\""
+            } > ${initdir}/etc/conf.d/systemd.conf
+        fi
     fi
 
     if [[ $DRACUT_RESOLVE_LAZY ]] && [[ $DRACUT_INSTALL ]]; then
@@ -1555,7 +1505,9 @@ if [[ $kernel_only != yes ]]; then
     done
 fi
 
-while pop include_src src && pop include_target target; do
+for ((i=0; i < ${#include_src[@]}; i++)); do
+    src="${include_src[$i]}"
+    target="${include_target[$i]}"
     if [[ $src && $target ]]; then
         if [[ -f $src ]]; then
             inst $src $target
@@ -1663,11 +1615,20 @@ if [[ $early_microcode = yes ]]; then
                 dinfo "*** Constructing ${ucode_dest[$idx]} ****"
                 if [[ $hostonly ]]; then
                     _src=$(get_ucode_file)
-                    if ! [[ -r $_fwdir/$_fw/$_src ]];then
-                        break;
-                    fi
+                    [[ $_src ]] || break
+                    [[ -r $_fwdir/$_fw/$_src ]] || break
                 fi
-                cat $_fwdir/$_fw/$_src > $_dest_dir/${ucode_dest[$idx]}
+
+                for i in $_fwdir/$_fw/$_src; do
+                    [ -e "$i" ] && break
+                    break 2
+                done
+                for i in $_fwdir/$_fw/$_src; do
+                    [[ -e "$i" ]] || continue
+                    # skip gpg files
+                    str_ends "$i" ".asc" && continue
+                    cat "$i" >> $_dest_dir/${ucode_dest[$idx]}
+                done
                 create_early_cpio="yes"
             fi
         done
@@ -1702,24 +1663,26 @@ if [[ $hostonly_cmdline ]] ; then
         done
     fi
     if ! [[ $_stored_cmdline ]]; then
-        dinfo "No dracut internal kernel commandline stored in initrd"
+        dinfo "No dracut internal kernel commandline stored in the initramfs"
     fi
 fi
-rm -f -- "$outfile"
+
 dinfo "*** Creating image file '$outfile' ***"
 
 if [[ $uefi = yes ]]; then
-    uefi_outfile="$outfile"
-    readonly uefi_outdir="$(mktemp --tmpdir="$TMPDIR/" -d -t initrd.XXXXXX)"
-    # redirect initrd output
-    outfile="$uefi_outdir/initrd"
+    readonly uefi_outdir="$DRACUT_TMPDIR/uefi"
+    mkdir "$uefi_outdir"
 fi
 
 if [[ $DRACUT_REPRODUCIBLE ]]; then
     find "$initdir" -newer "$dracutbasedir/dracut-functions.sh" -print0 \
         | xargs -r -0 touch -h -m -c -r "$dracutbasedir/dracut-functions.sh"
 
-    [[ "$(cpio --help)" == *--reproducible* ]] && CPIO_REPRODUCIBLE=1
+    if [[ "$(cpio --help)" == *--reproducible* ]]; then
+        CPIO_REPRODUCIBLE=1
+    else
+        dinfo "cpio does not support '--reproducible'. Resulting image will not be reproducible."
+    fi
 fi
 
 [[ "$UID" != 0 ]] && cpio_owner_root="-R 0:0"
@@ -1733,29 +1696,31 @@ if [[ $create_early_cpio = yes ]]; then
     fi
 
     # The microcode blob is _before_ the initramfs blob, not after
-    (
-        cd "$early_cpio_dir/d"
-        find . -print0 | sort -z \
-            | cpio ${CPIO_REPRODUCIBLE:+--reproducible} --null $cpio_owner_root -H newc -o --quiet > $outfile
-    )
+    if ! (
+            cd "$early_cpio_dir/d"
+            find . -print0 | sort -z \
+                | cpio ${CPIO_REPRODUCIBLE:+--reproducible} --null $cpio_owner_root -H newc -o --quiet > "${DRACUT_TMPDIR}/initramfs.img"
+        ); then
+        dfatal "dracut: creation of $outfile failed"
+        exit 1
+    fi
 fi
 
 if ! (
         umask 077; cd "$initdir"
         find . -print0 | sort -z \
             | cpio ${CPIO_REPRODUCIBLE:+--reproducible} --null $cpio_owner_root -H newc -o --quiet \
-            | $compress >> "$outfile"
+            | $compress >> "${DRACUT_TMPDIR}/initramfs.img"
     ); then
     dfatal "dracut: creation of $outfile failed"
     exit 1
 fi
-dinfo "*** Creating initrd image file '$outfile' done ***"
 
 if (( maxloglvl >= 5 )); then
     if [[ $allowlocal ]]; then
-	"$dracutbasedir/lsinitrd.sh" "$outfile"| ddebug
+	"$dracutbasedir/lsinitrd.sh" "${DRACUT_TMPDIR}/initramfs.img"| ddebug
     else
-        lsinitrd "$outfile"| ddebug
+        lsinitrd "${DRACUT_TMPDIR}/initramfs.img"| ddebug
     fi
 fi
 
@@ -1778,13 +1743,28 @@ if [[ $uefi = yes ]]; then
     [[ -s /usr/lib/os-release ]] && uefi_osrelease="/usr/lib/os-release"
     [[ -s /etc/os-release ]] && uefi_osrelease="/etc/os-release"
 
-    objcopy \
-        ${uefi_osrelease:+--add-section .osrel=$uefi_osrelease --change-section-vma .osrel=0x20000} \
-        --add-section .cmdline="$uefi_outdir/cmdline.txt" --change-section-vma .cmdline=0x30000 \
-        --add-section .linux="$kernel_image" --change-section-vma .linux=0x40000 \
-        --add-section .initrd="$outfile" --change-section-vma .initrd=0x3000000 \
-        "$uefi_stub" "$uefi_outfile"
-    dinfo "*** Creating UEFI image file '$uefi_outfile' done ***"
+    if objcopy \
+           ${uefi_osrelease:+--add-section .osrel=$uefi_osrelease --change-section-vma .osrel=0x20000} \
+           --add-section .cmdline="${uefi_outdir}/cmdline.txt" --change-section-vma .cmdline=0x30000 \
+           --add-section .linux="$kernel_image" --change-section-vma .linux=0x40000 \
+           --add-section .initrd="${DRACUT_TMPDIR}/initramfs.img" --change-section-vma .initrd=0x3000000 \
+           "$uefi_stub" "${uefi_outdir}/linux.efi" \
+            && mv "${uefi_outdir}/linux.efi" "$outfile"; then
+        dinfo "*** Creating UEFI image file '$outfile' done ***"
+    else
+        rm -f -- "$outfile"
+        dfatal "*** Creating UEFI image file '$outfile' failed ***"
+        exit 1
+    fi
+else
+    if mv "${DRACUT_TMPDIR}/initramfs.img" "$outfile"; then
+        dinfo "*** Creating initramfs image file '$outfile' done ***"
+    else
+        rm -f -- "$outfile"
+        dfatal "dracut: creation of $outfile failed"
+        exit 1
+    fi
 fi
+
 
 exit 0

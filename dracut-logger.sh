@@ -148,8 +148,7 @@ dlog_init() {
             && type -P systemd-cat &>/dev/null \
             && systemctl --quiet is-active systemd-journald.socket &>/dev/null \
             && { echo "dracut-$DRACUT_VERSION" | systemd-cat -t 'dracut' &>/dev/null; } ; then
-            readonly _dlogdir="$(mktemp --tmpdir="$TMPDIR/" -d -t dracut-log.XXXXXX)"
-            readonly _systemdcatfile="$_dlogdir/systemd-cat"
+            readonly _systemdcatfile="$DRACUT_TMPDIR/systemd-cat"
             mkfifo "$_systemdcatfile"
             readonly _dlogfd=15
             systemd-cat -t 'dracut' --level-prefix=true <"$_systemdcatfile" &
@@ -264,9 +263,9 @@ _lvl2syspri() {
 # Conversion is done as follows:
 #
 # <tt>
-#   FATAL(1) -> LOG_EMERG (0)
+#   none     -> LOG_EMERG (0)
 #   none     -> LOG_ALERT (1)
-#   none     -> LOG_CRIT (2)
+#   FATAL(1) -> LOG_CRIT (2)
 #   ERROR(2) -> LOG_ERR (3)
 #   WARN(3)  -> LOG_WARNING (4)
 #   none     -> LOG_NOTICE (5)
@@ -280,7 +279,7 @@ _dlvl2syslvl() {
     local lvl
 
     case "$1" in
-        1) lvl=0;;
+        1) lvl=2;;
         2) lvl=3;;
         3) lvl=4;;
         4) lvl=6;;
@@ -324,7 +323,7 @@ _do_dlog() {
     local msg="$*"
     local lmsg="$lvlc: $*"
 
-    (( $lvl <= $stdloglvl )) && echo "$msg" >&2
+    (( $lvl <= $stdloglvl )) && printf -- 'dracut: %s\n' "$msg" >&2
 
     if (( $lvl <= $sysloglvl )); then
         if [[ "$_dlogfd" ]]; then

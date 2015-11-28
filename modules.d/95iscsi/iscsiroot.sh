@@ -36,36 +36,30 @@ iroot=${iroot#:}
 # figured out a way how to check whether this is built-in or not
 modprobe crc32c 2>/dev/null
 
-if [ -e /sys/module/bnx2i ] && ! [ -e /tmp/iscsiuio-started ]; then
+if [ -z "${DRACUT_SYSTEMD}" ] && [ -e /sys/module/bnx2i ] && ! [ -e /tmp/iscsiuio-started ]; then
         iscsiuio
         > /tmp/iscsiuio-started
 fi
 
 handle_firmware()
 {
-    if ! [ -e /tmp/iscsistarted-firmware ]; then
-        if ! iscsistart -f; then
-            warn "iscistart: Could not get list of targets from firmware."
-            return 1
-        fi
-
-        for p in $(getargs rd.iscsi.param -d iscsi_param); do
-	    iscsi_param="$iscsi_param --param $p"
-        done
-
-        if ! iscsistart -b $iscsi_param; then
-            warn "'iscsistart -b $iscsi_param' failed"
-        fi
-
-        if [ -d /sys/class/iscsi_session ]; then
-            echo 'started' > "/tmp/iscsistarted-iscsi:"
-            echo 'started' > "/tmp/iscsistarted-firmware"
-        else
-            return 1
-        fi
-
-        need_shutdown
+    if ! iscsistart -f; then
+        warn "iscistart: Could not get list of targets from firmware."
+        return 1
     fi
+
+    for p in $(getargs rd.iscsi.param -d iscsi_param); do
+	iscsi_param="$iscsi_param --param $p"
+    done
+
+    if ! iscsistart -b $iscsi_param; then
+        warn "'iscsistart -b $iscsi_param' failed with return code $?"
+    fi
+
+    echo 'started' > "/tmp/iscsistarted-iscsi:"
+    echo 'started' > "/tmp/iscsistarted-firmware"
+
+    need_shutdown
     return 0
 }
 
@@ -105,53 +99,80 @@ handle_netroot()
 
     parse_iscsi_root "$1" || return 1
 
+    # Bail out early, if there is no route to the destination
+    if is_ip "$iscsi_target_ip" && [ "$netif" != "timeout" ] && ! all_ifaces_setup && getargbool 1 rd.iscsi.testroute; then
+        ip route get "$iscsi_target_ip" >/dev/null 2>&1 || return 0
+    fi
+
 # XXX is this needed?
     getarg ro && iscsirw=ro
     getarg rw && iscsirw=rw
     fsopts=${fsopts:+$fsopts,}${iscsirw}
 
-    if [ -z $iscsi_initiator ]; then
-    # XXX Where are these from?
+    if [ -z "$iscsi_initiator" ] && [ -f /sys/firmware/ibft/initiator/initiator-name ] && ! [ -f /tmp/iscsi_set_initiator ]; then
+           iscsi_initiator=$(while read line || [ -n "$line" ]; do echo $line;done < /sys/firmware/ibft/initiator/initiator-name)
+           echo "InitiatorName=$iscsi_initiator" > /run/initiatorname.iscsi
+           rm -f /etc/iscsi/initiatorname.iscsi
+           mkdir -p /etc/iscsi
+           ln -fs /run/initiatorname.iscsi /etc/iscsi/initiatorname.iscsi
+           > /tmp/iscsi_set_initiator
+           if [ -n "$DRACUT_SYSTEMD" ]; then
+               systemctl try-restart iscsid
+               # FIXME: iscsid is not yet ready, when the service is :-/
+               sleep 1
+           fi
+    fi
+
+    if [ -z "$iscsi_initiator" ]; then
+        [ -f /run/initiatorname.iscsi ] && . /run/initiatorname.iscsi
         [ -f /etc/initiatorname.iscsi ] && . /etc/initiatorname.iscsi
         [ -f /etc/iscsi/initiatorname.iscsi ] && . /etc/iscsi/initiatorname.iscsi
         iscsi_initiator=$InitiatorName
-
-    # XXX rfc3720 says 'SCSI Initiator Name: The iSCSI Initiator Name specifies
-    # the worldwide unique name of the initiator.' Could we use hostname/ip
-    # if missing?
     fi
 
-    if [ -z $iscsi_initiator ]; then
-       if [ -f /sys/firmware/ibft/initiator/initiator-name ]; then
-           iscsi_initiator=$(while read line || [ -n "$line" ]; do echo $line;done < /sys/firmware/ibft/initiator/initiator-name)
-       fi
+    if [ -z "$iscsi_initiator" ]; then
+        iscsi_initiator=$(iscsi-iname)
+        echo "InitiatorName=$iscsi_initiator" > /run/initiatorname.iscsi
+        rm -f /etc/iscsi/initiatorname.iscsi
+        mkdir -p /etc/iscsi
+        ln -fs /run/initiatorname.iscsi /etc/iscsi/initiatorname.iscsi
+        > /tmp/iscsi_set_initiator
+        if [ -n "$DRACUT_SYSTEMD" ]; then
+            systemctl try-restart iscsid
+            # FIXME: iscsid is not yet ready, when the service is :-/
+            sleep 1
+        fi
     fi
 
-    if [ -z $iscsi_target_port ]; then
+
+    if [ -z "$iscsi_target_port" ]; then
         iscsi_target_port=3260
     fi
 
-    if [ -z $iscsi_target_group ]; then
+    if [ -z "$iscsi_target_group" ]; then
         iscsi_target_group=1
     fi
 
-    if [ -z $iscsi_initiator ]; then
-    # XXX is this correct?
-        iscsi_initiator=$(iscsi-iname)
-    fi
-
-    if [ -z $iscsi_lun ]; then
+    if [ -z "$iscsi_lun" ]; then
         iscsi_lun=0
     fi
 
-    echo "InitiatorName='$iscsi_initiator'" > /run/initiatorname.iscsi
+    echo "InitiatorName=$iscsi_initiator" > /run/initiatorname.iscsi
     ln -fs /run/initiatorname.iscsi /dev/.initiatorname.iscsi
-
+    if ! [ -e /etc/iscsi/initiatorname.iscsi ]; then
+        mkdir -p /etc/iscsi
+        ln -fs /run/initiatorname.iscsi /etc/iscsi/initiatorname.iscsi
+        if [ -n "$DRACUT_SYSTEMD" ]; then
+            systemctl try-restart iscsid
+            # FIXME: iscsid is not yet ready, when the service is :-/
+            sleep 1
+        fi
+    fi
 # FIXME $iscsi_protocol??
 
-    if [ "$root" = "dhcp" ]; then
+    if [ "$root" = "dhcp" ] || [ "$netroot" = "dhcp" ]; then
         # if root is not specified try to mount the whole iSCSI LUN
-        printf 'SYMLINK=="disk/by-path/*-iscsi-*-%s", SYMLINK+="root"\n' $iscsi_lun >> /etc/udev/rules.d/99-iscsi-root.rules
+        printf 'SYMLINK=="disk/by-path/*-iscsi-*-%s", SYMLINK+="root"\n' "$iscsi_lun" >> /etc/udev/rules.d/99-iscsi-root.rules
         udevadm control --reload
         write_fs_tab /dev/root
         wait_for_dev -n /dev/root
@@ -161,48 +182,85 @@ handle_netroot()
             echo "iscsi_lun=$iscsi_lun . /bin/mount-lun.sh " > $hookdir/mount/01-$$-iscsi.sh
     fi
 
-    # force udevsettle to break
-    > $hookdir/initqueue/work
-
-    iscsistart -i $iscsi_initiator -t $iscsi_target_name        \
-        -g $iscsi_target_group -a $iscsi_target_ip      \
-        -p $iscsi_target_port \
-        ${iscsi_username:+-u $iscsi_username} \
-        ${iscsi_password:+-w $iscsi_password} \
-        ${iscsi_in_username:+-U $iscsi_in_username} \
-        ${iscsi_in_password:+-W $iscsi_in_password} \
-	${iscsi_iface_name:+--param iface.iscsi_ifacename=$iscsi_iface_name} \
-	${iscsi_netdev_name:+--param iface.net_ifacename=$iscsi_netdev_name} \
-        ${iscsi_param} \
-	|| :
-
+    if [ -n "$DRACUT_SYSTEMD" ] && command -v systemd-run >/dev/null 2>&1; then
+        netroot_enc=$(systemd-escape "iscsistart_${1}")
+        status=$(systemctl is-active "$netroot_enc" 2>/dev/null)
+        is_active=$?
+        if [ $is_active -ne 0 ]; then
+            if [ "$status" != "activating" ] && ! systemctl is-failed "$netroot_enc" >/dev/null 2>&1; then
+                systemd-run --no-block --service-type=oneshot --remain-after-exit --quiet \
+                            --description="Login iSCSI Target $iscsi_target_name" \
+                            --unit="$netroot_enc" -- \
+                            $(command -v iscsistart) \
+                            -i "$iscsi_initiator" -t "$iscsi_target_name"        \
+                            -g "$iscsi_target_group" -a "$iscsi_target_ip"      \
+                            -p "$iscsi_target_port" \
+                            ${iscsi_username:+-u "$iscsi_username"} \
+                            ${iscsi_password:+-w "$iscsi_password"} \
+                            ${iscsi_in_username:+-U "$iscsi_in_username"} \
+                            ${iscsi_in_password:+-W "$iscsi_in_password"} \
+	                    ${iscsi_iface_name:+--param "iface.iscsi_ifacename=$iscsi_iface_name"} \
+	                    ${iscsi_netdev_name:+--param "iface.net_ifacename=$iscsi_netdev_name"} \
+                            ${iscsi_param} >/dev/null 2>&1 \
+	            && { > $hookdir/initqueue/work ; }
+            else
+                systemctl --no-block restart "$netroot_enc" >/dev/null 2>&1 \
+	            && { > $hookdir/initqueue/work ; }
+            fi
+        fi
+    else
+        iscsistart -i "$iscsi_initiator" -t "$iscsi_target_name"        \
+                   -g "$iscsi_target_group" -a "$iscsi_target_ip"      \
+                   -p "$iscsi_target_port" \
+                   ${iscsi_username:+-u "$iscsi_username"} \
+                   ${iscsi_password:+-w "$iscsi_password"} \
+                   ${iscsi_in_username:+-U "$iscsi_in_username"} \
+                   ${iscsi_in_password:+-W "$iscsi_in_password"} \
+	           ${iscsi_iface_name:+--param "iface.iscsi_ifacename=$iscsi_iface_name"} \
+	           ${iscsi_netdev_name:+--param "iface.net_ifacename=$iscsi_netdev_name"} \
+                   ${iscsi_param} \
+	    && { > $hookdir/initqueue/work ; }
+    fi
     netroot_enc=$(str_replace "$1" '/' '\2f')
     echo 'started' > "/tmp/iscsistarted-iscsi:${netroot_enc}"
+    return 0
 }
 
 ret=0
 
-# loop over all netroot parameter
-if getarg netroot; then
-    for nroot in $(getargs netroot); do
-        [ "${nroot%%:*}" = "iscsi" ] || continue
-        nroot="${nroot##iscsi:}"
-        if [ -n "$nroot" ]; then
-            handle_netroot "$nroot"
-            ret=$(($ret + $?))
-        fi
-    done
-    if getargbool 0 rd.iscsi.firmware -d -y iscsi_firmware ; then
+if [ "$netif" != "timeout" ] && getargbool 1 rd.iscsi.waitnet; then
+    all_ifaces_setup || exit 0
+fi
+
+if [ "$netif" = "timeout" ] && all_ifaces_setup; then
+    # s.th. went wrong and the timeout script hits
+    # restart
+    systemctl restart iscsid
+    # damn iscsid is not ready after unit says it's ready
+    sleep 2
+fi
+
+if getargbool 0 rd.iscsi.firmware -d -y iscsi_firmware ; then
+    if [ "$netif" = "timeout" ] || [ "$netif" = "online" ]; then
         handle_firmware
-        ret=$(($ret + $?))
-    fi
-else
-    if [ -n "$iroot" ]; then
-        handle_netroot "$iroot"
         ret=$?
+    fi
+fi
+
+if ! [ "$netif" = "online" ]; then
+    # loop over all netroot parameter
+    if nroot=$(getarg netroot) && [ "$nroot" != "dhcp" ]; then
+        for nroot in $(getargs netroot); do
+            [ "${nroot%%:*}" = "iscsi" ] || continue
+            nroot="${nroot##iscsi:}"
+            if [ -n "$nroot" ]; then
+                handle_netroot "$nroot"
+                ret=$(($ret + $?))
+            fi
+        done
     else
-        if getargbool 0 rd.iscsi.firmware -d -y iscsi_firmware ; then
-            handle_firmware
+        if [ -n "$iroot" ]; then
+            handle_netroot "$iroot"
             ret=$?
         fi
     fi
@@ -210,6 +268,6 @@ fi
 
 need_shutdown
 
-# now we have a root filesystem somewhere in /dev/sda*
+# now we have a root filesystem somewhere in /dev/sd*
 # let the normal block handler handle root=
 exit $ret

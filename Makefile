@@ -1,7 +1,7 @@
 -include dracut-version.sh
 
-VERSION = $(shell [ -d .git ] && git describe --abbrev=0 --tags 2>/dev/null || echo $(DRACUT_VERSION))
-GITVERSION = $(shell [ -d .git ] && { v=$$(git describe --tags 2>/dev/null); [ $${v\#*-} != $$v ] && echo -$${v\#*-}; } )
+VERSION ?= $(shell [ -d .git ] && git describe --abbrev=0 --tags 2>/dev/null || echo $(DRACUT_VERSION))
+GITVERSION ?= $(shell [ -d .git ] && { v=$$(git describe --tags 2>/dev/null); [ -n "$$v" ] && [ $${v\#*-} != $$v ] && echo -$${v\#*-}; } )
 
 -include Makefile.inc
 
@@ -82,20 +82,24 @@ all: doc
 endif
 
 %: %.xml
-	xsltproc -o $@ -nonet http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl $<
+	@rm -f -- "$@"
+	xsltproc -o "$@" -nonet http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl $<
 
 %.xml: %.asc
-	asciidoc -d manpage -b docbook -o $@ $<
+	@rm -f -- "$@"
+	asciidoc -d manpage -b docbook -o "$@" $<
 
 dracut.8: dracut.usage.asc dracut.8.asc
 
 dracut.html: dracut.asc $(manpages) dracut.css dracut.usage.asc
+	@rm -f -- dracut.xml
 	asciidoc -a numbered -d book -b docbook -o dracut.xml dracut.asc
+	@rm -f -- dracut.html
 	xsltproc -o dracut.html --xinclude -nonet \
 		--stringparam custom.css.source dracut.css \
 		--stringparam generate.css.header 1 \
 		http://docbook.sourceforge.net/release/xsl/current/xhtml/docbook.xsl dracut.xml
-	rm -f -- dracut.xml
+	@rm -f -- dracut.xml
 
 dracut.pc: Makefile.inc Makefile
 	@echo "Name: dracut" > dracut.pc
@@ -118,6 +122,7 @@ install: all
 	install -m 0644 dracut.conf $(DESTDIR)$(sysconfdir)/dracut.conf
 	mkdir -p $(DESTDIR)$(sysconfdir)/dracut.conf.d
 	mkdir -p $(DESTDIR)$(pkglibdir)/dracut.conf.d
+	install -m 0755 dracut-init.sh $(DESTDIR)$(pkglibdir)/dracut-init.sh
 	install -m 0755 dracut-functions.sh $(DESTDIR)$(pkglibdir)/dracut-functions.sh
 	install -m 0755 dracut-version.sh $(DESTDIR)$(pkglibdir)/dracut-version.sh
 	ln -fs dracut-functions.sh $(DESTDIR)$(pkglibdir)/dracut-functions
@@ -168,6 +173,7 @@ endif
 	install -m 0644 dracut.pc $(DESTDIR)${pkgconfigdatadir}/dracut.pc
 
 dracut-version.sh:
+	@rm -f dracut-version.sh
 	@echo "DRACUT_VERSION=$(VERSION)$(GITVERSION)" > dracut-version.sh
 
 clean:
@@ -211,7 +217,8 @@ syncheck:
                 [ "$${i##*/}" = "module-setup.sh" ] && continue; \
                 read line < "$$i"; [ "$${line#*bash*}" != "$$line" ] && continue; \
 		[ $$V ] && echo "posix syntax check: $$i"; bash --posix -n "$$i" ; ret=$$(($$ret+$$?)); \
-		[ $$V ] && echo "checking for [[: $$i"; if grep -Fq '[[ ' "$$i" ; then ret=$$(($$ret+1)); echo "$$i contains [["; fi \
+		[ $$V ] && echo "checking for [[: $$i"; if grep -Fq '[[ ' "$$i" ; then ret=$$(($$ret+1)); echo "$$i contains [["; fi; \
+		[ $$V ] && echo "checking for echo -n: $$i"; if grep -Fq 'echo -n ' "$$i" ; then ret=$$(($$ret+1)); echo "$$i contains echo -n"; fi \
 	done;exit $$ret
 	@ret=0;for i in *.sh mkinitrd-dracut.sh modules.d/*/*.sh \
 	                modules.d/*/module-setup.sh; do \
@@ -243,6 +250,10 @@ debughostimage: all
 hostimage: all
 	./dracut.sh -H -l -f test-$(shell uname -r).img $(shell uname -r)
 	@echo wrote  test-$(shell uname -r).img
+
+efi: all
+	./dracut.sh --uefi -H -l -f linux-$(shell uname -r).efi $(shell uname -r)
+	@echo wrote linux-$(shell uname -r).efi
 
 AUTHORS:
 	git shortlog  --numbered --summary -e |while read a rest || [ -n "$$rest" ]; do echo $$rest;done > AUTHORS

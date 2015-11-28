@@ -36,8 +36,10 @@ unset count
 # If needed, check if bootdev= contains anything usable
 BOOTDEV=$(getarg bootdev=)
 
-if [ -n "$NEEDBOOTDEV" ] ; then
-    [ -z "$BOOTDEV" ] && warn "Please supply bootdev argument for multiple ip= lines"
+if [ -n "$NEEDBOOTDEV" ] && getargbool 1 rd.neednet; then
+    #[ -z "$BOOTDEV" ] && warn "Please supply bootdev argument for multiple ip= lines"
+    echo "rd.neednet=1" > /etc/cmdline.d/dracut-neednet.conf
+    info "Multiple ip= arguments: assuming rd.neednet=1"
 fi
 
 # Check ip= lines
@@ -48,7 +50,7 @@ for p in $(getargs ip=); do
     # make first device specified the BOOTDEV
     if [ -z "$BOOTDEV" ] && [ -n "$dev" ]; then
         BOOTDEV="$dev"
-        [ -n "$NEEDBOOTDEV" ] && warn "Setting bootdev to '$BOOTDEV'"
+        [ -n "$NEEDBOOTDEV" ] && info "Setting bootdev to '$BOOTDEV'"
     fi
 
     # skip ibft since we did it above
@@ -109,6 +111,16 @@ for p in $(getargs ip=); do
         die "Server-ip or dhcp for netboot needed, but current arguments say otherwise"
     fi
 
+    if str_starts "$dev" "enx" && [ ${#dev} -eq 15 ]; then
+        printf -- "ifname=%s:%s:%s:%s:%s:%s:%s\n" \
+               "$dev" \
+               "${dev:3:2}" \
+               "${dev:5:2}" \
+               "${dev:7:2}" \
+               "${dev:9:2}" \
+               "${dev:11:2}" \
+               "${dev:13:2}" >> /etc/cmdline.d/80-enx.conf
+    fi
 done
 
 # put BOOTIF in IFACES to make sure it comes up

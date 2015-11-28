@@ -77,9 +77,10 @@ fi
 # disable manual ifup while netroot is set for simplifying our logic
 # in netroot case we prefer netroot to bringup $netif automaticlly
 [ -n "$2" -a "$2" = "-m" ] && [ -z "$netroot" ] && manualup="$2"
-[ -z "$netroot" ] && [ -z "$manualup" ] && exit 0
+
 if [ -n "$manualup" ]; then
     >/tmp/net.$netif.manualup
+    rm -f /tmp/net.${netif}.did-setup
 else
     [ -e /tmp/net.${netif}.did-setup ] && exit 0
     [ -e /sys/class/net/$netif/address ] && \
@@ -92,15 +93,33 @@ do_dhcp() {
     # event for nfsroot
     # XXX add -V vendor class and option parsing per kernel
 
+    local _COUNT=0
+    local _timeout=$(getargs rd.net.timeout.dhcp=)
+    local _DHCPRETRY=$(getargs rd.net.dhcp.retry=)
+    _DHCPRETRY=${_DHCPRETRY:-1}
+
     [ -e /tmp/dhclient.$netif.pid ] && return 0
 
     if ! iface_has_link $netif; then
-        echo "No carrier detected"
+        warn "No carrier detected on interface $netif"
         return 1
     fi
-    echo "Starting dhcp for interface $netif"
-    dhclient "$@" -1 -q -cf /etc/dhclient.conf -pf /tmp/dhclient.$netif.pid -lf /tmp/dhclient.$netif.lease $netif \
-        || echo "dhcp failed"
+
+    while [ $_COUNT -lt $_DHCPRETRY ]; do
+        info "Starting dhcp for interface $netif"
+        dhclient "$@" \
+                 ${_timeout:+-timeout $_timeout} \
+                 -q \
+                 -cf /etc/dhclient.conf \
+                 -pf /tmp/dhclient.$netif.pid \
+                 -lf /tmp/dhclient.$netif.lease \
+                 $netif \
+            && return 0
+        _COUNT=$(($_COUNT+1))
+        [ $_COUNT -lt $_DHCPRETRY ] && sleep 1
+    done
+    warn "dhcp for interface $netif failed"
+    return 1
 }
 
 load_ipv6() {
@@ -131,7 +150,20 @@ do_ipv6auto() {
 do_static() {
     strglobin $ip '*:*:*' && load_ipv6
 
-    linkup $netif
+    if ! linkup $netif; then
+        warn "Could not bring interface $netif up!"
+        return 1
+    fi
+
+    ip route get "$ip" | {
+        read a rest
+        if [ "$a" = "local" ]; then
+            warn "Not assigning $ip to interface $netif, cause it is already assigned!"
+            return 1
+        fi
+        return 0
+    } || return 1
+
     [ -n "$macaddr" ] && ip link set address $macaddr dev $netif
     [ -n "$mtu" ] && ip link set mtu $mtu dev $netif
     if strglobin $ip '*:*:*'; then
@@ -139,6 +171,10 @@ do_static() {
         ip addr add $ip/$mask ${srv:+peer $srv} dev $netif
         wait_for_ipv6_dad $netif
     else
+        if ! arping -f -q -D -c 2 -I $netif $ip; then
+            warn "Duplicate address detected for $ip for interface $netif."
+            return 1
+        fi
         ip addr flush dev $netif
         ip addr add $ip/$mask ${srv:+peer $srv} brd + dev $netif
     fi
@@ -277,8 +313,8 @@ fi
 ip=$(getarg ip)
 
 if [ -z "$ip" ]; then
-    namesrv=$(getargs nameserver)
-    for s in $namesrv; do
+    for s in $(getargs nameserver); do
+        [ -n "$s" ] || continue
         echo nameserver $s >> /tmp/net.$netif.resolv.conf
     done
 
@@ -314,8 +350,8 @@ for p in $(getargs ip=); do
     [ "$use_vlan" != 'true' ] && continue
 
     # setup nameserver
-    namesrv="$dns1 $dns2 $(getargs nameserver)"
-    for s in $namesrv; do
+    for s in "$dns1" "$dns2" $(getargs nameserver); do
+        [ -n "$s" ] || continue
         echo nameserver $s >> /tmp/net.$netif.resolv.conf
     done
 
@@ -337,14 +373,19 @@ for p in $(getargs ip=); do
                 do_static ;;
         esac
     done
+    ret=$?
 
     > /tmp/net.${netif}.up
+
+    if [ -e /sys/class/net/${netif}/address ]; then
+        > /tmp/net.$(cat /sys/class/net/${netif}/address).up
+    fi
 
     case $autoconf in
         dhcp|on|any|dhcp6)
             ;;
         *)
-            if [ $? -eq 0 ]; then
+            if [ $ret -eq 0 ]; then
                 setup_net $netif
                 source_hook initqueue/online $netif
                 if [ -z "$manualup" ]; then
@@ -366,11 +407,20 @@ fi
 
 # no ip option directed at our interface?
 if [ ! -e /tmp/net.${netif}.up ]; then
-    if getargs 'ip=dhcp6'; then
-        load_ipv6
-        do_dhcp -6
+    if [ -e /tmp/net.bootdev ]; then
+        BOOTDEV=$(cat /tmp/net.bootdev)
+        if [ "$netif" = "$BOOTDEV" ] || [ "$BOOTDEV" = "$(cat /sys/class/net/${netif}/address)" ]; then
+            load_ipv6
+            do_dhcp
+        fi
     else
-        do_dhcp -4
+        if getargs 'ip=dhcp6'; then
+            load_ipv6
+            do_dhcp -6
+        fi
+        if getargs 'ip=dhcp'; then
+            do_dhcp -4
+        fi
     fi
 fi
 

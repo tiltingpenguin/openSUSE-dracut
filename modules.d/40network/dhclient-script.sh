@@ -8,9 +8,6 @@ type ip_to_var >/dev/null 2>&1 || . /lib/net-lib.sh
 # We already need a set netif here
 netif=$interface
 
-# Huh? Interface configured?
-[ -f "/tmp/net.$netif.up" ] && exit 0
-
 setup_interface() {
     ip=$new_ip_address
     mtu=$new_interface_mtu
@@ -21,7 +18,10 @@ setup_interface() {
     search=$(printf -- "$new_domain_search")
     namesrv=$new_domain_name_servers
     hostname=$new_host_name
-    lease_time=$new_dhcp_lease_time
+    [ -n "$new_dhcp_lease_time" ] && lease_time=$new_dhcp_lease_time
+    [ -n "$new_max_life" ] && lease_time=$new_max_life
+    preferred_lft=$lease_time
+    [ -n "$new_preferred_life" ] && preferred_lft=$new_preferred_life
 
     [ -f /tmp/net.$netif.override ] && . /tmp/net.$netif.override
 
@@ -39,25 +39,26 @@ setup_interface() {
         fi
     fi
 
-    ip addr add $ip${mask:+/$mask} ${bcast:+broadcast $bcast} \
-        valid_lft ${lease_time} preferred_lft ${lease_time} \
-        dev $netif
+    ip addr add $ip${mask:+/$mask} ${bcast:+broadcast $bcast} dev $netif \
+        ${lease_time:+valid_lft $lease_time} \
+        ${preferred_lft:+preferred_lft ${preferred_lft}}
 
     if [ -n "$gw" ] ; then
-        if [ "$mask" == "255.255.255.255" ] ; then
+        if [ "$mask" = "255.255.255.255" ] ; then
             # point-to-point connection => set explicit route to gateway
             echo ip route add $gw dev $netif > /tmp/net.$netif.gw
         fi
         echo ip route replace default via $gw dev $netif >> /tmp/net.$netif.gw
     fi
 
-    [ -n "${search}${domain}" ] && echo "search $search $domain" > /tmp/net.$netif.resolv.conf
-    if  [ -n "$namesrv" ] ; then
-        for s in $namesrv; do
-            echo nameserver $s
-        done
-    fi >> /tmp/net.$netif.resolv.conf
-
+    if getargbool 1 rd.peerdns; then
+        [ -n "${search}${domain}" ] && echo "search $search $domain" > /tmp/net.$netif.resolv.conf
+        if  [ -n "$namesrv" ] ; then
+            for s in $namesrv; do
+                echo nameserver $s
+            done
+        fi >> /tmp/net.$netif.resolv.conf
+    fi
     # Note: hostname can be fqdn OR short hostname, so chop off any
     # trailing domain name and explicity add any domain if set.
     [ -n "$hostname" ] && echo "echo ${hostname%.$domain}${domain:+.$domain} > /proc/sys/kernel/hostname" > /tmp/net.$netif.hostname
@@ -80,12 +81,14 @@ setup_interface6() {
         ${lease_time:+valid_lft $lease_time} \
         ${preferred_lft:+preferred_lft ${preferred_lft}}
 
-    [ -n "${search}${domain}" ] && echo "search $search $domain" > /tmp/net.$netif.resolv.conf
-    if  [ -n "$namesrv" ] ; then
-        for s in $namesrv; do
-            echo nameserver $s
-        done
-    fi >> /tmp/net.$netif.resolv.conf
+    if getargbool 1 rd.peerdns; then
+        [ -n "${search}${domain}" ] && echo "search $search $domain" > /tmp/net.$netif.resolv.conf
+        if  [ -n "$namesrv" ] ; then
+            for s in $namesrv; do
+                echo nameserver $s
+            done
+        fi >> /tmp/net.$netif.resolv.conf
+    fi
 
     # Note: hostname can be fqdn OR short hostname, so chop off any
     # trailing domain name and explicity add any domain if set.
@@ -111,7 +114,7 @@ case $reason in
             read layer2 < /sys/class/net/$netif/device/layer2
         fi
         if [ "$layer2" != "0" ]; then
-            if ! arping -q -D -c 2 -I $netif $new_ip_address ; then
+            if ! arping -f -q -D -c 2 -I $netif $new_ip_address ; then
                 warn "Duplicate address detected for $new_ip_address while doing dhcp. retrying"
                 exit 1
             fi
@@ -133,6 +136,21 @@ case $reason in
 
         echo "[ -f /tmp/net.$netif.did-setup ]" > $hookdir/initqueue/finished/dhclient-$netif.sh
         >/tmp/net.$netif.up
+        if [ -e /sys/class/net/${netif}/address ]; then
+            > /tmp/net.$(cat /sys/class/net/${netif}/address).up
+        fi
+
+        ;;
+
+    RENEW|REBIND)
+        unset lease_time
+        [ -n "$new_dhcp_lease_time" ] && lease_time=$new_dhcp_lease_time
+        [ -n "$new_max_life" ] && lease_time=$new_max_life
+        preferred_lft=$lease_time
+        [ -n "$new_preferred_life" ] && preferred_lft=$new_preferred_life
+        ip -4 addr change ${new_ip_address}/${new_subnet_mask} broadcast ${new_broadcast_address} dev ${interface} \
+           ${lease_time:+valid_lft $lease_time} ${preferred_lft:+preferred_lft ${preferred_lft}} \
+           >/dev/null 2>&1
         ;;
 
     BOUND6)
@@ -154,7 +172,22 @@ case $reason in
 
         echo "[ -f /tmp/net.$netif.did-setup ]" > $hookdir/initqueue/finished/dhclient-$netif.sh
         >/tmp/net.$netif.up
+        if [ -e /sys/class/net/${netif}/address ]; then
+            > /tmp/net.$(cat /sys/class/net/${netif}/address).up
+        fi
         ;;
+
+    RENEW6|REBIND6)
+        unset lease_time
+        [ -n "$new_dhcp_lease_time" ] && lease_time=$new_dhcp_lease_time
+        [ -n "$new_max_life" ] && lease_time=$new_max_life
+        preferred_lft=$lease_time
+        [ -n "$new_preferred_life" ] && preferred_lft=$new_preferred_life
+        ip -6 addr change ${new_ip6_address}/${new_ip6_prefixlen} dev ${interface} scope global \
+           ${lease_time:+valid_lft $lease_time} ${preferred_lft:+preferred_lft ${preferred_lft}} \
+           >/dev/null 2>&1
+        ;;
+
     *) echo "dhcp: $reason";;
 esac
 

@@ -55,6 +55,7 @@ while :; do
     done
 
     if [ $main_loop -gt $((2*$RDRETRY/3)) ]; then
+        warn "dracut-initqueue timeout - starting timeout scripts"
         for job in $hookdir/initqueue/timeout/*.sh; do
             [ -e "$job" ] || break
             job=$job . $job
@@ -67,7 +68,7 @@ while :; do
     main_loop=$(($main_loop+1))
     if [ $main_loop -gt $RDRETRY ]; then
         if ! [ -f /sysroot/etc/fstab ] || ! [ -e /sysroot/sbin/init ] ; then
-            action_on_fail "Could not boot." && break
+            emergency_shell "Could not boot."
         fi
         warn "Not all disks have been found."
         warn "You might want to regenerate your initramfs."

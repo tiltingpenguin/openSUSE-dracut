@@ -50,7 +50,7 @@ generator_mount_rootfs()
         {
             echo "[Unit]"
             echo "Before=initrd-root-fs.target"
-            echo "RequiresOverridable=systemd-fsck@${_name}.service"
+            echo "Requires=systemd-fsck@${_name}.service"
             echo "After=systemd-fsck@${_name}.service"
             echo "[Mount]"
             echo "Where=/sysroot"
@@ -63,6 +63,23 @@ generator_mount_rootfs()
         [ -d "$GENERATOR_DIR"/initrd-root-fs.target.requires ] || mkdir -p "$GENERATOR_DIR"/initrd-root-fs.target.requires
         ln -s ../sysroot.mount "$GENERATOR_DIR"/initrd-root-fs.target.requires/sysroot.mount
     fi
+}
+
+generator_fsck_after_pre_mount()
+{
+    local _name
+
+    [ -z "$1" ] && return 0
+
+    _name=$(dev_unit_name "$1")
+    [ -d /run/systemd/generator/systemd-fsck@${_name}.service.d ] || mkdir -p /run/systemd/generator/systemd-fsck@${_name}.service.d
+    if ! [ -f /run/systemd/generator/systemd-fsck@${_name}.service.d/after-pre-mount.conf ]; then
+        {
+            echo "[Unit]"
+            echo "After=dracut-pre-mount.service"
+        } > /run/systemd/generator/systemd-fsck@${_name}.service.d/after-pre-mount.conf
+    fi
+
 }
 
 root=$(getarg root=)
@@ -93,8 +110,9 @@ esac
 
 GENERATOR_DIR="$1"
 
-if [ "${root%%:*}" = "block" ]; then
+if [ "$rootok" = "1"  ]; then
    generator_wait_for_dev "${root#block:}" "$RDRETRY"
+   generator_fsck_after_pre_mount "${root#block:}"
    strstr "$(cat /proc/cmdline)" 'root=' || generator_mount_rootfs "${root#block:}" "$(getarg rootfstype=)" "$(getarg rootflags=)"
 fi
 

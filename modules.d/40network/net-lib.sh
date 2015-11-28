@@ -1,10 +1,23 @@
 #!/bin/sh
 
+is_ip() {
+    echo "$1" | {
+        IFS=. read a b c d
+        test "$a" -ge 0 -a "$a" -le 255 \
+             -a "$b" -ge 0 -a "$b" -le 255 \
+             -a "$c" -ge 0 -a "$c" -le 255 \
+             -a "$d" -ge 0 -a "$d" -le 255 \
+             2> /dev/null
+    } && return 0
+    return 1
+}
+
 get_ip() {
     local iface="$1" ip=""
     ip=$(ip -o -f inet addr show $iface)
     ip=${ip%%/*}
     ip=${ip##* }
+    echo $ip
 }
 
 iface_for_remote_addr() {
@@ -60,6 +73,14 @@ all_ifaces_up() {
     done
 }
 
+all_ifaces_setup() {
+    local iface="" IFACES=""
+    [ -e "/tmp/net.ifaces" ] && read IFACES < /tmp/net.ifaces
+    for iface in $IFACES; do
+        [ -e /tmp/net.$iface.did-setup ] || return 1
+    done
+}
+
 get_netroot_ip() {
     local prefix="" server="" rest=""
     splitsep "$1" ":" prefix server rest
@@ -107,7 +128,7 @@ setup_net() {
         route_to_var "$_p" || continue
         [ -n "$route_dev" ] && [ "$route_dev" != "$netif" ] && continue
         ip route add "$route_mask" ${route_gw:+via "$route_gw"} ${route_dev:+dev "$route_dev"}
-        if strstr ":" "$route_mask"; then
+        if strstr "$route_mask" ":"; then
             printf -- "%s\n" "$route_mask ${route_gw:+via $route_gw} ${route_dev:+dev $route_dev}" \
                 > /tmp/net.route6."$netif"
         else
@@ -115,6 +136,13 @@ setup_net() {
                 > /tmp/net.route."$netif"
         fi
     done
+
+    # If a static route was necessary to reach the gateway, the
+    # first gateway setup call will have failed with
+    #     RTNETLINK answers: Network is unreachable
+    # Replace the default route again after static routes to cover
+    # this scenario.
+    [ -e /tmp/net.$netif.gw ]            && . /tmp/net.$netif.gw
 
     # Handle STP Timeout: arping the default gateway.
     # (or the root server, if a) it's local or b) there's no gateway.)
@@ -189,7 +217,7 @@ set_ifname() {
 fix_bootif() {
     local macaddr=${1}
     local IFS='-'
-    macaddr=$(for i in ${macaddr} ; do echo -n $i:; done)
+    macaddr=$(printf '%s:' ${macaddr})
     macaddr=${macaddr%:}
     # strip hardware type field from pxelinux
     [ -n "${macaddr%??:??:??:??:??:??}" ] && macaddr=${macaddr#??:}
@@ -222,9 +250,12 @@ ibft_to_cmdline() {
                 # skip not assigned ip adresses
                 [ "$ip" = "0.0.0.0" ] && continue
                 [ -e ${iface}/gateway ] && gw=$(read a < ${iface}/gateway; echo $a)
+                [ "$gateway" = "0.0.0.0" ] && unset $gateway
                 [ -e ${iface}/subnet-mask ] && mask=$(read a < ${iface}/subnet-mask; echo $a)
                 [ -e ${iface}/primary-dns ] && dns1=$(read a < ${iface}/primary-dns; echo $a)
+                [ "$dns1" = "0.0.0.0" ] && unset $dns1
                 [ -e ${iface}/secondary-dns ] && dns2=$(read a < ${iface}/secondary-dns; echo $a)
+                [ "$dns2" = "0.0.0.0" ] && unset $dns2
                 [ -e ${iface}/hostname ] && hostname=$(read a < ${iface}/hostname; echo $a)
                 if [ -n "$ip" ] && [ -n "$mask" ]; then
                     echo "ip=$ip::$gw:$mask:$hostname:$dev:none${dns1:+:$dns1}${dns2:+:$dns2}"
@@ -484,7 +515,11 @@ parse_ifname_opts() {
 wait_for_if_link() {
     local cnt=0
     local li
-    while [ $cnt -lt 600 ]; do
+    local timeout="$(getargs rd.net.timeout.iflink=)"
+    timeout=${timeout:-60}
+    timeout=$(($timeout*10))
+
+    while [ $cnt -lt $timeout ]; do
         li=$(ip -o link show dev $1 2>/dev/null)
         [ -n "$li" ] && return 0
         sleep 0.1
@@ -496,9 +531,29 @@ wait_for_if_link() {
 wait_for_if_up() {
     local cnt=0
     local li
-    while [ $cnt -lt 200 ]; do
+    local timeout="$(getargs rd.net.timeout.ifup=)"
+    timeout=${timeout:-20}
+    timeout=$(($timeout*10))
+
+    while [ $cnt -lt $timeout ]; do
         li=$(ip -o link show up dev $1)
-        [ -n "$li" ] && [ -z "${li##*state UP*}" ] && return 0
+        if ! strstr "$li" "NO-CARRIER"; then
+            if [ -n "$li" ]; then
+                case "$li" in
+                    *\<UP*)
+                        return 0;;
+                    *\<*,UP\>*)
+                        return 0;;
+                    *\<*,UP,*\>*)
+                        return 0;;
+                esac
+            fi
+            if strstr "$li" "LOWER_UP" \
+                    && strstr "$li" "state UNKNOWN" \
+                    && ! strstr "$li" "DORMANT"; then
+                return 0
+            fi
+        fi
         sleep 0.1
         cnt=$(($cnt+1))
     done
@@ -507,7 +562,11 @@ wait_for_if_up() {
 
 wait_for_route_ok() {
     local cnt=0
-    while [ $cnt -lt 200 ]; do
+    local timeout="$(getargs rd.net.timeout.route=)"
+    timeout=${timeout:-20}
+    timeout=$(($timeout*10))
+
+    while [ $cnt -lt $timeout ]; do
         li=$(ip route show)
         [ -n "$li" ] && [ -z "${li##*$1*}" ] && return 0
         sleep 0.1
@@ -519,7 +578,11 @@ wait_for_route_ok() {
 wait_for_ipv6_dad() {
     local cnt=0
     local li
-    while [ $cnt -lt 500 ]; do
+    local timeout="$(getargs rd.net.timeout.ipv6dad=)"
+    timeout=${timeout:-50}
+    timeout=$(($timeout*10))
+
+    while [ $cnt -lt $timeout ]; do
         li=$(ip -6 addr show dev $1 scope link)
         strstr "$li" "tentative" || return 0
         sleep 0.1
@@ -531,7 +594,11 @@ wait_for_ipv6_dad() {
 wait_for_ipv6_auto() {
     local cnt=0
     local li
-    while [ $cnt -lt 400 ]; do
+    local timeout="$(getargs rd.net.timeout.ipv6auto=)"
+    timeout=${timeout:-40}
+    timeout=$(($timeout*10))
+
+    while [ $cnt -lt $timeout ]; do
         li=$(ip -6 addr show dev $1)
         if ! strstr "$li" "tentative"; then
             strstr "$li" "dynamic" && return 0
@@ -559,8 +626,12 @@ iface_has_link() {
     [ -n "$interface" ] || return 2
     interface="/sys/class/net/$interface"
     [ -d "$interface" ] || return 2
+    local timeout="$(getargs rd.net.timeout.carrier=)"
+    timeout=${timeout:-5}
+    timeout=$(($timeout*10))
+
     linkup "$1"
-    while [ $cnt -lt 50 ]; do
+    while [ $cnt -lt $timeout ]; do
         [ "$(cat $interface/carrier)" = 1 ] && return 0
         sleep 0.1
         cnt=$(($cnt+1))

@@ -15,14 +15,14 @@ SNAPSIZE=$(getargs rd.lvm.snapsize -d rd_LVM_SNAPSIZE=)
 lvmdevs=$(
     for f in /tmp/.lvm_scan-*; do
         [ -e "$f" ] || continue
-        echo -n "${f##/tmp/.lvm_scan-} "
+        printf '%s' "${f##/tmp/.lvm_scan-} "
     done
 )
 
 if [ ! -e /etc/lvm/lvm.conf ]; then
     {
         echo 'devices {';
-        echo -n '    filter = [ '
+        printf '    filter = [ '
         for dev in $lvmdevs; do
             printf '"a|^/dev/%s$|", ' $dev;
         done;
@@ -69,11 +69,19 @@ min=$2
 sub=${3%% *}
 sub=${sub%%\(*};
 
+lvm_ignorelockingfailure="--ignorelockingfailure"
+lvm_quirk_args="--ignorelockingfailure --ignoremonitoring"
+
 check_lvm_ver 2 2 57 $maj $min $sub && \
-    nopoll="--poll n"
+    lvm_quirk_args="$lvm_quirk_args --poll n"
 
 if check_lvm_ver 2 2 65 $maj $min $sub; then
-    sysinit=" --sysinit $extraargs"
+    lvm_quirk_args=" --sysinit $extraargs"
+fi
+
+if check_lvm_ver 2 2 221 $maj $min $sub; then
+    lvm_quirk_args=" $extraargs"
+    unset lvm_ignorelockingfailure
 fi
 
 unset extraargs
@@ -104,28 +112,16 @@ fi
 
 if [ -n "$LVS" ] ; then
     info "Scanning devices $lvmdevs for LVM logical volumes $LVS"
-    lvm lvscan --ignorelockingfailure 2>&1 | vinfo
+    lvm lvscan $lvm_ignorelockingfailure 2>&1 | vinfo
     for LV in $LVS; do
-        if [ "x$(lvm lvs --noheadings --select "lv_attr =~ k" $LV | wc -l)" = "x0" ]; then
-            info "Skipping activation of '$LV' because activationskip is set."
-            continue
-        fi
-        if [ -z "$sysinit" ]; then
-            lvm lvchange --yes -ay --ignorelockingfailure $nopoll --ignoremonitoring $LV 2>&1 | vinfo
-        else
-            lvm lvchange --yes -ay $sysinit $LV 2>&1 | vinfo
-        fi
+        lvm lvchange --yes -ay $lvm_quirk_args $LV 2>&1 | vinfo
     done
 fi
 
 if [ -z "$LVS" -o -n "$VGS" ]; then
     info "Scanning devices $lvmdevs for LVM volume groups $VGS"
-    lvm vgscan --ignorelockingfailure 2>&1 | vinfo
-    if [ -z "$sysinit" ]; then
-        lvm vgchange -ay --ignorelockingfailure $nopoll --ignoremonitoring $VGS 2>&1 | vinfo
-    else
-        lvm vgchange -ay $sysinit $VGS 2>&1 | vinfo
-    fi
+    lvm vgscan $lvm_ignorelockingfailure 2>&1 | vinfo
+    lvm vgchange -ay $lvm_quirk_args $VGS 2>&1 | vinfo
 fi
 
 if [ "$lvmwritten" ]; then

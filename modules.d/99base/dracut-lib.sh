@@ -63,7 +63,7 @@ if [ -z "$DRACUT_SYSTEMD" ]; then
         check_quiet
         echo "<30>dracut: $*" > /dev/kmsg
         [ "$DRACUT_QUIET" != "yes" ] && \
-            echo "dracut: $*"
+            echo "dracut: $*" >&2
     }
 
 else
@@ -298,7 +298,7 @@ _dogetargs() {
         fi
     done
     if [ -n "$_found" ]; then
-        [ $# -gt 0 ] && echo -n "$@"
+        [ $# -gt 0 ] && printf '%s' "$*"
         return 0
     fi
     return 1;
@@ -329,9 +329,7 @@ getargs() {
     done
     if [ -n "$_gfound" ]; then
         if [ $# -gt 0 ]; then
-            echo -n "$@"
-        else
-            echo -n 1
+            printf '%s' "$*"
         fi
         debug_on
         return 0
@@ -1143,20 +1141,6 @@ emergency_shell()
     fi
 }
 
-action_on_fail()
-{
-    if [ -f "$initdir/lib/dracut/no-emergency-shell" ]; then
-        [ "$1" = "-n" ] && shift 2
-        [ "$1" = "--shutdown" ] && shift 2
-        warn "$*"
-        warn "Not dropping to emergency shell, because $initdir/lib/dracut/no-emergency-shell exists."
-        return 0
-    fi
-
-    emergency_shell $@
-    return 1
-}
-
 # Retain the values of these variables but ensure that they are unexported
 # This is a POSIX-compliant equivalent of bash's "export -n"
 export_n()
@@ -1304,7 +1288,7 @@ show_memstats()
 }
 
 remove_hostonly_files() {
-    rm -fr /etc/cmdline /etc/cmdline.d/*.conf
+    rm -fr /etc/cmdline /etc/cmdline.d/*.conf "$hookdir/initqueue/finished"
     if [ -f /lib/dracut/hostonly-files ]; then
         while read line || [ -n "$line" ]; do
             [ -e "$line" ] || [ -h "$line" ] || continue

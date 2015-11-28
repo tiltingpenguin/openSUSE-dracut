@@ -41,7 +41,7 @@ getarg rd.live.check -d check || check=""
 if [ -n "$check" ]; then
     type plymouth >/dev/null 2>&1 && plymouth --hide-splash
     if [ -n "$DRACUT_SYSTEMD" ]; then
-        p=$(str_replace "$livedev" "-" '\x2d')
+        p=$(dev_unit_name "$livedev")
         systemctl start checkisomd5@${p}.service
     else
         checkisomd5 --verbose $livedev
@@ -141,7 +141,7 @@ do_live_overlay() {
     # set up the snapshot
     sz=$(blockdev --getsz $BASE_LOOPDEV)
     if [ -n "$readonly_overlay" ]; then
-        echo 0 $sz snapshot $BASE_LOOPDEV $OVERLAY_LOOPDEV p 8 | dmsetup create $readonly_overlay live-ro
+        echo 0 $sz snapshot $BASE_LOOPDEV $OVERLAY_LOOPDEV N 8 | dmsetup create --readonly live-ro
         base="/dev/mapper/live-ro"
         over=$RO_OVERLAY_LOOPDEV
     else
@@ -171,11 +171,11 @@ do_live_overlay() {
         # Create a snapshot of the base image
         echo 0 $sz thin /dev/mapper/live-overlay-pool 0 $base | dmsetup create live-rw
     else
-        echo 0 $sz snapshot $base $over p 8 | dmsetup create live-rw
+        echo 0 $sz snapshot $base $over PO 8 | dmsetup create live-rw
     fi
 
     # Create a device that always points to a ro base image
-    echo 0 $sz linear $base 0 | dmsetup create --readonly live-base
+    echo 0 $sz linear $BASE_LOOPDEV 0 | dmsetup create --readonly live-base
 }
 
 # live cd helper function
@@ -203,14 +203,10 @@ fi
 # we might have an embedded fs image on squashfs (compressed live)
 if [ -e /run/initramfs/live/${live_dir}/${squash_image} ]; then
     SQUASHED="/run/initramfs/live/${live_dir}/${squash_image}"
-fi
-
-if [ -e "$SQUASHED" ] ; then
-    if [ -n "$live_ram" ] ; then
+    if [ -n "$live_ram" ]; then
         echo "Copying live image to RAM..."
         echo "(this may take a few minutes)"
         dd if=$SQUASHED of=/run/initramfs/squashed.img bs=512 2> /dev/null
-        umount -n /run/initramfs/live
         echo "Done copying live image to RAM."
         SQUASHED="/run/initramfs/squashed.img"
     fi
@@ -220,24 +216,32 @@ if [ -e "$SQUASHED" ] ; then
     mkdir -m 0755 -p /run/initramfs/squashfs
     mount -n -t squashfs -o ro $SQUASHED_LOOPDEV /run/initramfs/squashfs
 
-fi
-
-# we might have an embedded fs image to use as rootfs (uncompressed live)
-if [ -e /run/initramfs/live/${live_dir}/ext3fs.img ]; then
-    FSIMG="/run/initramfs/live/${live_dir}/ext3fs.img"
-elif [ -e /run/initramfs/live/${live_dir}/rootfs.img ]; then
-    FSIMG="/run/initramfs/live/${live_dir}/rootfs.img"
-elif [ -f /run/initramfs/squashfs/LiveOS/ext3fs.img ]; then
-    FSIMG="/run/initramfs/squashfs/LiveOS/ext3fs.img"
-elif [ -f /run/initramfs/squashfs/LiveOS/rootfs.img ]; then
-    FSIMG="/run/initramfs/squashfs/LiveOS/rootfs.img"
+    if [ -f /run/initramfs/squashfs/LiveOS/ext3fs.img ]; then
+        FSIMG="/run/initramfs/squashfs/LiveOS/ext3fs.img"
+    elif [ -f /run/initramfs/squashfs/LiveOS/rootfs.img ]; then
+        FSIMG="/run/initramfs/squashfs/LiveOS/rootfs.img"
+    fi
+else
+    # we might have an embedded fs image to use as rootfs (uncompressed live)
+    if [ -e /run/initramfs/live/${live_dir}/ext3fs.img ]; then
+        FSIMG="/run/initramfs/live/${live_dir}/ext3fs.img"
+    elif [ -e /run/initramfs/live/${live_dir}/rootfs.img ]; then
+        FSIMG="/run/initramfs/live/${live_dir}/rootfs.img"
+    fi
+    if [ -n "$live_ram" ]; then
+        echo 'Copying live image to RAM...'
+        echo '(this may take a few minutes)'
+        dd if=$FSIMG of=/run/initramfs/rootfs.img bs=512 2> /dev/null
+        echo 'Done copying live image to RAM.'
+        FSIMG='/run/initramfs/rootfs.img'
+    fi
 fi
 
 if [ -n "$FSIMG" ] ; then
     BASE_LOOPDEV=$( losetup -f )
 
     if [ -n "$writable_fsimg" ] ; then
-        # mount the provided fileysstem read/write
+        # mount the provided filesystem read/write
         echo "Unpacking live filesystem (may take some time)"
         mkdir /run/initramfs/fsimg/
         if [ -n "$SQUASHED" ]; then
@@ -245,8 +249,13 @@ if [ -n "$FSIMG" ] ; then
         else
             unpack_archive $FSIMG /run/initramfs/fsimg/
         fi
-        losetup $BASE_LOOPDEV /run/initramfs/fsimg/rootfs.img
-        echo "0 $( blockdev --getsize $BASE_LOOPDEV ) linear $BASE_LOOPDEV 0" | dmsetup create live-rw
+        FSIMG=/run/initramfs/fsimg/rootfs.img
+    fi
+    if [ -n "$writable_fsimg" ] || [ -z "$SQUASHED" -a -n "$live_ram" ] ||
+       [ "$overlay" = none -o "$overlay" = None -o "$overlay" = NONE ]; then
+        losetup $BASE_LOOPDEV $FSIMG
+        sz=$(blockdev --getsz $BASE_LOOPDEV)
+        echo 0 $sz linear $BASE_LOOPDEV 0 | dmsetup create live-rw
     else
         # mount the filesystem read-only and add a dm snapshot for writes
         losetup -r $BASE_LOOPDEV $FSIMG
@@ -259,7 +268,7 @@ fi
 if [ -b "$OSMIN_LOOPDEV" ]; then
     # set up the devicemapper snapshot device, which will merge
     # the normal live fs image, and the delta, into a minimzied fs image
-    echo "0 $( blockdev --getsz $BASE_LOOPDEV ) snapshot $BASE_LOOPDEV $OSMIN_LOOPDEV p 8" | dmsetup create --readonly live-osimg-min
+    echo "0 $( blockdev --getsz $BASE_LOOPDEV ) snapshot $BASE_LOOPDEV $OSMIN_LOOPDEV N 8" | dmsetup create --readonly live-osimg-min
 fi
 
 ROOTFLAGS="$(getarg rootflags)"

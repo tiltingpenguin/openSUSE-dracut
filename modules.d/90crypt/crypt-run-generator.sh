@@ -6,7 +6,7 @@ type crypttab_contains >/dev/null 2>&1 || . /lib/dracut-crypt-lib.sh
 dev=$1
 luks=$2
 
-crypttab_contains "$luks" && exit 0
+crypttab_contains "$luks" "$dev" && exit 0
 
 allowdiscards="-"
 
@@ -15,10 +15,10 @@ if strstr "$(cryptsetup --help)" "allow-discards"; then
     if discarduuids=$(getargs "rd.luks.allow-discards"); then
         discarduuids=$(str_replace "$discarduuids" 'luks-' '')
         if strstr " $discarduuids " " ${luks##luks-}"; then
-            allowdiscards="allow-discards"
+            allowdiscards="discard"
         fi
     elif getargbool 0 rd.luks.allow-discards; then
-        allowdiscards="allow-discards"
+        allowdiscards="discard"
     fi
 fi
 

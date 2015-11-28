@@ -3,8 +3,11 @@ TEST_DESCRIPTION="root filesystem over iSCSI"
 
 KVERSION=${KVERSION-$(uname -r)}
 
-#DEBUGFAIL="rd.shell"
-#SERIAL="tcp:127.0.0.1:9999"
+DEBUGFAIL="loglevel=1"
+#DEBUGFAIL="rd.shell rd.break rd.debug loglevel=7 "
+#DEBUGFAIL="rd.debug loglevel=7 "
+#SERVER_DEBUG="rd.debug loglevel=7"
+SERIAL="tcp:127.0.0.1:9999"
 SERIAL="null"
 
 run_server() {
@@ -16,12 +19,13 @@ run_server() {
         -drive format=raw,index=1,media=disk,file=$TESTDIR/root.ext3 \
         -drive format=raw,index=2,media=disk,file=$TESTDIR/iscsidisk2.img \
         -drive format=raw,index=3,media=disk,file=$TESTDIR/iscsidisk3.img \
-        -m 256M  -smp 2 \
+        -m 512M  -smp 2 \
         -display none \
         -serial $SERIAL \
         -net nic,macaddr=52:54:00:12:34:56,model=e1000 \
+        -net nic,macaddr=52:54:00:12:34:57,model=e1000 \
         -net socket,listen=127.0.0.1:12330 \
-        -append "root=/dev/sda rootfstype=ext3 rw rd.debug loglevel=77 console=ttyS0,115200n81 selinux=0" \
+        -append "root=/dev/sda rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0 $SERVER_DEBUG" \
         -initrd $TESTDIR/initramfs.server \
         -pidfile $TESTDIR/server.pid -daemonize || return 1
     sudo chmod 644 $TESTDIR/server.pid || return 1
@@ -41,10 +45,11 @@ run_client() {
 
     $testdir/run-qemu \
         -drive format=raw,index=0,media=disk,file=$TESTDIR/client.img \
-        -m 256M -smp 2 -nographic \
+        -m 512M -smp 2 -nographic \
         -net nic,macaddr=52:54:00:12:34:00,model=e1000 \
+        -net nic,macaddr=52:54:00:12:34:01,model=e1000 \
         -net socket,connect=127.0.0.1:12330 \
-        -append "$* rw quiet rd.auto rd.retry=5 rd.debug rd.info  console=ttyS0,115200n81 selinux=0 $DEBUGFAIL" \
+        -append "rw rd.auto rd.retry=50 console=ttyS0,115200n81 selinux=0 rd.debug=0 $DEBUGFAIL $*" \
         -initrd $TESTDIR/initramfs.testing
     if ! grep -F -m 1 -q iscsi-OK $TESTDIR/client.img; then
 	echo "CLIENT TEST END: $test_name [FAILED - BAD EXIT]"
@@ -56,21 +61,63 @@ run_client() {
 }
 
 do_test_run() {
+    initiator=$(iscsi-iname)
 
-#
-#    run_client "root=dhcp" \
-#        "root=dhcp" \
-#	|| return 1
+    run_client "root=dhcp" \
+               "root=/dev/root netroot=dhcp ip=ens3:dhcp" \
+               "rd.iscsi.initiator=$initiator" \
+        || return 1
 
-    run_client "netroot=iscsi  target0"\
-	"root=LABEL=singleroot netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target0" \
-	"ip=192.168.50.101::192.168.50.1:255.255.255.0:iscsi-1:ens3:off" \
-	|| return 1
+    run_client "netroot=iscsi target0"\
+               "root=LABEL=singleroot netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target0" \
+               "ip=192.168.50.101::192.168.50.1:255.255.255.0:iscsi-1:ens3:off" \
+               "rd.iscsi.firmware" \
+               "rd.iscsi.initiator=$initiator" \
+        || return 1
 
     run_client "netroot=iscsi target1 target2" \
-	"root=LABEL=sysroot ip=192.168.50.101::192.168.50.1:255.255.255.0:iscsi-1:ens3:off" \
-	"netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target1 netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target2" \
+               "root=LABEL=sysroot" \
+               "ip=192.168.50.101:::255.255.255.0::ens3:off" \
+               "ip=192.168.51.101:::255.255.255.0::ens4:off" \
+               "netroot=iscsi:192.168.51.1::::iqn.2009-06.dracut:target1" \
+               "netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target2" \
+               "rd.iscsi.firmware" \
+               "rd.iscsi.initiator=$initiator" \
+        || return 1
+
+    run_client "netroot=iscsi target1 target2 rd.iscsi.waitnet=0" \
+	       "root=LABEL=sysroot" \
+               "ip=192.168.50.101:::255.255.255.0::ens3:off" \
+               "ip=192.168.51.101:::255.255.255.0::ens4:off" \
+	       "netroot=iscsi:192.168.51.1::::iqn.2009-06.dracut:target1" \
+               "netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target2" \
+               "rd.iscsi.firmware" \
+               "rd.iscsi.initiator=$initiator" \
+               "rd.iscsi.waitnet=0" \
 	|| return 1
+
+    run_client "netroot=iscsi target1 target2 rd.iscsi.waitnet=0 rd.iscsi.testroute=0" \
+	       "root=LABEL=sysroot" \
+               "ip=192.168.50.101:::255.255.255.0::ens3:off" \
+               "ip=192.168.51.101:::255.255.255.0::ens4:off" \
+	       "netroot=iscsi:192.168.51.1::::iqn.2009-06.dracut:target1" \
+               "netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target2" \
+               "rd.iscsi.firmware" \
+               "rd.iscsi.initiator=$initiator" \
+               "rd.iscsi.waitnet=0 rd.iscsi.testroute=0" \
+	|| return 1
+
+    run_client "netroot=iscsi target1 target2 rd.iscsi.waitnet=0 rd.iscsi.testroute=0 default GW" \
+	       "root=LABEL=sysroot" \
+               "ip=192.168.50.101::192.168.50.1:255.255.255.0::ens3:off" \
+               "ip=192.168.51.101::192.168.51.1:255.255.255.0::ens4:off" \
+	       "netroot=iscsi:192.168.51.1::::iqn.2009-06.dracut:target1" \
+               "netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target2" \
+               "rd.iscsi.firmware" \
+               "rd.iscsi.initiator=$initiator" \
+               "rd.iscsi.waitnet=0 rd.iscsi.testroute=0" \
+	|| return 1
+
     return 0
 }
 
@@ -103,7 +150,7 @@ test_setup() {
     # Create what will eventually be our root filesystem onto an overlay
     (
         export initdir=$TESTDIR/overlay/source
-        . $basedir/dracut-functions.sh
+        . $basedir/dracut-init.sh
         (
             cd "$initdir"
             mkdir -p -- dev sys proc etc var/run tmp
@@ -128,7 +175,7 @@ test_setup() {
     # second, install the files needed to make the root filesystem
     (
         export initdir=$TESTDIR/overlay
-        . $basedir/dracut-functions.sh
+        . $basedir/dracut-init.sh
         inst_multiple sfdisk mkfs.ext3 poweroff cp umount setsid
         inst_hook initqueue 01 ./create-root.sh
         inst_hook initqueue/finished 01 ./finished-false.sh
@@ -164,13 +211,13 @@ test_setup() {
     rm -- $TESTDIR/client.img
     (
         export initdir=$TESTDIR/overlay
-        . $basedir/dracut-functions.sh
+        . $basedir/dracut-init.sh
         inst_multiple poweroff shutdown
         inst_hook emergency 000 ./hard-off.sh
         inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-        -o "dash plymouth dmraid" \
+        -o "dash plymouth dmraid nfs" \
         -a "debug" \
         -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod" \
         --no-hostonly-cmdline -N \
@@ -185,7 +232,7 @@ test_setup() {
     kernel=$KVERSION
     (
         export initdir=$TESTDIR/mnt
-        . $basedir/dracut-functions.sh
+        . $basedir/dracut-init.sh
         (
             cd "$initdir";
             mkdir -p dev sys proc etc var/run tmp var/lib/dhcpd /etc/iscsi
@@ -195,13 +242,12 @@ test_setup() {
             dmesg mkdir cp ping \
             modprobe tcpdump setsid \
             /etc/services sleep mount chmod
-        inst_multiple /usr/sbin/iscsi-target
+        inst_multiple tgtd tgtadm
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
             [ -f ${_terminfodir}/l/linux ] && break
         done
         inst_multiple -o ${_terminfodir}/l/linux
         instmods iscsi_tcp crc32c ipv6
-        inst ./targets /etc/iscsi/targets
         [ -f /etc/netconfig ] && inst_multiple /etc/netconfig
         type -P dhcpd >/dev/null && inst_multiple dhcpd
         [ -x /usr/sbin/dhcpd3 ] && inst /usr/sbin/dhcpd3 /usr/sbin/dhcpd
@@ -223,7 +269,7 @@ test_setup() {
     # Make server's dracut image
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
         -a "dash udev-rules base rootfs-block fs-lib debug kernel-modules" \
-        -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod e1000" \
+        -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod e1000 drbg" \
         --no-hostonly-cmdline -N \
         -f $TESTDIR/initramfs.server $KVERSION || return 1
 

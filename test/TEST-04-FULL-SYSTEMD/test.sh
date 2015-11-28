@@ -57,7 +57,7 @@ test_setup() {
     (
 	export initdir=$TESTDIR/overlay/source
 	mkdir -p $initdir
-	. $basedir/dracut-functions.sh
+	. $basedir/dracut-init.sh
 
         for d in usr/bin usr/sbin bin etc lib "$libdir" sbin tmp usr var var/log dev proc sys sysroot root run; do
             if [ -L "/$d" ]; then
@@ -171,13 +171,18 @@ EOF
         inst /usr/lib/systemd/system/dbus.socket
         inst /usr/lib/systemd/system/dbus.service
 
+        (
+            echo "FONT=latarcyrheb-sun16"
+            echo "KEYMAP=us"
+        ) >$initrd/etc/vconsole.conf
+
         # install basic keyboard maps and fonts
         for i in \
             /usr/lib/kbd/consolefonts/eurlatgr* \
             /usr/lib/kbd/consolefonts/latarcyrheb-sun16* \
-            /usr/lib/kbd/keymaps/include/* \
-            /usr/lib/kbd/keymaps/i386/include/* \
-            /usr/lib/kbd/keymaps/i386/qwerty/us.*; do
+            /usr/lib/kbd/keymaps/{legacy/,/}include/* \
+            /usr/lib/kbd/keymaps/{legacy/,/}i386/include/* \
+            /usr/lib/kbd/keymaps/{legacy/,/}i386/qwerty/us.*; do
                 [[ -f $i ]] || continue
                 inst $i
         done
@@ -222,7 +227,7 @@ EOF
     # second, install the files needed to make the root filesystem
     (
 	export initdir=$TESTDIR/overlay
-	. $basedir/dracut-functions.sh
+	. $basedir/dracut-init.sh
 	inst_multiple sfdisk mkfs.btrfs btrfs poweroff cp umount sync
 	inst_hook initqueue 01 ./create-root.sh
         inst_hook initqueue/finished 01 ./finished-false.sh
@@ -254,15 +259,15 @@ EOF
 
     (
 	export initdir=$TESTDIR/overlay
-	. $basedir/dracut-functions.sh
+	. $basedir/dracut-init.sh
 	inst_multiple poweroff shutdown
 	inst_hook emergency 000 ./hard-off.sh
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-a "debug systemd" \
+	-a "debug systemd i18n" \
 	-I "/etc/machine-id /etc/hostname" \
-        -o "dash network plymouth lvm mdraid resume crypt i18n caps dm terminfo usrmount kernel-network-modules" \
+        -o "dash network plymouth lvm mdraid resume crypt caps dm terminfo usrmount kernel-network-modules" \
 	-d "piix ide-gd_mod ata_piix btrfs sd_mod i6300esb ib700wdt" \
         --no-hostonly-cmdline -N \
 	-f $TESTDIR/initramfs.testing $KVERSION || return 1

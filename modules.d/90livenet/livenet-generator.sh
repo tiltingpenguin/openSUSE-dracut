@@ -16,36 +16,21 @@ fi
 [ "${liveroot%%:*}" = "live" ] || exit 0
 
 case "$liveroot" in
-    live:LABEL=*|LABEL=*) \
+    live:http://*|http://*) \
         root="${root#live:}"
-        root="$(echo $root | sed 's,/,\\x2f,g')"
-        root="live:/dev/disk/by-label/${root#LABEL=}"
         rootok=1 ;;
-    live:CDLABEL=*|CDLABEL=*) \
+    live:https://*|https://*) \
         root="${root#live:}"
-        root="$(echo $root | sed 's,/,\\x2f,g')"
-        root="live:/dev/disk/by-label/${root#CDLABEL=}"
         rootok=1 ;;
-    live:UUID=*|UUID=*) \
+    live:ftp://*|ftp://*) \
         root="${root#live:}"
-        root="live:/dev/disk/by-uuid/${root#UUID=}"
         rootok=1 ;;
-    live:PARTUUID=*|PARTUUID=*) \
+    live:torrent://*|torrent://*) \
         root="${root#live:}"
-        root="live:/dev/disk/by-partuuid/${root#PARTUUID=}"
         rootok=1 ;;
-    live:PARTLABEL=*|PARTLABEL=*) \
+    live:tftp://*|tftp://*) \
         root="${root#live:}"
-        root="live:/dev/disk/by-partlabel/${root#PARTLABEL=}"
         rootok=1 ;;
-    live:/*.[Ii][Ss][Oo]|/*.[Ii][Ss][Oo])
-        root="${root#live:}"
-        root="liveiso:${root}"
-        rootok=1 ;;
-    live:/dev/*)
-        rootok=1 ;;
-    live:/*.[Ii][Mm][Gg]|/*.[Ii][Mm][Gg])
-        [ -f "${root#live:}" ] && rootok=1 ;;
 esac
 
 [ "$rootok" != "1" ] && exit 0

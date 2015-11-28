@@ -30,13 +30,13 @@ client_run() {
 test_run() {
     read MD_UUID < $TESTDIR/mduuid
     client_run rd.auto rd.md.imsm=0 || return 1
-    client_run rd.auto rd.md.uuid=$MD_UUID rd.dm=0 || return 1
+    client_run rd.md.uuid=$MD_UUID rd.dm=0 || return 1
     # This test succeeds, because the mirror parts are found without
     # assembling the mirror itsself, which is what we want
-    client_run rd.auto rd.md.uuid=$MD_UUID rd.md=0 rd.md.imsm failme && return 1
-    client_run rd.auto rd.md.uuid=$MD_UUID rd.md=0 failme && return 1
+    client_run rd.md.uuid=$MD_UUID rd.md=0 rd.md.imsm failme && return 1
+    client_run rd.md.uuid=$MD_UUID rd.md=0 failme && return 1
     # the following test hangs on newer md
-    client_run rd.auto rd.md.uuid=$MD_UUID rd.dm=0 rd.md.imsm rd.md.conf=0 || return 1
+    client_run rd.md.uuid=$MD_UUID rd.dm=0 rd.md.imsm rd.md.conf=0 || return 1
    return 0
 }
 
@@ -54,7 +54,7 @@ test_setup() {
     # Create what will eventually be our root filesystem onto an overlay
     (
 	export initdir=$TESTDIR/overlay/source
-	. $basedir/dracut-functions.sh
+	. $basedir/dracut-init.sh
 	(
             cd "$initdir"
             mkdir -p -- dev sys proc etc var/run tmp
@@ -83,7 +83,7 @@ test_setup() {
     # second, install the files needed to make the root filesystem
     (
 	export initdir=$TESTDIR/overlay
-	. $basedir/dracut-functions.sh
+	. $basedir/dracut-init.sh
 	inst_multiple sfdisk mke2fs poweroff cp umount grep
 	inst_hook initqueue 01 ./create-root.sh
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
@@ -111,7 +111,7 @@ test_setup() {
     echo $MD_UUID > $TESTDIR/mduuid
     (
 	export initdir=$TESTDIR/overlay
-	. $basedir/dracut-functions.sh
+	. $basedir/dracut-init.sh
 	inst_multiple poweroff shutdown
 	inst_hook emergency 000 ./hard-off.sh
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules

@@ -27,6 +27,7 @@ install() {
     fi
 
     inst_rules \
+        40-redhat.rules \
         50-firmware.rules \
         50-udev.rules \
         50-udev-default.rules \
@@ -46,7 +47,8 @@ install() {
         80-net-setup-link.rules \
         95-late.rules \
         "$moddir/59-persistent-storage.rules" \
-        "$moddir/61-persistent-storage.rules"
+        "$moddir/61-persistent-storage.rules" \
+        ${NULL}
 
     prepare_udev_rules 59-persistent-storage.rules 61-persistent-storage.rules
     # debian udev rules
@@ -54,8 +56,10 @@ install() {
     # eudev rules
     inst_rules 80-drivers-modprobe.rules
 
-    inst_multiple -o ${systemdutildir}/network/*.link
-    [[ $hostonly ]] && inst_multiple -H -o /etc/systemd/network/*.link
+    if dracut_module_included "systemd"; then
+        inst_multiple -o ${systemdutildir}/network/*.link
+        [[ $hostonly ]] && inst_multiple -H -o /etc/systemd/network/*.link
+    fi
 
     {
         for i in cdrom tape dialout floppy; do

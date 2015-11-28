@@ -145,6 +145,33 @@ is_xen_kernel() {
     return
 }
 
+# kernel_image_gz_from_image() and kernel_version_from_image() are helpers
+# for arm* kernels which produce zImage files which cannot be read from
+# get_kernel_version -> get rid of this workaround if possible
+kernel_image_gz_from_image() {
+    local arch=$(uname -i)
+    local r=${1}.gz
+
+    # uImage kernels can't be extracted directly. Use the vmlinux.gz instead
+    r=${r//uImage/vmlinux}
+
+    # on ARM a zImage can't be extracted directly. Other platforms define it
+    # as a gzipped vmlinux file, but not ARM. So only on ARM, use vmlinux.gz.
+    if [[ $arch =~ arm ]] || [[ $arch =~ aarch ]]; then
+        r=${r//zImage/vmlinux}
+    fi
+
+    echo $r
+}
+
+kernel_version_from_image() {
+    local kernel_image="$1" kernel_image_gz=$(kernel_image_gz_from_image "$1")
+
+    if get_kernel_version "$kernel_image" 2>/dev/null; then
+        return
+    fi
+    get_kernel_version "$kernel_image_gz" 2>/dev/null
+}
 
 # Taken over from SUSE mkinitrd
 default_kernel_images() {
@@ -183,7 +210,8 @@ default_kernel_images() {
 
         [ -L "$boot_dir/$kernel_image" ] && continue
         [ "${kernel_image%%.gz}" != "$kernel_image" ] && continue
-        kernel_version=$(/usr/bin/get_kernel_version \
+
+        kernel_version=$(kernel_version_from_image \
                          $boot_dir/$kernel_image 2> /dev/null)
         initrd_image=$(echo $kernel_image | sed -e "s|${regex}|initrd|")
         if [ "$kernel_image" != "$initrd_image" -a \
@@ -280,7 +308,8 @@ done
 
 [[ $targets && $kernels ]] || default_kernel_images
 if [[ ! $targets || ! $kernels ]];then
-    error "No kernel found in $boot_dir"
+    error "No kernel found in $boot_dir or bad modules dir in /lib/modules"
+    exit 1
 fi
 
 # We can have several targets/kernels, transform the list to an array
@@ -300,6 +329,8 @@ fi
 [[ $module_list ]] || module_list="${INITRD_MODULES}"
 [[ $domu_module_list ]] || domu_module_list="${DOMU_INITRD_MODULES}"
 shopt -s extglob
+
+failed=""
 
 for ((i=0 ; $i<${#targets[@]} ; i++)); do
 
@@ -329,14 +360,18 @@ for ((i=0 ; $i<${#targets[@]} ; i++)); do
         # expansion magics
         if [ -n "${modules_all}" ];then
             $dracut_cmd $dracut_args --force-drivers "${modules_all}" "$target" "$kernel" &>/dev/null
+            [ $? -ne 0 ] && failed="$failed $target"
         else
             $dracut_cmd $dracut_args "$target" "$kernel" &>/dev/null
+            [ $? -ne 0 ] && failed="$failed $target"
         fi
     else
         if [ -n "${modules_all}" ];then
             $dracut_cmd $dracut_args --force-drivers "${modules_all}" "$target" "$kernel"
+            [ $? -ne 0 ] && failed="$failed $target"
         else
             $dracut_cmd $dracut_args "$target" "$kernel"
+            [ $? -ne 0 ] && failed="$failed $target"
         fi
     fi
 done
@@ -345,4 +380,12 @@ if [ "$skip_update_bootloader" ] ; then
     echo 2>&1 "Did not refresh the bootloader. You might need to refresh it manually."
 else
     update-bootloader --refresh
+    [ $? -ne 0 ] && echo "Updating bootloader failed" && exit 1
 fi
+
+if [ "$failed" != "" ]; then
+    echo "Generating $failed targets failed"
+    exit 1
+fi
+
+exit 0

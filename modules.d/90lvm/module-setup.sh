@@ -73,7 +73,7 @@ install() {
         if [ -f /etc/lvm/lvmlocal.conf ]; then
             inst_simple -H /etc/lvm/lvmlocal.conf
         fi
-        eval $(lvm dumpconfig global/system_id_source)
+        eval $(lvm dumpconfig global/system_id_source &>/dev/null)
         if [ "$system_id_source" == "file" ]; then
             eval $(lvm dumpconfig global/system_id_file)
             if [ -f "$system_id_file" ]; then
@@ -140,4 +140,6 @@ install() {
                       cache_dump cache_restore cache_check cache_repair \
                       era_check era_dump era_invalidate era_restore
     fi
+
+    dracut_need_initqueue
 }
