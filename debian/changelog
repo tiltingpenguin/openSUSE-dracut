@@ -1,3 +1,12 @@
+dracut (044+3-1) unstable; urgency=low
+
+  * new upstream, Closes: #802823
+  * new patch libdir, multipath Closes: #796329
+  * fix plymouth path and remove items, Closes: #796110
+  * dracut.install: add dracut-init.sh
+
+ -- Thomas Lange <lange@debian.org>  Sun, 29 Nov 2015 11:22:46 +0100
+
 dracut (043-4) unstable; urgency=low
 
   * add more man pages to package
