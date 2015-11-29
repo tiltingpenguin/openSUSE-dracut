@@ -6,9 +6,7 @@
 
 . /lib/dracut-lib.sh
 
-aufs=$(getargs aufs)
-
-if [ -z "$aufs" ] ; then
+if ! getargbool 0 aufs ; then
     return
 fi
 
