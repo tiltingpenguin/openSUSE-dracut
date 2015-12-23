@@ -9,16 +9,25 @@ Vcs-Git: git://anonscm.debian.org/collab-maint/dracut.git
 Homepage: http://www.kernel.org/pub/linux/utils/boot/dracut/dracut.html
 
 Package: dracut
+Architecture: all
+Multi-Arch: foreign
+Suggests: dracut-network
+Depends: dracut-core (>= ${binary:Version}), dracut-core (<< ${binary:Version}+b+~)
+Provides: linux-initramfs-tool
+Conflicts: initramfs-tools, live-tools
+Description: Low-level tool for generating an initramfs image (automation)
+ This package builds a bootable initramfs for Linux kernel packages.  The
+ initramfs is loaded along with the kernel and is responsible for
+ mounting the root filesystem and starting the main init system.
+
+Package: dracut-core
 Architecture: any
 Multi-Arch: foreign
 Recommends: cryptsetup, dmsetup, dmraid, lvm2, mdadm
-Suggests: dracut-network
 Depends: cpio, kmod, udev, kpartx, console-setup, util-linux (>= 2.20), pkg-config, ${shlibs:Depends}, ${misc:Depends}
-Breaks: dracut-network (<< 043-2)
-Replaces: dracut-network (<< 043-2)
-Provides: linux-initramfs-tool
-Conflicts: initramfs-tools, live-tools
-Description: Low-level tool for generating an initramfs image
+Breaks: dracut-network (<< 043-2), dracut (<< 044+3-2~)
+Replaces: dracut-network (<< 043-2), dracut (<< 044+3-2~)
+Description: Low-level tool for generating an initramfs image (core tools)
  Unlike existing initramfs's, this is an attempt at having as little as
  possible hard-coded into the initramfs as possible.  The initramfs has
  (basically) one purpose in life -- getting the rootfs mounted so that
@@ -32,7 +41,7 @@ Description: Low-level tool for generating an initramfs image
 Package: dracut-network
 Architecture: all
 Recommends: nfs-common, open-iscsi, nbd-client, curl
-Depends: dracut, iputils-arping, isc-dhcp-client, ${misc:Depends}
+Depends: dracut-core, iputils-arping, isc-dhcp-client, ${misc:Depends}
 Description: Low-level tool for generating an initramfs image
  Unlike existing initramfs's, this is an attempt at having as little as
  possible hard-coded into the initramfs as possible.  The initramfs has
@@ -46,12 +55,12 @@ Description: Low-level tool for generating an initramfs image
 
 Package: dracut-config-generic
 Architecture: all
-Depends: dracut
+Depends: dracut-core
 Description: Low-level tool for generating an initramfs image
  This is the dracut configuration to turn off hostonly image generation
 
 Package: dracut-config-rescue
 Architecture: all
-Depends: dracut
+Depends: dracut-core
 Description: Low-level tool for generating an initramfs image
  This is the dracut configuration to turn on rescue image generation
