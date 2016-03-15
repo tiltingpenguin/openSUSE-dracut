@@ -9,7 +9,7 @@ check() {
     [ -x /bin/setupcon ] || return 1
     setupcon --help 2>&1 | grep "\-\-setup-dir" > /dev/null || return 1
 
-    rm -rf $vardir/console-setup-dir 
+    rm -rf $vardir/console-setup-dir
     mkdir -p $vardir/console-setup-dir || return 1
     setupcon --setup-dir $vardir/console-setup-dir || return 1
     mv $vardir/console-setup-dir/morefiles $vardir/console-setup-files
