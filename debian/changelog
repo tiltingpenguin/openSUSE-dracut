@@ -4,8 +4,9 @@ dracut (044+38-1) unstable; urgency=low
   * make console-setup a recommends instead of depends, Closes: #812943
   * 90console-setup: Fix console-setup module-setup script to not
     terminate
+  * rules: fix permissions
 
- -- Thomas Lange <lange@debian.org>  Sun, 20 Mar 2016 19:54:19 +0100
+ -- Thomas Lange <lange@debian.org>  Mon, 21 Mar 2016 13:47:15 +0100
 
 dracut (044+3-3) unstable; urgency=low
 
