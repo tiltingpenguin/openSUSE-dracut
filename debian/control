@@ -24,8 +24,8 @@ Description: Low-level tool for generating an initramfs image (automation)
 Package: dracut-core
 Architecture: any
 Multi-Arch: foreign
-Recommends: cryptsetup, dmsetup, dmraid, lvm2, mdadm
-Depends: cpio, kmod, udev, kpartx, console-setup, util-linux (>= 2.20), pkg-config, ${shlibs:Depends}, ${misc:Depends}
+Recommends: cryptsetup, dmsetup, dmraid, lvm2, mdadm, console-setup
+Depends: cpio, kmod, udev, kpartx, util-linux (>= 2.20), pkg-config, ${shlibs:Depends}, ${misc:Depends}
 Breaks: dracut-network (<< 043-2), dracut (<< 044+3-2~)
 Replaces: dracut-network (<< 043-2), dracut (<< 044+3-2~)
 Description: Low-level tool for generating an initramfs image (core tools)

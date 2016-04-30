@@ -6,11 +6,12 @@ check() {
     local vardir
     vardir=/var/lib/dracut
 
-    [ -x /bin/setupcon ] || exit 1
+    [ -x /bin/setupcon ] || return 1
+    setupcon --help 2>&1 | grep "\-\-setup-dir" > /dev/null || return 1
 
     rm -rf $vardir/console-setup-dir
-    mkdir -p $vardir/console-setup-dir || exit 1
-    setupcon --setup-dir $vardir/console-setup-dir || exit 1
+    mkdir -p $vardir/console-setup-dir || return 1
+    setupcon --setup-dir $vardir/console-setup-dir || return 1
     mv $vardir/console-setup-dir/morefiles $vardir/console-setup-files
 }
 
