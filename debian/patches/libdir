@@ -1,6 +1,6 @@
 --- a/dracut-init.sh
 +++ b/dracut-init.sh
-@@ -84,7 +84,7 @@
+@@ -86,7 +86,7 @@
  if ! [[ $libdirs ]] ; then
      if [[ "$(ldd /bin/sh)" == */lib64/* ]] &>/dev/null \
          && [[ -d /lib64 ]]; then
