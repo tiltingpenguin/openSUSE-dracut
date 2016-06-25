@@ -1,6 +1,6 @@
 --- a/dracut-initramfs-restore.sh
 +++ b/dracut-initramfs-restore.sh
-@@ -15,7 +15,7 @@ SKIP="$dracutbasedir/skipcpio"
+@@ -19,7 +19,7 @@
  if [[ $MACHINE_ID ]] && [[ -d /boot/${MACHINE_ID} || -L /boot/${MACHINE_ID} ]] ; then
      IMG="/boot/${MACHINE_ID}/${KERNEL_VERSION}/initrd"
  fi
