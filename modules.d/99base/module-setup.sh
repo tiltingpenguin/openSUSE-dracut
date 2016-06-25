@@ -27,8 +27,8 @@ install() {
     fi
 
     #add common users in /etc/passwd, it will be used by nfs/ssh currently
-    egrep '^root:' "$initdir/etc/passwd" 2>/dev/null || echo  'root:x:0:0::/root:/bin/sh' >> "$initdir/etc/passwd"
-    egrep '^nobody:' /etc/passwd >> "$initdir/etc/passwd"
+    grep '^root:' "$initdir/etc/passwd" 2>/dev/null || echo  'root:x:0:0::/root:/bin/sh' >> "$initdir/etc/passwd"
+    grep '^nobody:' /etc/passwd >> "$initdir/etc/passwd"
 
     # install our scripts and hooks
     inst_script "$moddir/init.sh" "/init"
@@ -77,6 +77,7 @@ install() {
     VERSION_ID=$DRACUT_VERSION
     ANSI_COLOR="0;34"
 
+    [ -e "${initdir}/usr/lib" ] || mkdir -m 0755 -p ${initdir}/usr/lib
     {
         echo NAME=\"$NAME\"
         echo VERSION=\"$VERSION\"

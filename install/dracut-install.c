@@ -17,12 +17,12 @@
    along with this program; If not, see <http://www.gnu.org/licenses/>.
 */
 
-#define PROGRAM_VERSION_STRING "1"
+#define PROGRAM_VERSION_STRING "2"
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
-
+#undef _FILE_OFFSET_BITS
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -38,6 +38,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <libkmod.h>
+#include <fts.h>
+#include <regex.h>
 
 #include "log.h"
 #include "hashmap.h"
@@ -48,18 +51,67 @@ static bool arg_hmac = false;
 static bool arg_createdir = false;
 static int arg_loglevel = -1;
 static bool arg_optional = false;
+static bool arg_silent = false;
 static bool arg_all = false;
+static bool arg_module = false;
 static bool arg_resolvelazy = false;
 static bool arg_resolvedeps = false;
 static bool arg_hostonly = false;
 static char *destrootdir = NULL;
+static char *kerneldir = NULL;
+static char **firmwaredirs = NULL;
+static char **pathdirs;
 static char *logdir = NULL;
 static char *logfile = NULL;
 FILE *logfile_f = NULL;
 static Hashmap *items = NULL;
 static Hashmap *items_failed = NULL;
+static Hashmap *modules_loaded = NULL;
+static regex_t mod_filter_path;
+static regex_t mod_filter_nopath;
+static regex_t mod_filter_symbol;
+static regex_t mod_filter_nosymbol;
+static regex_t mod_filter_noname;
+static bool arg_mod_filter_path = false;
+static bool arg_mod_filter_nopath = false;
+static bool arg_mod_filter_symbol = false;
+static bool arg_mod_filter_nosymbol = false;
+static bool arg_mod_filter_noname = false;
 
 static int dracut_install(const char *src, const char *dst, bool isdir, bool resolvedeps, bool hashdst);
+
+
+
+static inline void kmod_module_unref_listp(struct kmod_list **p) {
+        if (*p)
+                kmod_module_unref_list(*p);
+}
+#define _cleanup_kmod_module_unref_list_ _cleanup_(kmod_module_unref_listp)
+
+static inline void kmod_module_info_free_listp(struct kmod_list **p) {
+        if (*p)
+                kmod_module_info_free_list(*p);
+}
+#define _cleanup_kmod_module_info_free_list_ _cleanup_(kmod_module_info_free_listp)
+
+static inline void kmod_unrefp(struct kmod_ctx **p) {
+        kmod_unref(*p);
+}
+#define _cleanup_kmod_unref_ _cleanup_(kmod_unrefp)
+
+static inline void kmod_module_dependency_symbols_free_listp(struct kmod_list **p) {
+        if (*p)
+                kmod_module_dependency_symbols_free_list(*p);
+}
+#define _cleanup_kmod_module_dependency_symbols_free_list_ _cleanup_(kmod_module_dependency_symbols_free_listp)
+
+static inline void fts_closep(FTS **p) {
+        if (*p)
+                fts_close(*p);
+}
+#define _cleanup_fts_close_ _cleanup_(fts_closep)
+
+
 
 static size_t dir_len(char const *file)
 {
@@ -287,7 +339,7 @@ static int library_install(const char *src, const char *lib)
 
         /* Also try to install the same library from one directory above.
            This fixes the case, where only the HWCAP lib would be installed
-           # ldconfig -p|fgrep libc.so
+           # ldconfig -p|grep -F libc.so
            libc.so.6 (libc6,64bit, hwcap: 0x0000001000000000, OS ABI: Linux 2.6.32) => /lib64/power6/libc.so.6
            libc.so.6 (libc6,64bit, hwcap: 0x0000000000000200, OS ABI: Linux 2.6.32) => /lib64/power6x/libc.so.6
            libc.so.6 (libc6,64bit, OS ABI: Linux 2.6.32) => /lib64/libc.so.6
@@ -516,6 +568,18 @@ void dracut_log_cp(const char *path)
                 log_error("Could not append '%s' to logfile '%s': %m", path, logfile);
 }
 
+static bool check_hashmap(Hashmap *hm, const char *item)
+{
+        char *existing;
+        existing = hashmap_get(hm, item);
+        if (existing) {
+                if (strcmp(existing, item) == 0) {
+                        return true;
+                }
+        }
+        return false;
+}
+
 static int dracut_install(const char *src, const char *dst, bool isdir, bool resolvedeps, bool hashdst)
 {
         struct stat sb, db;
@@ -524,26 +588,17 @@ static int dracut_install(const char *src, const char *dst, bool isdir, bool res
         int ret;
         bool src_exists = true;
         char *i = NULL;
-        char *existing;
 
         log_debug("dracut_install('%s', '%s')", src, dst);
 
-        existing = hashmap_get(items_failed, src);
-        if (existing) {
-                if (strcmp(existing, src) == 0) {
-                        log_debug("hash hit items_failed for '%s'", src);
-                        return 1;
-                }
+        if (check_hashmap(items_failed, src)) {
+                log_debug("hash hit items_failed for '%s'", src);
+                return 1;
         }
 
-        if (hashdst) {
-                existing = hashmap_get(items, dst);
-                if (existing) {
-                        if (strcmp(existing, dst) == 0) {
-                                log_debug("hash hit items for '%s'", dst);
-                                return 0;
-                        }
-                }
+        if (hashdst && check_hashmap(items, dst)) {
+                log_debug("hash hit items for '%s'", dst);
+                return 0;
         }
 
         if (lstat(src, &sb) < 0) {
@@ -678,7 +733,7 @@ static int dracut_install(const char *src, const char *dst, bool isdir, bool res
         log_debug("dracut_install ret = %d", ret);
         log_info("cp '%s' '%s'", src, fulldstpath);
 
-        if (arg_hostonly)
+        if (arg_hostonly && !arg_module)
                 mark_hostonly(dst);
 
         ret += cp(src, fulldstpath);
@@ -698,49 +753,46 @@ static void item_free(char *i)
 
 static void usage(int status)
 {
-        /*                                                                     */
+              /*                                                                                */
         printf("Usage: %s -D DESTROOTDIR [OPTION]... -a SOURCE...\n"
                "or: %s -D DESTROOTDIR [OPTION]... SOURCE DEST\n"
+               "or: %s -D DESTROOTDIR [OPTION]... -m KERNELMODULE [KERNELMODULE …]\n"
                "\n"
                "Install SOURCE to DEST in DESTROOTDIR with all needed dependencies.\n"
                "\n"
-               "  -D --destrootdir    Install all files to DESTROOTDIR as the root\n"
-               "  -a --all            Install all SOURCE arguments to DESTROOTDIR\n"
-               "  -o --optional       If SOURCE does not exist, do not fail\n"
-               "  -d --dir            SOURCE is a directory\n"
-               "  -l --ldd            Also install shebang executables and libraries\n"
-               "  -L --logdir <DIR>   Log files, which were installed from the host to <DIR>\n"
-               "  -R --resolvelazy    Only install shebang executables and libraries\n"
-               "                      for all SOURCE files\n"
-               "  -H --hostonly       Mark all SOURCE files as hostonly\n\n"
-               "  -f --fips           Also install all '.SOURCE.hmac' files\n"
-               "  -v --verbose        Show more output\n"
-               "     --debug          Show debug output\n"
-               "     --version        Show package version\n"
-               "  -h --help           Show this help\n"
+               "  KERNELMODULE can have the format:\n"
+               "     <absolute path> with a leading /\n"
+               "     =<kernel subdir>[/<kernel subdir>…] like '=drivers/hid'\n"
+               "     <module name>\n"
                "\n"
-               "Example:\n"
-               "# mkdir -p /var/tmp/test-root\n"
-               "# %s -D /var/tmp/test-root --ldd -a sh tr\n"
-               "# tree /var/tmp/test-root\n"
-               "/var/tmp/test-root\n"
-               "|-- lib64 -> usr/lib64\n"
-               "`-- usr\n"
-               "    |-- bin\n"
-               "    |   |-- bash\n"
-               "    |   |-- sh -> bash\n"
-               "    |   `-- tr\n"
-               "    `-- lib64\n"
-               "        |-- ld-2.15.90.so\n"
-               "        |-- ld-linux-x86-64.so.2 -> ld-2.15.90.so\n"
-               "        |-- libc-2.15.90.so\n"
-               "        |-- libc.so\n"
-               "        |-- libc.so.6 -> libc-2.15.90.so\n"
-               "        |-- libdl-2.15.90.so\n"
-               "        |-- libdl.so -> libdl-2.15.90.so\n"
-               "        |-- libdl.so.2 -> libdl-2.15.90.so\n"
-               "        |-- libtinfo.so.5 -> libtinfo.so.5.9\n"
-               "        `-- libtinfo.so.5.9\n", program_invocation_short_name, program_invocation_short_name,
+               "  -D --destrootdir  Install all files to DESTROOTDIR as the root\n"
+               "  -a --all          Install all SOURCE arguments to DESTROOTDIR\n"
+               "  -o --optional     If SOURCE does not exist, do not fail\n"
+               "  -d --dir          SOURCE is a directory\n"
+               "  -l --ldd          Also install shebang executables and libraries\n"
+               "  -L --logdir <DIR> Log files, which were installed from the host to <DIR>\n"
+               "  -R --resolvelazy  Only install shebang executables and libraries\n"
+               "                     for all SOURCE files\n"
+               "  -H --hostonly     Mark all SOURCE files as hostonly\n\n"
+               "  -f --fips         Also install all '.SOURCE.hmac' files\n"
+               "\n"
+               "  --module,-m       Install kernel modules, instead of files\n"
+               "  --kerneldir       Specify the kernel module directory\n"
+               "  --firmwaredirs    Specify the firmware directory search path with : separation\n"
+               "  --silent          Don't display error messages for kernel module install\n"
+               "  -o --optional     If kernel module does not exist, do not fail\n"
+               "  -p --mod-filter-path      Filter kernel modules by path regexp\n"
+               "  -P --mod-filter-nopath    Exclude kernel modules by path regexp\n"
+               "  -s --mod-filter-symbol    Filter kernel modules by symbol regexp\n"
+               "  -S --mod-filter-nosymbol  Exclude kernel modules by symbol regexp\n"
+               "  -N --mod-filter-noname    Exclude kernel modules by name regexp\n"
+               "\n"
+               "  -v --verbose      Show more output\n"
+               "     --debug        Show debug output\n"
+               "     --version      Show package version\n"
+               "  -h --help         Show this help\n"
+               "\n",
+               program_invocation_short_name, program_invocation_short_name,
                program_invocation_short_name);
         exit(status);
 }
@@ -751,6 +803,9 @@ static int parse_argv(int argc, char *argv[])
 
         enum {
                 ARG_VERSION = 0x100,
+                ARG_SILENT,
+                ARG_KERNELDIR,
+                ARG_FIRMWAREDIRS,
                 ARG_DEBUG
         };
 
@@ -765,13 +820,22 @@ static int parse_argv(int argc, char *argv[])
                 {"optional", no_argument, NULL, 'o'},
                 {"hostonly", no_argument, NULL, 'H'},
                 {"all", no_argument, NULL, 'a'},
+                {"module", no_argument, NULL, 'm'},
                 {"fips", no_argument, NULL, 'f'},
                 {"destrootdir", required_argument, NULL, 'D'},
                 {"logdir", required_argument, NULL, 'L'},
+                {"mod-filter-path", required_argument, NULL, 'p'},
+                {"mod-filter-nopath", required_argument, NULL, 'P'},
+                {"mod-filter-symbol", required_argument, NULL, 's'},
+                {"mod-filter-nosymbol", required_argument, NULL, 'S'},
+                {"mod-filter-noname", required_argument, NULL, 'N'},
+                {"silent", no_argument, NULL, ARG_SILENT},
+                {"kerneldir", required_argument, NULL, ARG_KERNELDIR},
+                {"firmwaredirs", required_argument, NULL, ARG_FIRMWAREDIRS},
                 {NULL, 0, NULL, 0}
         };
 
-        while ((c = getopt_long(argc, argv, "adfhlL:oD:HR", options, NULL)) != -1) {
+        while ((c = getopt_long(argc, argv, "madfhlL:oD:HRp:P:s:S:N:", options, NULL)) != -1) {
                 switch (c) {
                 case ARG_VERSION:
                         puts(PROGRAM_VERSION_STRING);
@@ -781,6 +845,9 @@ static int parse_argv(int argc, char *argv[])
                         break;
                 case ARG_DEBUG:
                         arg_loglevel = LOG_DEBUG;
+                        break;
+                case ARG_SILENT:
+                        arg_silent = true;
                         break;
                 case 'v':
                         arg_loglevel = LOG_INFO;
@@ -797,11 +864,55 @@ static int parse_argv(int argc, char *argv[])
                 case 'a':
                         arg_all = true;
                         break;
+                case 'm':
+                        arg_module = true;
+                        break;
                 case 'D':
                         destrootdir = strdup(optarg);
                         break;
+                case 'p':
+                        if (regcomp(&mod_filter_path, optarg, REG_NOSUB|REG_EXTENDED) != 0) {
+                                log_error("Module path filter %s is not a regular expression", optarg);
+                                exit(EXIT_FAILURE);
+                        }
+                        arg_mod_filter_path = true;
+                        break;
+                case 'P':
+                        if (regcomp(&mod_filter_nopath, optarg, REG_NOSUB|REG_EXTENDED) != 0) {
+                                log_error("Module path filter %s is not a regular expression", optarg);
+                                exit(EXIT_FAILURE);
+                        }
+                        arg_mod_filter_nopath = true;
+                        break;
+                case 's':
+                        if (regcomp(&mod_filter_symbol, optarg, REG_NOSUB|REG_EXTENDED) != 0) {
+                                log_error("Module symbol filter %s is not a regular expression", optarg);
+                                exit(EXIT_FAILURE);
+                        }
+                        arg_mod_filter_symbol = true;
+                        break;
+                case 'S':
+                        if (regcomp(&mod_filter_nosymbol, optarg, REG_NOSUB|REG_EXTENDED) != 0) {
+                                log_error("Module symbol filter %s is not a regular expression", optarg);
+                                exit(EXIT_FAILURE);
+                        }
+                        arg_mod_filter_nosymbol = true;
+                        break;
+                case 'N':
+                        if (regcomp(&mod_filter_noname, optarg, REG_NOSUB|REG_EXTENDED) != 0) {
+                                log_error("Module symbol filter %s is not a regular expression", optarg);
+                                exit(EXIT_FAILURE);
+                        }
+                        arg_mod_filter_noname = true;
+                        break;
                 case 'L':
                         logdir = strdup(optarg);
+                        break;
+                case ARG_KERNELDIR:
+                        kerneldir = strdup(optarg);
+                        break;
+                case ARG_FIRMWAREDIRS:
+                        firmwaredirs = strv_split(optarg, ":");
                         break;
                 case 'f':
                         arg_hmac = true;
@@ -817,6 +928,22 @@ static int parse_argv(int argc, char *argv[])
                 }
         }
 
+        if (arg_module) {
+                if (!firmwaredirs) {
+                        char *path = NULL;
+
+                        path = getenv("DRACUT_FIRMWARE_PATH");
+
+                        if (path == NULL) {
+                                log_error("Environment variable DRACUT_FIRMWARE_PATH is not set");
+                                exit(EXIT_FAILURE);
+                        }
+
+                        log_debug("DRACUT_FIRMWARE_PATH=%s", path);
+
+                        firmwaredirs = strv_split(path, ":");
+                }
+        }
         if (!optind || optind == argc) {
                 log_error("No SOURCE argument given");
                 usage(EXIT_FAILURE);
@@ -858,24 +985,11 @@ static int resolve_lazy(int argc, char **argv)
 
 static char **find_binary(const char *src)
 {
-        char *path = NULL;
-        _cleanup_strv_free_ char **p = NULL;
         char **ret = NULL;
         char **q;
         char *newsrc = NULL;
 
-        path = getenv("PATH");
-
-        if (path == NULL) {
-                log_error("PATH is not set");
-                exit(EXIT_FAILURE);
-        }
-
-        log_debug("PATH=%s", path);
-
-        p = strv_split(path, ":");
-
-        STRV_FOREACH(q, p) {
+        STRV_FOREACH(q, pathdirs) {
                 struct stat sb;
                 int r;
 
@@ -976,10 +1090,455 @@ static int install_all(int argc, char **argv)
         return r;
 }
 
+static int install_firmware(struct kmod_module *mod)
+{
+        struct kmod_list *l;
+        _cleanup_kmod_module_info_free_list_ struct kmod_list *list = NULL;
+        int ret;
+
+        char **q;
+
+        ret = kmod_module_get_info(mod, &list);
+        if (ret < 0) {
+                log_error("could not get modinfo from '%s': %s\n",
+                          kmod_module_get_name(mod), strerror(-ret));
+                return ret;
+        }
+        kmod_list_foreach(l, list) {
+                const char *key = kmod_module_info_get_key(l);
+                const char *value = NULL;
+
+                if (!streq("firmware", key))
+                        continue;
+
+                value = kmod_module_info_get_value(l);
+                log_debug("Firmware %s", value);
+                ret = -1;
+                STRV_FOREACH(q, firmwaredirs) {
+                        _cleanup_free_ char *fwpath = NULL;
+                        struct stat sb;
+                        int r;
+
+                        r = asprintf(&fwpath, "%s/%s", *q, value);
+                        if (r < 0) {
+                                log_error("Out of memory!");
+                                exit(EXIT_FAILURE);
+                        }
+
+                        if (stat(fwpath, &sb) != 0) {
+                                log_debug("stat(%s) != 0", fwpath);
+                                continue;
+                        }
+
+                        ret = dracut_install(fwpath, fwpath, false, false, true);
+                        if (ret == 0)
+                                log_debug("dracut_install '%s' OK", fwpath);
+                }
+
+                if (ret != 0) {
+                        log_info("Possible missing firmware %s for kernel module %s", value, kmod_module_get_name(mod));
+                }
+        }
+        return 0;
+}
+
+static bool check_module_symbols(struct kmod_module *mod)
+{
+        struct kmod_list *itr;
+        _cleanup_kmod_module_dependency_symbols_free_list_ struct kmod_list *deplist = NULL;
+
+        if (!arg_mod_filter_symbol && !arg_mod_filter_nosymbol)
+                return true;
+
+        if (kmod_module_get_dependency_symbols(mod, &deplist) < 0) {
+                log_debug("kmod_module_get_dependency_symbols failed");
+                if (arg_mod_filter_symbol)
+                        return false;
+                return true;
+        }
+
+        if (arg_mod_filter_nosymbol) {
+                kmod_list_foreach(itr, deplist) {
+                        const char *symbol = kmod_module_symbol_get_symbol(itr);
+                        // log_debug("Checking symbol %s", symbol);
+                        if (regexec(&mod_filter_nosymbol, symbol, 0, NULL, 0) == 0) {
+                                log_debug("Module %s: symbol %s matched exclusion filter", kmod_module_get_name(mod), symbol);
+                                return false;
+                        }
+                }
+        }
+
+        if (arg_mod_filter_symbol) {
+                kmod_list_foreach(itr, deplist) {
+                        const char *symbol = kmod_module_dependency_symbol_get_symbol(itr);
+                        // log_debug("Checking symbol %s", symbol);
+                        if (regexec(&mod_filter_symbol, symbol, 0, NULL, 0) == 0) {
+                                log_debug("Module %s: symbol %s matched inclusion filter", kmod_module_get_name(mod), symbol);
+                                return true;
+                        }
+                }
+                return false;
+        }
+
+        return true;
+}
+
+static bool check_module_path(const char *path)
+{
+        if (arg_mod_filter_nopath && (regexec(&mod_filter_nopath, path, 0, NULL, 0) == 0)) {
+                log_debug("Path %s matched exclusion filter", path);
+                return false;
+        }
+
+        if (arg_mod_filter_path && (regexec(&mod_filter_path, path, 0, NULL, 0) != 0)) {
+                log_debug("Path %s matched inclusion filter", path);
+                return false;
+        }
+        return true;
+}
+
+static bool check_module_hostonly(struct kmod_module *mod)
+{
+        const char *name = kmod_module_get_name(mod);
+
+        if (check_hashmap(modules_loaded, name))
+                return true;
+
+        return false;
+}
+
+static int install_module(struct kmod_module *mod)
+{
+        int ret = 0;
+        struct kmod_list *itr;
+        _cleanup_kmod_module_unref_list_ struct kmod_list *modlist = NULL;
+        const char *path = NULL;
+        const char *name = NULL;
+
+        name = kmod_module_get_name(mod);
+        if (arg_mod_filter_noname && (regexec(&mod_filter_noname, name, 0, NULL, 0) == 0)) {
+                log_debug("dracut_install '%s' is excluded", name);
+                return 0;
+        }
+
+        if (arg_hostonly && ! check_module_hostonly(mod)) {
+                log_debug("dracut_install '%s' not hostonly", name);
+                return 0;
+        }
+
+        path = kmod_module_get_path(mod);
+        if (!path)
+                return -ENOENT;
+
+        if (check_hashmap(items_failed, path))
+                return -1;
+
+        if (check_hashmap(items, path))
+                return 0;
+
+        if (!check_module_path(path) || !check_module_symbols(mod)) {
+                log_debug("No symbol or patch match for '%s'", path);
+                return 1;
+        }
+
+        log_debug("dracut_install '%s'", path);
+        ret = dracut_install(path, path, false, false, true);
+        if (ret == 0) {
+                log_debug("dracut_install '%s' OK", kmod_module_get_name(mod));
+        } else if (!arg_optional) {
+                if (!arg_silent)
+                        log_error("dracut_install '%s' ERROR", kmod_module_get_name(mod));
+                return ret;
+        }
+        install_firmware(mod);
+
+        modlist = kmod_module_get_dependencies(mod);
+        kmod_list_foreach(itr, modlist) {
+                mod = kmod_module_get_module(itr);
+                path = kmod_module_get_path(mod);
+                name = kmod_module_get_name(mod);
+                if (arg_mod_filter_noname && (regexec(&mod_filter_noname, name, 0, NULL, 0) == 0)) {
+                        kmod_module_unref(mod);
+                        continue;
+                }
+                ret = dracut_install(path, path, false, false, true);
+                if (ret == 0) {
+                        log_debug("dracut_install '%s' OK", kmod_module_get_name(mod));
+                        install_firmware(mod);
+                } else {
+                        log_error("dracut_install '%s' ERROR", kmod_module_get_name(mod));
+                }
+                kmod_module_unref(mod);
+        }
+
+        return ret;
+}
+
+static int install_modules(int argc, char **argv)
+{
+        _cleanup_kmod_unref_ struct kmod_ctx *ctx = NULL;
+        struct kmod_list *loaded_list = NULL;
+        struct kmod_list *itr, *l;
+        int err;
+
+        struct kmod_module *mod = NULL, *mod_o = NULL;
+
+        const char *modname = NULL;
+        int i;
+
+        ctx = kmod_new(kerneldir, NULL);
+
+        err = kmod_module_new_from_loaded(ctx, &loaded_list);
+        if (err < 0) {
+                errno = err;
+                log_error("Could not get list of loaded modules: %m");
+                return err;
+        }
+
+        kmod_list_foreach(itr, loaded_list) {
+                _cleanup_kmod_module_unref_list_ struct kmod_list *modlist = NULL;
+
+                struct kmod_module *mod = kmod_module_get_module(itr);
+                char *name = strdup(kmod_module_get_name(mod));
+                hashmap_put(modules_loaded, name, name);
+                kmod_module_unref(mod);
+
+                /* also put the modules from the new kernel in the hashmap,
+                 * which resolve the name as an alias, in case a kernel module is
+                 * renamed.
+                 */
+                err = kmod_module_new_from_lookup(ctx, name, &modlist);
+                if (err < 0)
+                        continue;
+                if (!modlist)
+                        continue;
+                kmod_list_foreach(l, modlist) {
+                        mod = kmod_module_get_module(l);
+                        char *name = strdup(kmod_module_get_name(mod));
+                        hashmap_put(modules_loaded, name, name);
+                        kmod_module_unref(mod);
+                }
+        }
+        kmod_module_unref_list(loaded_list);
+
+        for (i = 0; i < argc; i++) {
+                int r = 0;
+                int ret = -1;
+
+                log_debug("Handle module '%s'", argv[i]);
+
+                if (argv[i][0] == '/') {
+                        _cleanup_kmod_module_unref_list_ struct kmod_list *modlist = NULL;
+
+                        r = kmod_module_new_from_path(ctx, argv[i], &mod_o);
+                        if (r < 0) {
+                                log_debug("Failed to lookup modules path '%s': %m", argv[i]);
+                                if (!arg_optional)
+                                        return -ENOENT;
+                                continue;
+                        }
+                        /* Check, if we have to load another module with that name instead */
+                        modname = kmod_module_get_name(mod_o);
+
+                        if (!modname) {
+                                if (!arg_optional) {
+                                        if (!arg_silent)
+                                                log_error("Failed to get name for module '%s'", argv[i]);
+                                        return -ENOENT;
+                                }
+                                log_info("Failed to get name for module '%s'", argv[i]);
+                                continue;
+                        }
+
+                        r = kmod_module_new_from_lookup(ctx, modname, &modlist);
+                        kmod_module_unref(mod_o);
+                        mod_o = NULL;
+
+                        if (r < 0) {
+                                if (!arg_optional) {
+                                        if (!arg_silent)
+                                                log_error("3 Failed to lookup alias '%s': %d", modname, r);
+                                        return -ENOENT;
+                                }
+                                log_info("3 Failed to lookup alias '%s': %d", modname, r);
+                                continue;
+                        }
+                        if (!modlist) {
+                                if (!arg_optional) {
+                                        if (!arg_silent)
+                                                log_error("Failed to find module '%s' %s", modname, argv[i]);
+                                        return -ENOENT;
+                                }
+                                log_info("Failed to find module '%s' %s", modname, argv[i]);
+                                continue;
+                        }
+                        kmod_list_foreach(itr, modlist) {
+                                mod = kmod_module_get_module(itr);
+                                r = install_module(mod);
+                                kmod_module_unref(mod);
+                                if ((r < 0) && !arg_optional) {
+                                        if (!arg_silent)
+                                                log_error("ERROR: installing module '%s'", modname);
+                                        return -ENOENT;
+                                };
+                                ret = ( ret == 0 ? 0 : r );
+                        }
+                } else if (argv[i][0] == '=') {
+                        _cleanup_free_ char *path1 = NULL, *path2 = NULL, *path3 = NULL;
+                        _cleanup_fts_close_ FTS *fts = NULL;
+
+                        log_debug("Handling =%s", &argv[i][1]);
+                        /* FIXME and add more paths*/
+                        r = asprintf(&path2, "%s/kernel/%s", kerneldir, &argv[i][1]);
+                        if (r < 0) {
+                                log_error("Out of memory!");
+                                exit(EXIT_FAILURE);
+                        }
+
+                        r = asprintf(&path1, "%s/extra/%s", kerneldir, &argv[i][1]);
+                        if (r < 0) {
+                                log_error("Out of memory!");
+                                exit(EXIT_FAILURE);
+                        }
+
+                        r = asprintf(&path3, "%s/updates/%s", kerneldir, &argv[i][1]);
+                        if (r < 0) {
+                                log_error("Out of memory!");
+                                exit(EXIT_FAILURE);
+                        }
+
+                        {
+                                char *paths[] = { path1, path2, path3, NULL };
+                                fts = fts_open(paths, FTS_COMFOLLOW|FTS_NOCHDIR|FTS_NOSTAT|FTS_LOGICAL, NULL);
+                        }
+
+                        for (FTSENT *ftsent = fts_read(fts); ftsent != NULL; ftsent = fts_read(fts)) {
+                                _cleanup_kmod_module_unref_list_ struct kmod_list *modlist = NULL;
+
+                                if((ftsent->fts_info == FTS_D) && !check_module_path(ftsent->fts_accpath)) {
+                                        fts_set(fts, ftsent, FTS_SKIP);
+                                        log_debug("Skipping %s", ftsent->fts_accpath);
+                                        continue;
+                                }
+                                if((ftsent->fts_info != FTS_F) && (ftsent->fts_info != FTS_SL)) {
+                                        log_debug("Ignoring %s", ftsent->fts_accpath);
+                                        continue;
+                                }
+                                log_debug("Handling %s", ftsent->fts_accpath);
+                                r = kmod_module_new_from_path(ctx, ftsent->fts_accpath, &mod_o);
+                                if (r < 0) {
+                                        log_debug("Failed to lookup modules path '%s': %m",
+                                                  ftsent->fts_accpath);
+                                        if (!arg_optional) {
+                                                return -ENOENT;
+                                        }
+                                        continue;
+                                }
+
+                                /* Check, if we have to load another module with that name instead */
+                                modname = kmod_module_get_name(mod_o);
+
+                                if (!modname) {
+                                        log_error("Failed to get name for module '%s'", ftsent->fts_accpath);
+                                        if (!arg_optional) {
+                                                return -ENOENT;
+                                        }
+                                        continue;
+                                }
+                                r = kmod_module_new_from_lookup(ctx, modname, &modlist);
+                                kmod_module_unref(mod_o);
+                                mod_o = NULL;
+
+                                if (r < 0) {
+                                        log_error("Failed to lookup alias '%s': %m", modname);
+                                        if (!arg_optional) {
+                                                return -ENOENT;
+                                        }
+                                        continue;
+                                }
+
+                                if (!modlist) {
+                                        log_error("Failed to find module '%s' %s", modname,
+                                                  ftsent->fts_accpath);
+                                        if (!arg_optional) {
+                                                return -ENOENT;
+                                        }
+                                        continue;
+                                }
+                                kmod_list_foreach(itr, modlist) {
+                                        mod = kmod_module_get_module(itr);
+                                        r = install_module(mod);
+                                        kmod_module_unref(mod);
+                                        if ((r < 0) && !arg_optional) {
+                                                if (!arg_silent)
+                                                        log_error("ERROR: installing module '%s'", modname);
+                                                return -ENOENT;
+                                        };
+                                        ret = ( ret == 0 ? 0 : r );
+                                }
+                        }
+                        if (errno) {
+                                log_error("FTS ERROR: %m");
+                        }
+                } else {
+                        _cleanup_kmod_module_unref_list_ struct kmod_list *modlist = NULL;
+                        char *modname = argv[i];
+
+                        if (endswith(modname, ".ko")) {
+                                int len = strlen(modname);
+                                modname[len-3]=0;
+                        }
+                        if (endswith(modname, ".ko.xz") || endswith(modname, ".ko.gz")) {
+                                int len = strlen(modname);
+                                modname[len-6]=0;
+                        }
+                        r = kmod_module_new_from_lookup(ctx, modname, &modlist);
+                        if (r < 0) {
+                                if (!arg_optional) {
+                                        if (!arg_silent)
+                                                log_error("Failed to lookup alias '%s': %m", modname);
+                                        return -ENOENT;
+                                }
+                                log_info("Failed to lookup alias '%s': %m", modname);
+                                continue;
+                        }
+                        if (!modlist) {
+                                if (!arg_optional) {
+                                        if (!arg_silent)
+                                                log_error("Failed to find module '%s'", modname);
+                                        return -ENOENT;
+                                }
+                                log_info("Failed to find module '%s'", modname);
+                                continue;
+                        }
+                        kmod_list_foreach(itr, modlist) {
+                                mod = kmod_module_get_module(itr);
+                                r = install_module(mod);
+                                kmod_module_unref(mod);
+                                if ((r < 0) && !arg_optional) {
+                                        if (!arg_silent)
+                                                log_error("ERROR: installing '%s'", argv[i]);
+                                        return -ENOENT;
+                                };
+                                ret = ( ret == 0 ? 0 : r );
+                        }
+                }
+
+                if ((ret != 0) && (!arg_optional)) {
+                        if (!arg_silent)
+                                log_error("ERROR: installing '%s'", argv[i]);
+                        return EXIT_FAILURE;
+                }
+        }
+
+        return EXIT_SUCCESS;
+}
+
 int main(int argc, char **argv)
 {
         int r;
         char *i;
+        char *path = NULL;
 
         r = parse_argv(argc, argv);
         if (r <= 0)
@@ -992,6 +1551,17 @@ int main(int argc, char **argv)
                 log_set_max_level(arg_loglevel);
 
         log_open();
+
+        path = getenv("PATH");
+
+        if (path == NULL) {
+                log_error("PATH is not set");
+                exit(EXIT_FAILURE);
+        }
+
+        log_debug("PATH=%s", path);
+
+        pathdirs = strv_split(path, ":");
 
         umask(0022);
 
@@ -1020,8 +1590,9 @@ int main(int argc, char **argv)
 
         items = hashmap_new(string_hash_func, string_compare_func);
         items_failed = hashmap_new(string_hash_func, string_compare_func);
+        modules_loaded = hashmap_new(string_hash_func, string_compare_func);
 
-        if (!items || !items_failed) {
+        if (!items || !items_failed || !modules_loaded) {
                 log_error("Out of memory");
                 r = EXIT_FAILURE;
                 goto finish;
@@ -1059,7 +1630,9 @@ int main(int argc, char **argv)
                 }
         }
 
-        if (arg_resolvelazy) {
+        if (arg_module) {
+                r = install_modules(argc - optind, &argv[optind]);
+        } else if (arg_resolvelazy) {
                 r = resolve_lazy(argc - optind, &argv[optind]);
         } else if (arg_all || (argc - optind > 2) || ((argc - optind) == 1)) {
                 r = install_all(argc - optind, &argv[optind]);
@@ -1075,6 +1648,9 @@ int main(int argc, char **argv)
         if (logfile_f)
                 fclose(logfile_f);
 
+        while ((i = hashmap_steal_first(modules_loaded)))
+                item_free(i);
+
         while ((i = hashmap_steal_first(items)))
                 item_free(i);
 
@@ -1083,8 +1659,10 @@ int main(int argc, char **argv)
 
         hashmap_free(items);
         hashmap_free(items_failed);
+        hashmap_free(modules_loaded);
 
         free(destrootdir);
-
+        strv_free(firmwaredirs);
+        strv_free(pathdirs);
         return r;
 }

@@ -20,7 +20,8 @@ run_server() {
         -net nic,macaddr=52:54:00:12:34:56,model=e1000 \
         -serial ${SERIAL:-null} \
         -watchdog i6300esb -watchdog-action poweroff \
-        -append "rd.debug loglevel=77 root=/dev/sda rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0" \
+        -no-reboot \
+        -append "panic=1 rd.debug loglevel=77 root=/dev/sda rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0" \
         -initrd $TESTDIR/initramfs.server \
         -pidfile $TESTDIR/server.pid -daemonize || return 1
     sudo chmod 644 $TESTDIR/server.pid || return 1
@@ -54,7 +55,8 @@ client_test() {
         -net nic,macaddr=$mac,model=e1000 \
         -net socket,connect=127.0.0.1:12320 \
         -watchdog i6300esb -watchdog-action poweroff \
-        -append "$cmdline $DEBUGFAIL rd.debug rd.retry=10 rd.info quiet  ro console=ttyS0,115200n81 selinux=0" \
+        -no-reboot \
+        -append "panic=1 rd.shell=0 $cmdline $DEBUGFAIL rd.debug rd.retry=10 rd.info quiet  ro console=ttyS0,115200n81 selinux=0" \
         -initrd $TESTDIR/initramfs.testing
 
     if [[ $? -ne 0 ]] || ! grep -F -m 1 -q nfs-OK $TESTDIR/client.img; then
@@ -112,14 +114,16 @@ test_nfsv3() {
     client_test "NFSv3 root=dhcp DHCP path only" 52:54:00:12:34:00 \
         "root=dhcp" 192.168.50.1 -wsize=4096 || return 1
 
-    client_test "NFSv3 Legacy root=/dev/nfs nfsroot=IP:path" 52:54:00:12:34:01 \
-        "root=/dev/nfs nfsroot=192.168.50.1:/nfs/client" 192.168.50.1 -wsize=4096 || return 1
+    if [[ "$(systemctl --version)" != *"systemd 230"* ]] 2>/dev/null; then
+        client_test "NFSv3 Legacy root=/dev/nfs nfsroot=IP:path" 52:54:00:12:34:01 \
+                    "root=/dev/nfs nfsroot=192.168.50.1:/nfs/client" 192.168.50.1 -wsize=4096 || return 1
 
-    client_test "NFSv3 Legacy root=/dev/nfs DHCP path only" 52:54:00:12:34:00 \
-        "root=/dev/nfs" 192.168.50.1 -wsize=4096 || return 1
+        client_test "NFSv3 Legacy root=/dev/nfs DHCP path only" 52:54:00:12:34:00 \
+                    "root=/dev/nfs" 192.168.50.1 -wsize=4096 || return 1
 
-    client_test "NFSv3 Legacy root=/dev/nfs DHCP IP:path" 52:54:00:12:34:01 \
-        "root=/dev/nfs" 192.168.50.2 -wsize=4096 || return 1
+        client_test "NFSv3 Legacy root=/dev/nfs DHCP IP:path" 52:54:00:12:34:01 \
+                    "root=/dev/nfs" 192.168.50.2 -wsize=4096 || return 1
+    fi
 
     client_test "NFSv3 root=dhcp DHCP IP:path" 52:54:00:12:34:01 \
         "root=dhcp" 192.168.50.2 -wsize=4096 || return 1
@@ -141,7 +145,7 @@ test_nfsv3() {
 
     # This test must fail: nfsroot= requires root=/dev/nfs
     client_test "NFSv3 Invalid root=dhcp nfsroot=/nfs/client" 52:54:00:12:34:04 \
-        "root=dhcp nfsroot=/nfs/client failme" 192.168.50.1 -wsize=4096 && return 1
+        "root=dhcp nfsroot=/nfs/client failme rd.debug" 192.168.50.1 -wsize=4096 && return 1
 
     client_test "NFSv3 root=dhcp DHCP path,options" \
         52:54:00:12:34:05 "root=dhcp" 192.168.50.1 wsize=4096 || return 1
@@ -334,6 +338,7 @@ test_setup() {
         . $basedir/dracut-init.sh
         mkdir $TESTDIR/overlay
         inst_multiple poweroff shutdown
+        inst_hook shutdown-emergency 000 ./hard-off.sh
         inst_hook emergency 000 ./hard-off.sh
         inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )

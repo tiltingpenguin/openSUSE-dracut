@@ -122,6 +122,7 @@ install() {
         \
         $systemdsystemunitdir/slices.target \
         $systemdsystemunitdir/system.slice \
+        $systemdsystemunitdir/-.slice \
         \
         $tmpfilesdir/systemd.conf \
         \
@@ -130,7 +131,9 @@ install() {
         kmod insmod rmmod modprobe modinfo depmod lsmod \
         mount umount reboot poweroff \
         systemd-run systemd-escape \
-        systemd-cgls systemd-tmpfiles
+        systemd-cgls systemd-tmpfiles \
+        /etc/udev/udev.hwdb \
+        ${NULL}
 
     inst_multiple -o \
         /usr/lib/modules-load.d/*.conf \
@@ -167,7 +170,9 @@ install() {
             /etc/locale.conf \
             /etc/modules-load.d/*.conf \
             /etc/sysctl.d/*.conf \
-            /etc/sysctl.conf
+            /etc/sysctl.conf \
+            /etc/udev/udev.conf \
+            ${NULL}
 
         _mods=$(modules_load_get /etc/modules-load.d)
         [[ $_mods ]] && instmods $_mods
@@ -179,11 +184,11 @@ install() {
 
     # install adm user/group for journald
     inst_multiple nologin
-    egrep '^systemd-journal:' /etc/passwd 2>/dev/null >> "$initdir/etc/passwd"
-    egrep '^adm:' /etc/passwd 2>/dev/null >> "$initdir/etc/passwd"
-    egrep '^systemd-journal:' /etc/group >> "$initdir/etc/group"
-    egrep '^wheel:' /etc/group >> "$initdir/etc/group"
-    egrep '^adm:' /etc/group >> "$initdir/etc/group"
+    grep '^systemd-journal:' /etc/passwd 2>/dev/null >> "$initdir/etc/passwd"
+    grep '^adm:' /etc/passwd 2>/dev/null >> "$initdir/etc/passwd"
+    grep '^systemd-journal:' /etc/group >> "$initdir/etc/group"
+    grep '^wheel:' /etc/group >> "$initdir/etc/group"
+    grep '^adm:' /etc/group >> "$initdir/etc/group"
 
     ln_r $systemdutildir/systemd "/init"
     ln_r $systemdutildir/systemd "/sbin/init"
@@ -196,7 +201,8 @@ install() {
         71-seat.rules \
         73-seat-late.rules \
         90-vconsole.rules \
-        99-systemd.rules
+        99-systemd.rules \
+        ${NULL}
 
     for i in \
         emergency.target \
@@ -210,9 +216,10 @@ install() {
     done
 
     mkdir -p "$initdir/etc/systemd"
-    # turn off RateLimit for journal
+    # We must use a volatile journal, and we don't want rate-limiting
     {
         echo "[Journal]"
+        echo "Storage=volatile"
         echo "RateLimitInterval=0"
         echo "RateLimitBurst=0"
     } >> "$initdir/etc/systemd/journald.conf"

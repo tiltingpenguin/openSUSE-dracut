@@ -22,7 +22,8 @@ client_run() {
 	-drive format=raw,index=2,media=disk,file=$TESTDIR/result \
 	-m 256M -smp 2 -nographic \
 	-net none \
-	-append "root=LABEL=dracut $client_opts rd.retry=3 console=ttyS0,115200n81 selinux=0 $DEBUGOUT $DEBUGFAIL" \
+        -no-reboot \
+	-append "panic=1 root=LABEL=dracut $client_opts rd.retry=3 console=ttyS0,115200n81 selinux=0 $DEBUGOUT rd.shell=0 $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
 
     if (($? != 0)); then
@@ -197,7 +198,7 @@ EOF
         ln -fs /proc/self/mounts $initdir/etc/mtab
 
         # install any Execs from the service files
-        egrep -ho '^Exec[^ ]*=[^ ]+' $initdir/lib/systemd/system/*.service \
+        grep -Eho '^Exec[^ ]*=[^ ]+' $initdir/lib/systemd/system/*.service \
             | while read i || [ -n "$i" ]; do
             i=${i##Exec*=}; i=${i##-}
             inst_multiple -o $i
@@ -261,7 +262,8 @@ EOF
 	export initdir=$TESTDIR/overlay
 	. $basedir/dracut-init.sh
 	inst_multiple poweroff shutdown
-	inst_hook emergency 000 ./hard-off.sh
+	inst_hook shutdown-emergency 000 ./hard-off.sh
+        inst_hook emergency 000 ./hard-off.sh
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
 

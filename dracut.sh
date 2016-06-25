@@ -733,7 +733,7 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 [[ $mdadmconf_l ]] && mdadmconf=$mdadmconf_l
 [[ $lvmconf_l ]] && lvmconf=$lvmconf_l
 [[ $dracutbasedir ]] || dracutbasedir=/usr/lib/dracut
-[[ $fw_dir ]] || fw_dir="/lib/firmware/updates /lib/firmware /lib/firmware/$kernel"
+[[ $fw_dir ]] || fw_dir="/lib/firmware/updates:/lib/firmware:/lib/firmware/$kernel"
 [[ $tmpdir_l ]] && tmpdir="$tmpdir_l"
 [[ $tmpdir ]] || tmpdir=/var/tmp
 [[ $INITRD_COMPRESS ]] && compress=$INITRD_COMPRESS
@@ -750,6 +750,7 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 [[ $kernel_image_l ]] && kernel_image="$kernel_image_l"
 
 # eliminate IFS hackery when messing with fw_dir
+export DRACUT_FIRMWARE_PATH=${fw_dir// /:}
 fw_dir=${fw_dir//:/ }
 
 # check for logfile and try to create one if it doesn't exist
@@ -839,7 +840,6 @@ trap '
 # clean up after ourselves no matter how we die.
 trap 'exit 1;' SIGINT
 
-export DRACUT_KERNEL_LAZY="1"
 export DRACUT_RESOLVE_LAZY="1"
 
 if [[ $print_cmdline ]]; then
@@ -1101,8 +1101,6 @@ if (( ${#add_device_l[@]} )); then
     push_host_devs "${add_device_l[@]}"
 fi
 
-declare -A host_modules
-
 if [[ $hostonly ]]; then
     # in hostonly mode, determine all devices, which have to be accessed
     # and examine them for filesystem types
@@ -1190,11 +1188,6 @@ if [[ $hostonly ]]; then
             fi
         done < /etc/fstab
     fi
-
-    # check /proc/modules
-    while read m rest || [ -n "$m" ]; do
-        host_modules["$m"]=1
-    done </proc/modules
 fi
 
 unset m
@@ -1267,8 +1260,8 @@ fi
     || tmpfilesdir=$(pkg-config systemd --variable=tmpfilesdir 2>/dev/null)
 
 if ! [[ -d "$tmpfilesdir" ]]; then
-    [[ -f /lib/tmpfiles.d ]] && tmpfilesdir=/lib/tmpfiles.d
-    [[ -f /usr/lib/tmpfiles.d ]] && tmpfilesdir=/usr/lib/tmpfiles.d
+    [[ -d /lib/tmpfiles.d ]] && tmpfilesdir=/lib/tmpfiles.d
+    [[ -d /usr/lib/tmpfiles.d ]] && tmpfilesdir=/usr/lib/tmpfiles.d
 fi
 
 export initdir dracutbasedir \
@@ -1281,7 +1274,7 @@ export initdir dracutbasedir \
     debug host_fs_types host_devs swap_devs sshkey add_fstab \
     DRACUT_VERSION udevdir prefix filesystems drivers \
     systemdutildir systemdsystemunitdir systemdsystemconfdir \
-    host_modules hostonly_cmdline loginstall \
+    hostonly_cmdline loginstall \
     tmpfilesdir
 
 mods_to_load=""
@@ -1436,9 +1429,9 @@ if [[ $no_kernel != yes ]]; then
         hostonly='' instmods -c $filesystems
     fi
 
-    dinfo "*** Installing kernel module dependencies and firmware ***"
+    dinfo "*** Installing kernel module dependencies ***"
     dracut_kernel_post
-    dinfo "*** Installing kernel module dependencies and firmware done ***"
+    dinfo "*** Installing kernel module dependencies done ***"
 
     if [[ $noimageifnotneeded == yes ]] && [[ $hostonly ]]; then
         if [[ ! -f "$initdir/lib/dracut/need-initqueue" ]] && \
@@ -1496,7 +1489,7 @@ if [[ $kernel_only != yes ]]; then
     if [[ $DRACUT_RESOLVE_LAZY ]] && [[ $DRACUT_INSTALL ]]; then
         dinfo "*** Resolving executable dependencies ***"
         find "$initdir" -type f -perm /0111 -not -path '*.ko' -print0 \
-        | xargs -r -0 $DRACUT_INSTALL ${initdir:+-D "$initdir"} -R ${DRACUT_FIPS_MODE:+-H} --
+        | xargs -r -0 $DRACUT_INSTALL ${initdir:+-D "$initdir"} -R ${DRACUT_FIPS_MODE:+-f} --
         dinfo "*** Resolving executable dependencies done***"
     fi
 
