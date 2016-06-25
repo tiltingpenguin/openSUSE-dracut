@@ -1,3 +1,10 @@
+dracut (044+105-1) UNRELEASED; urgency=medium
+
+  * merge upstream 044-105-gf6fa9ef
+  * add overlayfs support for the root file system
+
+ -- Thomas Lange <lange@debian.org>  Fri, 24 Jun 2016 21:46:20 +0200
+
 dracut (044+38-1) unstable; urgency=low
 
   * merge upstream 044+38+gb127294
