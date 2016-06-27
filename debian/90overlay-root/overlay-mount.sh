@@ -10,8 +10,6 @@ if ! getargbool 0 rootovl ; then
     return
 fi
 
-set -x
-
 modprobe overlay
 
 # a little bit tuning
