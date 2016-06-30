@@ -1,5 +1,10 @@
 #!/bin/bash
 
+check() {
+    # do not add modules if the kernel does not have overlayfs support
+    [ -d /lib/modules/$kernel/kernel/fs/overlayfs ] || return 1
+}
+
 depends() {
     # We do not depend on any modules - just some root
     return 0
