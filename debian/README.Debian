@@ -1,6 +1,8 @@
 dracut for Debian
 -----------------
 
+1. Give it a try
+
 Currently dracut is not the default initrd craetion tool in Debian.
 You can try dracut without removing initramfs-tools from your machine
 by following these steps:
@@ -20,8 +22,11 @@ Then: Debian GNU/Linux, with Linux 3.16.0-4-amd64~dracut
 
 The initrd created by initramfs-tools will remain the default boot entry of grub.
 
+If the new initrd works for you, you can switch from initramfs-tools to dracut
+by installing the package dracut. This will then replace initramfs-tools.
 
 
+2. i18n
 
 The module i18n for setting up the keyboard and the font is disabled in
 Debian. You cannot use the variables described in modules.d/10i18n/README.
@@ -32,4 +37,4 @@ is configured in the files /etc/default/keyboard (the keyboard) and
 Debconf, you can use dpkg-reconfigure keyboard-configuration and
 dpkg-reconfigure console-setup.
 
- -- Thomas Lange <lange@debian.org>, Sat,  9 Jul 2016 19:40:22 +0200
+ -- Thomas Lange <lange@debian.org>, Sat,  9 Jul 2016 19:43:12 +0200
