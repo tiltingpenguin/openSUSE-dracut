@@ -1,3 +1,13 @@
+dracut (044+109-1) unstable; urgency=low
+
+  * merge upstream 044+109+g3889234
+  * update standards version, no changes needed
+  * add README.Debian
+  * add patch systemd-udev
+  * add check for aufs and overlayfs if filesystem is supported
+
+ -- Thomas Lange <lange@debian.org>  Sun, 31 Jul 2016 21:18:04 +0200
+
 dracut (044+105-2) unstable; urgency=medium
 
   * overlay-mount.sh: remove debuging
