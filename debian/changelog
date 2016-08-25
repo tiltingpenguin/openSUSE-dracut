@@ -1,3 +1,9 @@
+dracut (044+109-1~bpo8+1) jessie-backports; urgency=low
+
+  * make release for backports
+
+ -- Thomas Lange <lange@debian.org>  Thu, 25 Aug 2016 22:18:55 +0200
+
 dracut (044+109-1) unstable; urgency=low
 
   * merge upstream 044+109+g3889234
