@@ -1,3 +1,11 @@
+dracut (044+189-1) unstable; urgency=high
+
+  * upgrade to a newer upstream: Closes: #843697, which is CVE-2016-8637
+  * dracut.maintscript: remove parameter from mainscript, Closes: #839951
+  * new patch crc32, adding crc32c driver for ext4, Closes: #835060
+
+ -- Thomas Lange <lange@debian.org>  Tue, 13 Dec 2016 21:45:01 +0100
+
 dracut (044+109-1) unstable; urgency=low
 
   * merge upstream 044+109+g3889234
