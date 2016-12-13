@@ -151,6 +151,9 @@ Creates initial ramdisk images for preloading modules
                         in the initramfs
   --no-hostonly-cmdline Do not store kernel command line arguments needed
                         in the initramfs
+  --hostonly-i18n       Install only needed keyboard and font files according
+                        to the host configuration (default).
+  --no-hostonly-i18n    Install all keyboard and font files available.
   --persistent-policy [POLICY]
                         Use [POLICY] to address disks and partitions.
                         POLICY can be any directory name found in /dev/disk.
@@ -1697,7 +1700,7 @@ if [[ $create_early_cpio = yes ]]; then
 
     # The microcode blob is _before_ the initramfs blob, not after
     if ! (
-            cd "$early_cpio_dir/d"
+            umask 077; cd "$early_cpio_dir/d"
             find . -print0 | sort -z \
                 | cpio ${CPIO_REPRODUCIBLE:+--reproducible} --null $cpio_owner_root -H newc -o --quiet > "${DRACUT_TMPDIR}/initramfs.img"
         ); then
