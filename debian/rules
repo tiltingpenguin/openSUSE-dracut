@@ -6,7 +6,7 @@ export DH_VERBOSE=1
 	dh $@ --with quilt
 
 override_dh_auto_configure:
-	dh_auto_configure -- --systemdsystemunitdir=/lib/systemd/system
+	dh_auto_configure -- --systemdsystemunitdir=/lib/systemd/system --libdir=/usr/lib
 
 override_dh_fixperms-arch:
 	dh_fixperms
