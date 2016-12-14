@@ -1,3 +1,9 @@
+dracut (044+189-2) unstable; urgency=high
+
+  * rules: set libdir
+
+ -- Thomas Lange <lange@debian.org>  Wed, 14 Dec 2016 10:19:06 +0000
+
 dracut (044+189-1) unstable; urgency=high
 
   * upgrade to a newer upstream: Closes: #843697, which is CVE-2016-8637
