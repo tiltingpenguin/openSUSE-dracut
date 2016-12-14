@@ -1,8 +1,9 @@
 dracut (044+189-2) unstable; urgency=high
 
   * rules: set libdir
+  * set compat level to 9, Closes: #830229
 
- -- Thomas Lange <lange@debian.org>  Wed, 14 Dec 2016 10:19:06 +0000
+ -- Thomas Lange <lange@debian.org>  Wed, 14 Dec 2016 11:41:52 +0000
 
 dracut (044+189-1) unstable; urgency=high
 
