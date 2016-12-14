@@ -1,3 +1,9 @@
+dracut (044+189-2~bpo8+1) jessie-backports; urgency=high
+
+  * make release for backports
+
+ -- Thomas Lange <lange@debian.org>  Wed, 14 Dec 2016 15:52:32 +0100
+
 dracut (044+189-2) unstable; urgency=high
 
   * rules: set libdir
