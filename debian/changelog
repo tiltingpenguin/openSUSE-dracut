@@ -1,3 +1,18 @@
+dracut (044+189-2) unstable; urgency=high
+
+  * rules: set libdir
+  * set compat level to 9, Closes: #830229
+
+ -- Thomas Lange <lange@debian.org>  Wed, 14 Dec 2016 11:41:52 +0000
+
+dracut (044+189-1) unstable; urgency=high
+
+  * upgrade to a newer upstream: Closes: #843697, which is CVE-2016-8637
+  * dracut.maintscript: remove parameter from mainscript, Closes: #839951
+  * new patch crc32, adding crc32c driver for ext4, Closes: #835060
+
+ -- Thomas Lange <lange@debian.org>  Tue, 13 Dec 2016 21:45:01 +0100
+
 dracut (044+109-1~bpo8+1) jessie-backports; urgency=low
 
   * make release for backports

@@ -20,6 +20,9 @@ echo_fs_helper() {
         ext?)
             echo -n " e2fsck "
             ;;
+        f2fs)
+            echo -n " fsck.f2fs "
+            ;;
         jfs)
             echo -n " jfs_fsck "
             ;;
@@ -40,6 +43,9 @@ include_fs_helper_modules() {
     case "$fs" in
         xfs|btrfs)
             instmods crc32c
+            ;;
+        f2fs)
+            instmods crc32
             ;;
     esac
 }
@@ -68,7 +74,7 @@ install() {
         _helpers="\
             umount mount /sbin/fsck*
             xfs_db xfs_check xfs_repair xfs_metadump
-            e2fsck jfs_fsck reiserfsck btrfsck
+            e2fsck fsck.f2fs jfs_fsck reiserfsck btrfsck
         "
         if [[ $hostonly ]]; then
             _helpers="umount mount "
