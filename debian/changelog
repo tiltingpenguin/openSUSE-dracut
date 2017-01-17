@@ -1,3 +1,10 @@
+dracut (044+223-1) unstable; urgency=low
+
+  * new upstream
+  * control: only depend on asciidoc-base
+
+ -- Thomas Lange <lange@debian.org>  Tue, 17 Jan 2017 16:20:51 +0100
+
 dracut (044+189-2) unstable; urgency=high
 
   * rules: set libdir
