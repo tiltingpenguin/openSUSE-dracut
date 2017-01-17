@@ -2,7 +2,7 @@ Source: dracut
 Section: utils
 Priority: optional
 Maintainer: Thomas Lange <lange@debian.org>
-Build-Depends: debhelper, asciidoc, xsltproc, docbook-xsl, docbook-xml, quilt, libkmod-dev
+Build-Depends: debhelper, asciidoc-base, xsltproc, docbook-xsl, docbook-xml, quilt, libkmod-dev
 Standards-Version: 3.9.8
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=collab-maint/dracut.git
 Vcs-Git: git://anonscm.debian.org/collab-maint/dracut.git
