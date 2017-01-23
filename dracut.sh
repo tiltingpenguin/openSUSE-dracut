@@ -627,10 +627,10 @@ if [[ $kernel ]]; then
     fi
 fi
 
-unset LC_MESSAGES
-unset LC_CTYPE
 export LC_ALL=C
 export LANG=C
+unset LC_MESSAGES
+unset LC_CTYPE
 unset LD_LIBRARY_PATH
 unset LD_PRELOAD
 unset GREP_OPTIONS
@@ -1388,10 +1388,12 @@ if [[ $kernel_only != yes ]]; then
     for _d in $hookdirs; do
         mkdir -m 0755 -p ${initdir}/lib/dracut/hooks/$_d
     done
-    if [[ "$UID" = "0" ]]; then
+    if [[ "$EUID" = "0" ]]; then
         [ -c ${initdir}/dev/null ] || mknod ${initdir}/dev/null c 1 3
         [ -c ${initdir}/dev/kmsg ] || mknod ${initdir}/dev/kmsg c 1 11
         [ -c ${initdir}/dev/console ] || mknod ${initdir}/dev/console c 5 1
+        [ -c ${initdir}/dev/random ] || mknod ${initdir}/dev/random c 1 8
+        [ -c ${initdir}/dev/urandom ] || mknod ${initdir}/dev/urandom c 1 9
     fi
 fi
 
@@ -1572,7 +1574,7 @@ if [[ $kernel_only != yes ]]; then
         [[ -f $f ]] && inst_simple "$f"
     done
     if ! ldconfig -r "$initdir"; then
-        if [[ $UID = 0 ]]; then
+        if [[ $EUID = 0 ]]; then
             derror "ldconfig exited ungracefully"
         else
             derror "ldconfig might need uid=0 (root) for chroot()"
@@ -1581,7 +1583,7 @@ if [[ $kernel_only != yes ]]; then
 fi
 
 PRELINK_BIN="$(command -v prelink)"
-if [[ $UID = 0 ]] && [[ $PRELINK_BIN ]]; then
+if [[ $EUID = 0 ]] && [[ $PRELINK_BIN ]]; then
     if [[ $DRACUT_FIPS_MODE ]]; then
         dinfo "*** Installing prelink files ***"
         inst_multiple -o prelink /etc/prelink.conf /etc/prelink.conf.d/*.conf /etc/prelink.cache
@@ -1715,7 +1717,7 @@ if [[ $DRACUT_REPRODUCIBLE ]]; then
     fi
 fi
 
-[[ "$UID" != 0 ]] && cpio_owner_root="-R 0:0"
+[[ "$EUID" != 0 ]] && cpio_owner_root="-R 0:0"
 
 if [[ $create_early_cpio = yes ]]; then
     echo 1 > "$early_cpio_dir/d/early_cpio"
