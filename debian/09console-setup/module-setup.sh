@@ -23,7 +23,8 @@ install() {
     local vardir
     vardir=/var/lib/dracut
 
-    cp -a $vardir/console-setup-dir/* $initdir/
+    cp -a $vardir/console-setup-dir/bin/* $initdir/bin/
+    cp -a $vardir/console-setup-dir/etc/* $initdir/etc/
     # gzip is workaround a bug in current console-setup
     inst_multiple gzip $(cat $vardir/console-setup-files)
     inst ${moddir}/console-setup.sh /lib/udev/console-setup
