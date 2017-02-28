@@ -2,7 +2,7 @@
 
 check() {
     # do not add modules if the kernel does not have aufs support
-    [ -d /lib/modules/$kernel/kernel/fs/aufs ] || return 1
+    [ -d /lib/modules/$kernel/kernel/fs/aufs ] || [ -f /lib/modules/$kernel/updates/dkms/aufs.ko ] || return 1
 }
 
 depends() {
