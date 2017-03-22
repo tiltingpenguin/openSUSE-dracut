@@ -1,3 +1,9 @@
+dracut (044+241-3) unstable; urgency=low
+
+  * control: fix Recommends, Closes: #852083
+
+ -- Thomas Lange <lange@debian.org>  Wed, 22 Mar 2017 18:52:25 +0000
+
 dracut (044+241-2) unstable; urgency=low
 
   * add patch for dkms aufs modules, Closes: #855370
