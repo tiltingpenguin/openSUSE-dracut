@@ -78,11 +78,6 @@ do_fips()
 
     KERNEL=$(uname -r)
 
-    if ! [ -e "/boot/.vmlinuz-${KERNEL}.hmac" ]; then
-        warn "/boot/.vmlinuz-${KERNEL}.hmac does not exist"
-        return 1
-    fi
-
     FIPSMODULES=$(cat /etc/fipsmodules)
 
     info "Loading and integrity checking all crypto modules"
@@ -114,7 +109,14 @@ do_fips()
     elif [ -e "/run/initramfs/live/isolinux/vmlinuz0" ]; then
         do_rhevh_check /run/initramfs/live/isolinux/vmlinuz0 || return 1
     else
-        sha512hmac -c "/boot/.vmlinuz-${KERNEL}.hmac" || return 1
+        BOOT_IMAGE="$(getarg BOOT_IMAGE)"
+        [ -e "/boot/.${BOOT_IMAGE}.hmac" ] || BOOT_IMAGE="vmlinuz-${KERNEL}"
+
+        if ! [ -e "/boot/.${BOOT_IMAGE}.hmac" ]; then
+            warn "/boot/.${BOOT_IMAGE}.hmac does not exist"
+            return 1
+        fi
+        sha512hmac -c "/boot/.${BOOT_IMAGE}.hmac" || return 1
     fi
 
     info "All initrd crypto checks done"

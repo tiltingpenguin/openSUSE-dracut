@@ -11,7 +11,9 @@ installkernel() {
             ohci-hcd ohci-pci \
             uhci-hcd \
             xhci-hcd xhci-pci xhci-plat-hcd \
+            pinctrl-cherryview \
             "=drivers/hid" \
+            "=drivers/tty/serial" \
             "=drivers/input/serio" \
             "=drivers/input/keyboard" \
             "=drivers/usb/storage" \
@@ -23,15 +25,23 @@ installkernel() {
             virtio virtio_blk virtio_ring virtio_pci virtio_scsi \
             "=drivers/pcmcia" =ide nvme
 
-        if [[ "$(uname -p)" == arm* ]]; then
-            # arm specific modules
+	if [[ "$(uname -m)" == arm* || "$(uname -m)" == aarch64 ]]; then
+            # arm/aarch64 specific modules
             instmods \
                 "=drivers/clk" \
+                "=drivers/dma" \
                 "=drivers/i2c/busses" \
+                "=drivers/phy" \
+                "=drivers/power" \
                 "=drivers/regulator" \
                 "=drivers/rtc" \
+                "=drivers/usb/chipidea" \
+                "=drivers/usb/dwc2" \
+                "=drivers/usb/dwc3" \
                 "=drivers/usb/host" \
+                "=drivers/usb/musb" \
                 "=drivers/usb/phy" \
+		"=drivers/scsi/hisi_sas" \
                 ${NULL}
         fi
 

@@ -108,6 +108,9 @@ do_static() {
     if strglobin $ip '*:*:*'; then
         # note no ip addr flush for ipv6
         ip addr add $ip/$mask ${srv:+peer $srv} dev $netif
+        echo 0 > /proc/sys/net/ipv6/conf/$netif/forwarding
+        echo 1 > /proc/sys/net/ipv6/conf/$netif/accept_ra
+        echo 1 > /proc/sys/net/ipv6/conf/$netif/accept_redirects
         wait_for_ipv6_dad $netif
     else
         if command -v arping2 >/dev/null; then
@@ -185,11 +188,11 @@ if [ -z "$NO_BRIDGE_MASTER" ]; then
             NO_BRIDGE_MASTER=yes NO_AUTO_DHCP=yes ifup $ethname
             linkup $ethname
             if [ ! -e /tmp/bridge.$bridgename.up ]; then
-                brctl addbr $bridgename
-                brctl setfd $bridgename 0
+                ip link add name $bridgename type bridge
+                echo 0 > /sys/devices/virtual/net/$bridgename/bridge/forward_delay
                 > /tmp/bridge.$bridgename.up
             fi
-            brctl addif $bridgename $ethname
+            ip link set dev $ethname master $bridgename
             ifup $bridgename
             exit 0
         done
@@ -251,6 +254,9 @@ if [ -z "$NO_BOND_MASTER" ]; then
                 linkup $slave
             done
 
+            # Set mtu on bond master
+            [ -n "$bondmtu" ] && ip link set mtu $bondmtu dev $netif
+
             # add the bits to setup the needed post enslavement parameters
             for arg in $bondoptions ; do
                 key=${arg%%=*};
@@ -282,7 +288,7 @@ if [ -z "$NO_TEAM_MASTER" ]; then
             # wait for all slaves to show up
             for slave in $teamslaves ; do
                 # try to create the slave (maybe vlan or bridge)
-                NO_BOND_MASTER=yes NO_AUTO_DHCP=yes ifup $slave
+                NO_TEAM_MASTER=yes NO_AUTO_DHCP=yes ifup $slave
 
                 if ! ip link show dev $slave >/dev/null 2>&1; then
                     # wait for the last slave to show up
@@ -295,20 +301,38 @@ if [ -z "$NO_TEAM_MASTER" ]; then
                 # in case of some slave is gone in active-backup mode
                 working_slaves=""
                 for slave in $teamslaves ; do
-                    ip link set $slave up 2>/dev/null
+                    teamdctl ${teammaster} port present ${slave} 2>/dev/null \
+                        && continue
+                    ip link set dev $slave up 2>/dev/null
                     if wait_for_if_up $slave; then
                         working_slaves="$working_slaves$slave "
                     fi
                 done
                 # Do not add slaves now
-                teamd -d -U -n -N -t $teammaster -f /etc/teamd/$teammaster.conf
+                teamd -d -U -n -N -t $teammaster -f /etc/teamd/${teammaster}.conf
                 for slave in $working_slaves; do
                     # team requires the slaves to be down before joining team
-                    ip link set $slave down
+                    ip link set dev $slave down
+                    (
+                        unset TEAM_PORT_CONFIG
+                        _hwaddr=$(cat /sys/class/net/$slave/address)
+                        _subchannels=$(iface_get_subchannels "$slave")
+                        if [ -n "$_hwaddr" ] && [ -e "/etc/sysconfig/network-scripts/mac-${_hwaddr}.conf" ]; then
+                            . "/etc/sysconfig/network-scripts/mac-${_hwaddr}.conf"
+                        elif [ -n "$_subchannels" ] && [ -e "/etc/sysconfig/network-scripts/ccw-${_subchannels}.conf" ]; then
+                            . "/etc/sysconfig/network-scripts/ccw-${_subchannels}.conf"
+                        elif [ -e "/etc/sysconfig/network-scripts/ifcfg-${slave}" ]; then
+                            . "/etc/sysconfig/network-scripts/ifcfg-${slave}"
+                        fi
+
+                        if [ -n "${TEAM_PORT_CONFIG}" ]; then
+                            /usr/bin/teamdctl ${teammaster} port config update ${slave} "${TEAM_PORT_CONFIG}"
+                        fi
+                    )
                     teamdctl $teammaster port add $slave
                 done
 
-                ip link set $teammaster up
+                ip link set dev $teammaster up
 
                 > /tmp/team.$teammaster.up
                 NO_TEAM_MASTER=yes ifup $teammaster
@@ -376,6 +400,11 @@ for p in $(getargs ip=); do
     # If this option isn't directed at our interface, skip it
     [ -n "$dev" ] && [ "$dev" != "$netif" ] && continue
 
+    # Store config for later use
+    for i in ip srv gw mask hostname macaddr mtu dns1 dns2; do
+        eval '[ "$'$i'" ] && echo '$i'="$'$i'"'
+    done > /tmp/net.$netif.override
+
     for autoopt in $(str_replace "$autoconf" "," " "); do
         case $autoopt in
             dhcp|on|any)
@@ -396,11 +425,6 @@ for p in $(getargs ip=); do
         [ -n "$s" ] || continue
         echo nameserver $s >> /tmp/net.$netif.resolv.conf
     done
-
-    # Store config for later use
-    for i in ip srv gw mask hostname macaddr mtu dns1 dns2; do
-        eval '[ "$'$i'" ] && echo '$i'="$'$i'"'
-    done > /tmp/net.$netif.override
 
     if [ $ret -eq 0 ]; then
         > /tmp/net.${netif}.up

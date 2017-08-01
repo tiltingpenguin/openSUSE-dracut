@@ -19,7 +19,7 @@ test_run() {
         -boot order=d \
         -drive format=raw,bps=1000000,index=0,media=disk,file="$TESTDIR"/livecd.iso \
         -drive format=raw,index=1,media=disk,file="$TESTDIR"/root.img \
-        -m 256M  -smp 2 \
+        -m 512M  -smp 2 \
         -nographic \
         -net none \
         -no-reboot \
@@ -30,7 +30,7 @@ test_run() {
     # "$testdir"/run-qemu \
     #     -drive format=raw,bps=1000000,index=0,media=disk,file="$TESTDIR"/livecd.iso \
     #     -drive format=raw,index=1,media=disk,file="$TESTDIR"/root.img \
-    #     -m 256M  -smp 2 \
+    #     -m 512M  -smp 2 \
     #     -net none \
     #     -append "root=live:CDLABEL=LiveCD live quiet rhgb selinux=0 rd.live.check" \
     #     -initrd "$TESTDIR"/initramfs.testing
@@ -71,8 +71,8 @@ test_setup() {
                 ln -sfnr usr/$i $i
             done
         )
-	inst_multiple sh df free ls shutdown poweroff stty cat ps ln ip route \
-	    mount dmesg ifconfig dhclient mkdir cp ping dhclient \
+	inst_multiple sh df free ls shutdown poweroff stty cat ps ln ip \
+	    mount dmesg dhclient mkdir cp ping dhclient \
 	    umount strace less
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
 	    [[ -f ${_terminfodir}/l/linux ]] && break

@@ -37,7 +37,6 @@ URL: https://dracut.wiki.kernel.org/
 Source0: http://www.kernel.org/pub/linux/utils/boot/dracut/dracut-%{version}.tar.xz
 Source1: https://www.gnu.org/licenses/lgpl-2.1.txt
 
-
 BuildRequires: bash git
 BuildRequires: kmod-devel >= 15
 
@@ -101,7 +100,7 @@ Requires: sed
 Requires: xz
 Requires: gzip
 
-%if 0%{?fedora} > 22
+%if 0%{?fedora} > 22 || 0%{?rhel} > 7
 Recommends: grubby
 Recommends: hardlink
 Recommends: pigz
@@ -371,6 +370,7 @@ rm -rf -- $RPM_BUILD_ROOT
 %{dracutlibdir}/modules.d/50drm
 %{dracutlibdir}/modules.d/50plymouth
 %{dracutlibdir}/modules.d/80cms
+%{dracutlibdir}/modules.d/80lvmmerge
 %{dracutlibdir}/modules.d/90btrfs
 %{dracutlibdir}/modules.d/90crypt
 %{dracutlibdir}/modules.d/90dm
@@ -379,6 +379,7 @@ rm -rf -- $RPM_BUILD_ROOT
 %{dracutlibdir}/modules.d/90lvm
 %{dracutlibdir}/modules.d/90mdraid
 %{dracutlibdir}/modules.d/90multipath
+%{dracutlibdir}/modules.d/90multipath-hostonly
 %{dracutlibdir}/modules.d/90qemu
 %{dracutlibdir}/modules.d/91crypt-gpg
 %{dracutlibdir}/modules.d/91crypt-loop
@@ -471,6 +472,7 @@ rm -rf -- $RPM_BUILD_ROOT
 %defattr(-,root,root,0755)
 %{dracutlibdir}/modules.d/99img-lib
 %{dracutlibdir}/modules.d/90dmsquash-live
+%{dracutlibdir}/modules.d/90dmsquash-live-ntfs
 %{dracutlibdir}/modules.d/90livenet
 
 %files tools

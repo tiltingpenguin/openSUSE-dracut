@@ -7,8 +7,7 @@ DEBUGFAIL="loglevel=1"
 #DEBUGFAIL="rd.shell rd.break rd.debug loglevel=7 "
 #DEBUGFAIL="rd.debug loglevel=7 "
 #SERVER_DEBUG="rd.debug loglevel=7"
-SERIAL="tcp:127.0.0.1:9999"
-SERIAL="null"
+#SERIAL="tcp:127.0.0.1:9999"
 
 run_server() {
     # Start server first
@@ -21,7 +20,8 @@ run_server() {
         -drive format=raw,index=3,media=disk,file=$TESTDIR/iscsidisk3.img \
         -m 512M   -smp 2 \
         -display none \
-        -serial $SERIAL \
+        ${SERIAL:+-serial "$SERIAL"} \
+        ${SERIAL:--serial file:"$TESTDIR"/server.log} \
         -net nic,macaddr=52:54:00:12:34:56,model=e1000 \
         -net nic,macaddr=52:54:00:12:34:57,model=e1000 \
         -net socket,listen=127.0.0.1:12330 \
@@ -73,7 +73,6 @@ do_test_run() {
     run_client "netroot=iscsi target0"\
                "root=LABEL=singleroot netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target0" \
                "ip=192.168.50.101::192.168.50.1:255.255.255.0:iscsi-1:ens3:off" \
-               "rd.iscsi.firmware" \
                "rd.iscsi.initiator=$initiator" \
         || return 1
 
@@ -83,42 +82,9 @@ do_test_run() {
                "ip=192.168.51.101:::255.255.255.0::ens4:off" \
                "netroot=iscsi:192.168.51.1::::iqn.2009-06.dracut:target1" \
                "netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target2" \
-               "rd.iscsi.firmware" \
                "rd.iscsi.initiator=$initiator" \
         || return 1
 
-#    run_client "netroot=iscsi target1 target2 rd.iscsi.waitnet=0" \
-#	       "root=LABEL=sysroot" \
-#               "ip=192.168.50.101:::255.255.255.0::ens3:off" \
-#               "ip=192.168.51.101:::255.255.255.0::ens4:off" \
-#	       "netroot=iscsi:192.168.51.1::::iqn.2009-06.dracut:target1" \
-#               "netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target2" \
-#               "rd.iscsi.firmware" \
-#               "rd.iscsi.initiator=$initiator" \
-#               "rd.iscsi.waitnet=0" \
-#	|| return 1
-
-    run_client "FAILME: netroot=iscsi target1 target2 rd.iscsi.waitnet=0 rd.iscsi.testroute=0" \
-	       "root=LABEL=sysroot" \
-               "ip=192.168.50.101:::255.255.255.0::ens3:off" \
-               "ip=192.168.51.101:::255.255.255.0::ens4:off" \
-	       "netroot=iscsi:192.168.51.1::::iqn.2009-06.dracut:target1" \
-               "netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target2" \
-               "rd.iscsi.firmware" \
-               "rd.iscsi.initiator=$initiator" \
-               "rd.iscsi.waitnet=0 rd.iscsi.testroute=0" \
-	|| :
-
-    run_client "FAILME: netroot=iscsi target1 target2 rd.iscsi.waitnet=0 rd.iscsi.testroute=0 default GW" \
-	           "root=LABEL=sysroot" \
-               "ip=192.168.50.101::192.168.50.1:255.255.255.0::ens3:off" \
-               "ip=192.168.51.101::192.168.51.1:255.255.255.0::ens4:off" \
-	           "netroot=iscsi:192.168.51.1::::iqn.2009-06.dracut:target1" \
-               "netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target2" \
-               "rd.iscsi.firmware" \
-               "rd.iscsi.initiator=$initiator" \
-               "rd.iscsi.waitnet=0 rd.iscsi.testroute=0" \
-	|| :
 
     echo "All tests passed [OK]"
     return 0
@@ -207,7 +173,7 @@ test_setup() {
         -drive format=raw,index=1,media=disk,file=$TESTDIR/client.img \
         -drive format=raw,index=2,media=disk,file=$TESTDIR/iscsidisk2.img \
         -drive format=raw,index=3,media=disk,file=$TESTDIR/iscsidisk3.img \
-         -smp 2 -m 256M -nographic -net none \
+         -smp 2 -m 512M -nographic -net none \
         -append "root=/dev/fakeroot rw rootfstype=ext3 quiet console=ttyS0,115200n81 selinux=0" \
         -initrd $TESTDIR/initramfs.makeroot  || return 1
     grep -F -m 1 -q dracut-root-block-created $TESTDIR/client.img || return 1

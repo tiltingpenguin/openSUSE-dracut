@@ -20,7 +20,7 @@ client_run() {
 	-drive format=raw,index=0,media=disk,file=$TESTDIR/root.btrfs \
 	-drive format=raw,index=1,media=disk,file=$TESTDIR/usr.btrfs \
 	-drive format=raw,index=2,media=disk,file=$TESTDIR/result \
-	-m 256M  -smp 2 -nographic \
+	-m 512M  -smp 2 -nographic \
 	-net none \
         -no-reboot \
 	-append "panic=1 root=LABEL=dracut $client_opts rd.retry=3 console=ttyS0,115200n81 selinux=0 $DEBUGOUT rd.shell=0 $DEBUGFAIL" \
@@ -71,8 +71,8 @@ test_setup() {
         ln -sfn /run "$initdir/var/run"
         ln -sfn /run/lock "$initdir/var/lock"
 
-	inst_multiple sh df free ls shutdown poweroff stty cat ps ln ip route \
-	    mount dmesg ifconfig dhclient mkdir cp ping dhclient \
+	inst_multiple sh df free ls shutdown poweroff stty cat ps ln ip \
+	    mount dmesg dhclient mkdir cp ping dhclient \
 	    umount strace less setsid tree systemctl reset
 
 	for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
@@ -252,7 +252,7 @@ EOF
     $testdir/run-qemu \
 	-drive format=raw,index=0,media=disk,file=$TESTDIR/root.btrfs \
 	-drive format=raw,index=1,media=disk,file=$TESTDIR/usr.btrfs \
-	-m 256M  -smp 2 -nographic -net none \
+	-m 512M  -smp 2 -nographic -net none \
 	-append "root=/dev/fakeroot rw rootfstype=btrfs quiet console=ttyS0,115200n81 selinux=0" \
 	-initrd $TESTDIR/initramfs.makeroot  || return 1
     grep -F -m 1 -q dracut-root-block-created $TESTDIR/root.btrfs || return 1

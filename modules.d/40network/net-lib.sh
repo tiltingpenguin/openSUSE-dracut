@@ -646,16 +646,36 @@ wait_for_route_ok() {
     return 1
 }
 
-wait_for_ipv6_dad() {
+wait_for_ipv6_dad_link() {
     local cnt=0
-    local li
     local timeout="$(getargs rd.net.timeout.ipv6dad=)"
     timeout=${timeout:-50}
     timeout=$(($timeout*10))
 
     while [ $cnt -lt $timeout ]; do
-        li=$(ip -6 addr show dev $1 scope link)
-        strstr "$li" "tentative" || return 0
+        [ -z "$(ip -6 addr show dev "$1" scope link tentative)" ] \
+            && [ -n "$(ip -6 route list proto ra dev "$1" | grep ^default)" ] \
+            && return 0
+        [ -n "$(ip -6 addr show dev "$1" scope link dadfailed)" ] \
+            && return 1
+        sleep 0.1
+        cnt=$(($cnt+1))
+    done
+    return 1
+}
+
+wait_for_ipv6_dad() {
+    local cnt=0
+    local timeout="$(getargs rd.net.timeout.ipv6dad=)"
+    timeout=${timeout:-50}
+    timeout=$(($timeout*10))
+
+    while [ $cnt -lt $timeout ]; do
+        [ -z "$(ip -6 addr show dev "$1" tentative)" ] \
+            && [ -n "$(ip -6 route list proto ra dev "$1" | grep ^default)" ] \
+            && return 0
+        [ -n "$(ip -6 addr show dev "$1" dadfailed)" ] \
+            && return 1
         sleep 0.1
         cnt=$(($cnt+1))
     done
@@ -664,16 +684,14 @@ wait_for_ipv6_dad() {
 
 wait_for_ipv6_auto() {
     local cnt=0
-    local li
     local timeout="$(getargs rd.net.timeout.ipv6auto=)"
     timeout=${timeout:-40}
     timeout=$(($timeout*10))
 
     while [ $cnt -lt $timeout ]; do
-        li=$(ip -6 addr show dev $1)
-        if ! strstr "$li" "tentative"; then
-            strstr "$li" "dynamic" && return 0
-        fi
+        [ -z "$(ip -6 addr show dev "$1" tentative)" ] \
+            && [ -n "$(ip -6 route list proto ra dev "$1" | grep ^default)" ] \
+            && return 0
         sleep 0.1
         cnt=$(($cnt+1))
     done
@@ -800,4 +818,22 @@ is_kernel_ethernet_name() {
             return 1
     esac
 
+}
+
+iface_get_subchannels() {
+    local _netif
+    local _subchannels
+
+    _netif="$1"
+
+    _subchannels=$({
+                      for i in /sys/class/net/$_netif/device/cdev[0-9]*; do
+                          [ -e $i ] || continue
+                          channel=$(readlink -f $i)
+                          printf -- "%s" "${channel##*/},"
+                      done
+                  })
+    [ -n "$_subchannels" ] || return 1
+
+    printf -- "%s" ${_subchannels%,}
 }

@@ -52,13 +52,6 @@ if ! [[ -d $initdir ]]; then
     mkdir -p "$initdir"
 fi
 
-if [[ $DRACUT_KERNEL_LAZY ]] && ! [[ $DRACUT_KERNEL_LAZY_HASHDIR ]]; then
-    if ! [[ -d "$initdir/.kernelmodseen" ]]; then
-        mkdir -p "$initdir/.kernelmodseen"
-    fi
-    DRACUT_KERNEL_LAZY_HASHDIR="$initdir/.kernelmodseen"
-fi
-
 if ! [[ $kernel ]]; then
     kernel=$(uname -r)
     export kernel
@@ -172,6 +165,13 @@ if ! [[ -x $DRACUT_INSTALL ]]; then
     exit 10
 fi
 
+if [[ $hostonly == "-h" ]]; then
+    if ! [[ $DRACUT_KERNEL_MODALIASES ]] || ! [[ -f "$DRACUT_KERNEL_MODALIASES" ]]; then
+        export DRACUT_KERNEL_MODALIASES="${DRACUT_TMPDIR}/modaliases"
+        $DRACUT_INSTALL ${srcmods:+--kerneldir "$srcmods"} --modalias > "$DRACUT_KERNEL_MODALIASES"
+    fi
+fi
+
 [[ $DRACUT_RESOLVE_LAZY ]] || export DRACUT_RESOLVE_DEPS=1
 inst_dir() {
     [[ -e ${initdir}/"$1" ]] && return 0  # already there
@@ -231,12 +231,12 @@ dracut_instmods() {
     local i;
     [[ $no_kernel = yes ]] && return
     for i in "$@"; do
-        [[ $i == "--silent" ]] && silent=1
+        [[ $i == "--silent" ]] && _silent=1
     done
 
     $DRACUT_INSTALL \
         ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} ${hostonly:+-H} ${omit_drivers:+-N "$omit_drivers"} ${srcmods:+--kerneldir "$srcmods"} -m "$@"
-    (($? != 0)) && (($silent == 0)) && derror FAILED: $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} ${hostonly:+-H} ${omit_drivers:+-N "$omit_drivers"} ${srcmods:+--kerneldir "$srcmods"} -m "$@" || :
+    (($? != 0)) && (($_silent == 0)) && derror FAILED: $DRACUT_INSTALL ${initdir:+-D "$initdir"} ${loginstall:+-L "$loginstall"} ${hostonly:+-H} ${omit_drivers:+-N "$omit_drivers"} ${srcmods:+--kerneldir "$srcmods"} -m "$@" || :
 }
 
 inst_library() {
@@ -935,9 +935,6 @@ for_each_kmod_dep() {
 }
 
 dracut_kernel_post() {
-    local _moddirname=${srcmods%%/lib/modules/*}
-    local _pid
-
     for _f in modules.builtin.bin modules.builtin modules.order; do
         [[ $srcmods/$_f ]] && inst_simple "$srcmods/$_f" "/lib/modules/$kernel/$_f"
     done

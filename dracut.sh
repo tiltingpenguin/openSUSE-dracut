@@ -621,12 +621,6 @@ if ! [[ $kernel ]]; then
     kernel=$(uname -r)
 fi
 
-if [[ $kernel ]]; then
-    if ! [[ -d /lib/modules/$kernel ]] && [[ $no_kernel != yes ]]; then
-        printf -- "Kernel version $kernel has no module directory /lib/modules/$kernel\n" >&2
-    fi
-fi
-
 export LC_ALL=C
 export LANG=C
 unset LC_MESSAGES
@@ -894,6 +888,12 @@ else
     exit 1
 fi
 
+if [[ $no_kernel != yes ]] && ! [[ -d $srcmods ]]; then
+    printf "%s\n" "dracut: Cannot find module directory $srcmods" >&2
+    printf "%s\n" "dracut: and --no-kernel was not specified" >&2
+    exit 1
+fi
+
 if ! [[ $print_cmdline ]]; then
     inst /bin/sh
     if ! $DRACUT_INSTALL ${initdir:+-D "$initdir"} -R "$initdir/bin/sh" &>/dev/null; then
@@ -1029,7 +1029,7 @@ if [[ ! $print_cmdline ]]; then
 
         if ! [[ -s $uefi_stub ]]; then
             for uefi_stub in \
-                "/lib/systemd/boot/efi/linux${EFI_MACHINE_TYPE_NAME}.efi.stub" \
+                "${systemdutildir}/boot/efi/linux${EFI_MACHINE_TYPE_NAME}.efi.stub" \
                     "/usr/lib/gummiboot/linux${EFI_MACHINE_TYPE_NAME}.efi.stub"; do
                 [[ -s $uefi_stub ]] || continue
                 break
@@ -1053,8 +1053,8 @@ if [[ ! $print_cmdline ]]; then
     fi
 fi
 
-if [[ $acpi_override = yes ]] && ! check_kernel_config CONFIG_ACPI_INITRD_TABLE_OVERRIDE; then
-    dwarn "Disabling ACPI override, because kernel does not support it. CONFIG_ACPI_INITRD_TABLE_OVERRIDE!=y"
+if [[ $acpi_override = yes ]] && ! ( check_kernel_config CONFIG_ACPI_TABLE_UPGRADE ||  check_kernel_config CONFIG_ACPI_INITRD_TABLE_OVERRIDE ); then
+    dwarn "Disabling ACPI override, because kernel does not support it. CONFIG_ACPI_INITRD_TABLE_OVERRIDE!=y or CONFIG_ACPI_TABLE_UPGRADE!=y"
     unset acpi_override
 fi
 
@@ -1605,7 +1605,11 @@ fi
 
 # strip binaries
 if [[ $do_strip = yes ]] ; then
-    for p in strip xargs find; do
+    # Prefer strip from elfutils for package size
+    declare strip_cmd=$(command -v eu-strip)
+    test -z "$strip_cmd" && strip_cmd="strip"
+
+    for p in $strip_cmd xargs find; do
         if ! type -P $p >/dev/null; then
             dinfo "Could not find '$p'. Not stripping the initramfs."
             do_strip=no
@@ -1617,14 +1621,14 @@ if [[ $do_strip = yes ]] && ! [[ $DRACUT_FIPS_MODE ]]; then
     dinfo "*** Stripping files ***"
     find "$initdir" -type f \
         -executable -not -path '*/lib/modules/*.ko' -print0 \
-        | xargs -r -0 strip -g 2>/dev/null
+        | xargs -r -0 $strip_cmd -g 2>/dev/null
 
     # strip kernel modules, but do not touch signed modules
     find "$initdir" -type f -path '*/lib/modules/*.ko' -print0 \
         | while read -r -d $'\0' f || [ -n "$f" ]; do
-        SIG=$(tail -c 28 "$f")
+        SIG=$(tail -c 28 "$f" | tr -d '\000')
         [[ $SIG == '~Module signature appended~' ]] || { printf "%s\000" "$f"; }
-    done | xargs -r -0 strip -g
+    done | xargs -r -0 $strip_cmd -g
 
     dinfo "*** Stripping files done ***"
 fi
@@ -1684,7 +1688,7 @@ if ! ( echo $PARMS_TO_STORE > $initdir/lib/dracut/build-parameter.txt ); then
     exit 1
 fi
 
-if [[ $hostonly_cmdline ]] ; then
+if [[ $hostonly_cmdline == "yes" ]] ; then
     unset _stored_cmdline
     if [ -d $initdir/etc/cmdline.d ];then
         dinfo "Stored kernel commandline:"

@@ -15,18 +15,17 @@ installkernel() {
     local _modname
     # Include KMS capable drm drivers
 
-    if [[ "$(uname -p)" == arm* ]]; then
-        # arm specific modules needed by drm
+    if [[ "$(uname -m)" == arm* || "$(uname -m)" == aarch64 ]]; then
+        # arm/aarch64 specific modules needed by drm
         instmods \
             "=drivers/gpu/drm/i2c" \
             "=drivers/gpu/drm/panel" \
-            "=drivers/pwm" \
+            "=drivers/gpu/drm/bridge" \
             "=drivers/video/backlight" \
-            "=drivers/video/fbdev/omap2/displays-new" \
             ${NULL}
     fi
 
-    instmods amdkfd hyperv_fb
+    instmods amdkfd hyperv_fb "=drivers/pwm"
 
     # if the hardware is present, include module even if it is not currently loaded,
     # as we could e.g. be in the installer; nokmsboot boot parameter will disable

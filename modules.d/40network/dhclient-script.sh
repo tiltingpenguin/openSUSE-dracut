@@ -158,7 +158,7 @@ case $reason in
     PREINIT6)
         echo "dhcp: PREINIT6 $netif up"
         linkup $netif
-        wait_for_ipv6_dad $netif
+        wait_for_ipv6_dad_link $netif
         ;;
 
     BOUND)
@@ -191,7 +191,10 @@ case $reason in
             echo '. /lib/net-lib.sh'
             echo "setup_net $netif"
             if [ -n "$new_classless_static_routes" ]; then
-                modify_routes add "$(parse_option_121 $new_classless_static_routes)"
+                OLDIFS="$IFS"
+                IFS=".$IFS"
+                parse_option_121 $new_classless_static_routes
+                IFS="$OLDIFS"
             fi
             echo "source_hook initqueue/online $netif"
             [ -e /tmp/net.$netif.manualup ] || echo "/sbin/netroot $netif"

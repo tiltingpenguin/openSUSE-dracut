@@ -104,7 +104,7 @@ calc_netmask() {
     local prefix=$1
 
     [ -z "$prefix" ] && return
-    mask=$(echo "(2 ^ 32) - (2 ^ $prefix)" | bc -l)
+    mask=$(( 0xffffffff << (32 - $prefix) ))
     byte1=$(( mask >> 24 ))
     byte2=$(( mask >> 16 ))
     byte3=$(( mask >> 8 ))
@@ -237,11 +237,13 @@ while (($# > 0)); do
 	-k) # Would be nice to get a list of images here
 	    read_arg kernel_images "$@" || shift $?
 	    for kernel_image in $kernel_images;do
+		[ -L "/boot/$kernel_image" ] && kernel_image="$(readlink "/boot/$kernel_image")"
 		kernels="$kernels ${kernel_image#*-}"
 	    done
 	    ;;
 	-i) read_arg initrd_images "$@" || shift $?
 	    for initrd_image in $initrd_images;do
+		[ -L "/boot/$initrd_image" ] && initrd_image="$(readlink "/boot/$initrd_image")"
 		# Check if the initrd_image contains a path.
 		# if not, then add the default boot_dir
 		dname=`dirname $initrd_image`
