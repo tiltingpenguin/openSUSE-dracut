@@ -16,7 +16,7 @@ loop_decrypt() {
     local keydev="$3"
     local device="$4"
 
-    local key="/dev/mapper/${mntp##*/}"
+    local key="/dev/mapper/$(str_replace "loop-$keydev-$mntp-$keypath" '/' '-')"
 
     if [ ! -b $key ]; then
         local loopdev=$(losetup -f "${mntp}/${keypath}" --show)
@@ -29,10 +29,8 @@ loop_decrypt() {
 
         [ -b $key ] || die "Failed to unlock $keypath on $keydev for $device."
 
-        initqueue --onetime --finished --unique --name "crypt-loop-cleanup-10-${key##*/}" \
-            $(command -v cryptsetup) "luksClose $key"
-        initqueue --onetime --finished --unique --name "crypt-loop-cleanup-20-${loopdev##*/}" \
-            $(command -v losetup) "-d $loopdev"
+        printf "%s\n" "cryptsetup luksClose \"$key\"" > ${hookdir}/cleanup/"crypt-loop-cleanup-10-${key##*/}".sh
+        printf "%s\n" "losetup -d \"$loopdev\"" > ${hookdir}/cleanup/"crypt-loop-cleanup-20-${loopdev##*/}".sh
     fi
 
     cat $key
