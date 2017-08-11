@@ -3,6 +3,6 @@
 > debian/fix-revdate
 for i in $(git grep -L ':revdate:' -- '*.[0-9].asc'); do
     revdate=$(git log -1 --date=short --pretty='%cd' $i);
-    echo     sed -e "3i:revdate: $revdate" -i $i >> debian/fix-revdate
+    echo sed -i -e \'"3i:revdate: $revdate"\' $i >> debian/fix-revdate
 done
 chmod a+rx debian/fix-revdate
