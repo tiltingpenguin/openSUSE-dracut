@@ -1,0 +1,17 @@
+sed -i -e '3i:revdate: 2012-03-14' dracut-catimages.8.asc
+sed -i -e '3i:revdate: 2017-03-20' dracut.8.asc
+sed -i -e '3i:revdate: 2014-01-13' dracut.bootup.7.asc
+sed -i -e '3i:revdate: 2017-06-23' dracut.cmdline.7.asc
+sed -i -e '3i:revdate: 2017-07-17' dracut.conf.5.asc
+sed -i -e '3i:revdate: 2017-01-03' dracut.modules.7.asc
+sed -i -e '3i:revdate: 2016-03-17' lsinitrd.1.asc
+sed -i -e '3i:revdate: 2016-12-02' mkinitrd-suse.8.asc
+sed -i -e '3i:revdate: 2014-01-13' mkinitrd.8.asc
+sed -i -e '3i:revdate: 2015-03-19' modules.d/98dracut-systemd/dracut-cmdline.service.8.asc
+sed -i -e '3i:revdate: 2015-03-19' modules.d/98dracut-systemd/dracut-initqueue.service.8.asc
+sed -i -e '3i:revdate: 2015-03-19' modules.d/98dracut-systemd/dracut-mount.service.8.asc
+sed -i -e '3i:revdate: 2015-03-19' modules.d/98dracut-systemd/dracut-pre-mount.service.8.asc
+sed -i -e '3i:revdate: 2015-03-19' modules.d/98dracut-systemd/dracut-pre-pivot.service.8.asc
+sed -i -e '3i:revdate: 2015-03-19' modules.d/98dracut-systemd/dracut-pre-trigger.service.8.asc
+sed -i -e '3i:revdate: 2015-03-19' modules.d/98dracut-systemd/dracut-pre-udev.service.8.asc
+sed -i -e '3i:revdate: 2015-03-19' modules.d/98dracut-systemd/dracut-shutdown.service.8.asc
