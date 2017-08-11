@@ -6,7 +6,7 @@ dracut (045+132-1) unstable; urgency=low
   * make man pages reproducible, Thanks to Jeremy Bobbio for the
     patch, Closes: #783131
 
- -- Thomas Lange <lange@debian.org>  Fri, 11 Aug 2017 21:06:35 +0200
+ -- Thomas Lange <lange@debian.org>  Fri, 11 Aug 2017 22:01:03 +0200
 
 dracut (044+241-3) unstable; urgency=low
 
