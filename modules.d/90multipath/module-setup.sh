@@ -10,12 +10,13 @@ is_mpath() {
 # called by dracut
 check() {
     local _rootdev
-    # if there's no multipath binary, no go.
-    require_binaries multipath || return 1
 
     [[ $hostonly ]] || [[ $mount_needs ]] && {
         for_each_host_dev_and_slaves is_mpath || return 255
     }
+
+    # if there's no multipath binary, no go.
+    require_binaries multipath || return 1
 
     return 0
 }
@@ -65,7 +66,8 @@ install() {
         xdrgetprio \
         /etc/xdrdevices.conf \
         /etc/multipath.conf \
-        /etc/multipath/*
+        /etc/multipath/* \
+        /etc/multipath/conf.d/*
 
     inst $(command -v partx) /sbin/partx
 
@@ -87,6 +89,7 @@ install() {
     fi
 
     inst_hook cleanup   80 "$moddir/multipathd-needshutdown.sh"
+    inst_hook shutdown  20 "$moddir/multipath-shutdown.sh"
 
     inst_rules 40-multipath.rules 56-multipath.rules \
 	62-multipath.rules 65-multipath.rules \

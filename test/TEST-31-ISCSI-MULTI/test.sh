@@ -73,6 +73,38 @@ do_test_run() {
                "rd.iscsi.initiator=$initiator" \
         || return 1
 
+    run_client "netroot=iscsi target1 target2 rd.iscsi.waitnet=0" \
+               "root=LABEL=sysroot" \
+               "ip=192.168.50.101:::255.255.255.0::ens3:off" \
+               "ip=192.168.51.101:::255.255.255.0::ens4:off" \
+               "netroot=iscsi:192.168.51.1::::iqn.2009-06.dracut:target1" \
+               "netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target2" \
+               "rd.iscsi.firmware" \
+               "rd.iscsi.initiator=$initiator" \
+               "rd.iscsi.waitnet=0" \
+        || return 1
+
+    run_client "netroot=iscsi target1 target2 rd.iscsi.waitnet=0 rd.iscsi.testroute=0" \
+               "root=LABEL=sysroot" \
+               "ip=192.168.50.101:::255.255.255.0::ens3:off" \
+               "ip=192.168.51.101:::255.255.255.0::ens4:off" \
+               "netroot=iscsi:192.168.51.1::::iqn.2009-06.dracut:target1" \
+               "netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target2" \
+               "rd.iscsi.firmware" \
+               "rd.iscsi.initiator=$initiator" \
+               "rd.iscsi.waitnet=0 rd.iscsi.testroute=0" \
+        || return 1
+
+    run_client "netroot=iscsi target1 target2 rd.iscsi.waitnet=0 rd.iscsi.testroute=0 default GW" \
+               "root=LABEL=sysroot" \
+               "ip=192.168.50.101::192.168.50.1:255.255.255.0::ens3:off" \
+               "ip=192.168.51.101::192.168.51.1:255.255.255.0::ens4:off" \
+               "netroot=iscsi:192.168.51.1::::iqn.2009-06.dracut:target1" \
+               "netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target2" \
+               "rd.iscsi.firmware" \
+               "rd.iscsi.initiator=$initiator" \
+               "rd.iscsi.waitnet=0 rd.iscsi.testroute=0" \
+        || return 1
 
     echo "All tests passed [OK]"
     return 0
@@ -99,9 +131,9 @@ test_setup() {
     fi
 
     # Create the blank file to use as a root filesystem
-    dd if=/dev/null of=$TESTDIR/root.ext3 bs=1M seek=20
-    dd if=/dev/null of=$TESTDIR/iscsidisk2.img bs=1M seek=20
-    dd if=/dev/null of=$TESTDIR/iscsidisk3.img bs=1M seek=20
+    dd if=/dev/null of=$TESTDIR/root.ext3 bs=1M seek=40
+    dd if=/dev/null of=$TESTDIR/iscsidisk2.img bs=1M seek=40
+    dd if=/dev/null of=$TESTDIR/iscsidisk3.img bs=1M seek=40
 
     kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay

@@ -84,7 +84,7 @@ else
         # Symlinking /usr/bin/ntfs-3g as /sbin/mount.ntfs seems to boot
         # at the first glance, but ends with lots and lots of squashfs
         # errors, because systemd attempts to kill the ntfs-3g process?!
-        if [ -x "$(find_binary "ntfs-3g")" ]; then
+        if [ -x "/usr/bin/ntfs-3g" ]; then
             ( exec -a @ntfs-3g ntfs-3g -o ${liverw:-ro} $livedev /run/initramfs/live ) | vwarn
         else
             die "Failed to mount block device of live image: Missing NTFS support"
@@ -178,29 +178,26 @@ do_live_overlay() {
             warn "Using temporary overlay."
         elif [ -n "$devspec" -a -n "$pathspec" ]; then
             [ -z "$m" ] &&
-                m='  Unable to find a persistent overlay; using a temporary one.'
-            m=($'\n' "$m" $'\n'
-               '     All root filesystem changes will be lost on shutdown.'
-               $'\n' '        Press any key to continue')
-            echo -e "\n\n\n${m[*]}\n\n\n" > /dev/kmsg
+                m='   Unable to find a persistent overlay; using a temporary one.'
+            m="$m"$'\n      All root filesystem changes will be lost on shutdown.'
+            m="$m"$'\n         Press [Enter] to continue.'
+            echo -e "\n\n\n\n${m}\n\n\n" > /dev/kmsg
             if [ -n "$DRACUT_SYSTEMD" ]; then
-                if plymouth --ping ; then
+                if type plymouth >/dev/null 2>&1 && plymouth --ping ; then
                     if getargbool 0 rhgb || getargbool 0 splash ; then
-                        m[0]='>>>'$'\n''>>>'$'\n''>>>'$'\n\n'
-                        m[5]=$'\n''<<<'$'\n''<<<'$'\n''<<<'
-                        plymouth display-message --text="${m[*]}"
+                        m='>>>'$'\n''>>>'$'\n''>>>'$'\n\n\n'"$m"
+                        m="${m%n.*}"$'n.\n\n\n''<<<'$'\n''<<<'$'\n''<<<'
+                        plymouth display-message --text="${m}"
                     else
-                        plymouth ask-question --prompt="${m[*]}" --command=true
+                        plymouth ask-question --prompt="${m}" --command=true
                     fi
                 else
-                    m[0]='>>>'
-                    m[5]='<<<'
-                    unset -v m[2] m[4]
-                    systemd-ask-password --timeout=0 "${m[*]}"
+                    m=">>>${m//.[[:space:]]/.}  <<<"
+                    systemd-ask-password --timeout=0 "${m}"
                 fi
             else
-                plymouth --ping && plymouth --quit
-                read -s -r -p $'\n\n'"${m[*]}:" -n 1 reply
+                type plymouth >/dev/null 2>&1 && plymouth --ping && plymouth --quit
+                read -s -r -p $'\n\n'"${m}" -n 1 reply
             fi
         fi
         if [ -n "$overlayfs" ]; then

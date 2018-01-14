@@ -29,21 +29,24 @@ install() {
 
     # This is from 10redhat-i18n.
     findkeymap () {
-        local MAP=$1
+        local MAPS=$1
         local MAPNAME=${1%.map*}
-        [[ ! -f $MAP ]] && \
-            MAP=$(find ${kbddir}/keymaps -type f -name ${MAPNAME} -o -name ${MAPNAME}.map -o -name ${MAPNAME}.map.\* | head -n1)
-        [[ " $KEYMAPS " = *" $MAP "* ]] && return
-        KEYMAPS="$KEYMAPS $MAP"
-        case $MAP in
-            *.gz) cmd=zgrep;;
-            *.bz2) cmd=bzgrep;;
-            *) cmd=grep ;;
-        esac
+        local map
+        [[ ! -f $MAPS ]] && \
+            MAPS=$(find ${kbddir}/keymaps -type f -name ${MAPNAME} -o -name ${MAPNAME}.map -o -name ${MAPNAME}.map.\*)
 
-        for INCL in $($cmd "^include " $MAP | while read a a b || [ -n "$a" ]; do echo ${a//\"/}; done); do
-            for FN in $(find ${kbddir}/keymaps -type f -name $INCL\*); do
-                findkeymap $FN
+        for map in $MAPS; do
+            KEYMAPS="$KEYMAPS $map"
+            case $map in
+                *.gz) cmd=zgrep;;
+                *.bz2) cmd=bzgrep;;
+                *) cmd=grep ;;
+            esac
+
+            for INCL in $($cmd "^include " $map | while read a a b || [ -n "$a" ]; do echo ${a//\"/}; done); do
+                for FN in $(find ${kbddir}/keymaps -type f -name $INCL\*); do
+                    findkeymap $FN
+                done
             done
         done
     }
@@ -191,7 +194,9 @@ install() {
             findkeymap ${map}
         done
 
-        inst_opt_decompress ${KEYMAPS}
+        for keymap in ${KEYMAPS}; do
+            inst_opt_decompress ${keymap}
+        done
 
         inst_opt_decompress ${kbddir}/consolefonts/${DEFAULT_FONT}.*
 
@@ -204,7 +209,11 @@ install() {
         if [[ ${FONT_MAP} ]]
         then
             FONT_MAP=${FONT_MAP%.trans}
-            inst_simple ${kbddir}/consoletrans/${FONT_MAP}.trans
+            # There are three different formats that setfont supports
+            inst_simple ${kbddir}/consoletrans/${FONT_MAP} \
+            || inst_simple ${kbddir}/consoletrans/${FONT_MAP}.trans \
+            || inst_simple ${kbddir}/consoletrans/${FONT_MAP}_to_uni.trans \
+            || dwarn "Could not find FONT_MAP ${FONT_MAP}!"
         fi
 
         if [[ ${FONT_UNIMAP} ]]

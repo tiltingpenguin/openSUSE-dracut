@@ -18,7 +18,7 @@ depends() {
 }
 
 installkernel() {
-    hostonly='' instmods autofs4 ipv6
+    hostonly='' instmods autofs4 ipv6 algif_hash hmac sha256
     instmods -s efivarfs
 }
 
@@ -33,6 +33,7 @@ install() {
 
     inst_multiple -o \
         $systemdutildir/systemd \
+        $systemdutildir/systemd-coredump \
         $systemdutildir/systemd-cgroups-agent \
         $systemdutildir/systemd-shutdown \
         $systemdutildir/systemd-reply-password \
@@ -159,7 +160,7 @@ install() {
     }
 
     _mods=$(modules_load_get /usr/lib/modules-load.d)
-    [[ $_mods ]] && instmods $_mods
+    [[ $_mods ]] && hostonly='' instmods $_mods
 
     if [[ $hostonly ]]; then
         inst_multiple -H -o \
@@ -179,7 +180,7 @@ install() {
             ${NULL}
 
         _mods=$(modules_load_get /etc/modules-load.d)
-        [[ $_mods ]] && instmods $_mods
+        [[ $_mods ]] && hostonly='' instmods $_mods
     fi
 
     if ! [[ -e "$initdir/etc/machine-id" ]]; then

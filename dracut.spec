@@ -14,9 +14,11 @@
 %define with_nbd 0
 %endif
 
+%define dist_free_release xxx
+
 Name: dracut
 Version: xxx
-Release: xxx
+Release: %{dist_free_release}%{?dist}
 
 Summary: Initramfs generator using udev
 %if 0%{?fedora} || 0%{?rhel}
@@ -136,7 +138,15 @@ NFS, iSCSI, NBD, FCoE with the dracut-network package.
 
 %package network
 Summary: dracut modules to build a dracut initramfs with network support
+%if 0%{?_module_build}
+# In the module-build-service, we have pieces of dracut provided by different
+# modules ("base-runtime" provides most functionality, but we need
+# dracut-network in "installer". Since these two modules build with separate
+# dist-tags, we need to reduce this strict requirement to ignore the dist-tag.
+Requires: %{name} >= %{version}-%{dist_free_release}
+%else
 Requires: %{name} = %{version}-%{release}
+%endif
 Requires: iputils
 Requires: iproute
 Requires: dhclient
@@ -184,9 +194,17 @@ initramfs with dracut, which drops capabilities.
 
 %package live
 Summary: dracut modules to build a dracut initramfs with live image capabilities
+%if 0%{?_module_build}
+# See the network subpackage comment.
+Requires: %{name} >= %{version}-%{dist_free_release}
+%else
 Requires: %{name} = %{version}-%{release}
+%endif
 Requires: %{name}-network = %{version}-%{release}
 Requires: tar gzip coreutils bash device-mapper curl
+%if 0%{?fedora}
+Requires: fuse ntfs-3g
+%endif
 
 %description live
 This package requires everything which is needed to build an
@@ -264,6 +282,19 @@ rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/50gensplash
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/96securityfs
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/97masterkey
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/98integrity
+%endif
+
+%ifnarch s390 s390x
+# remove architecture specific modules
+rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/80cms
+rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/91zipl
+rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95dasd
+rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95dasd_mod
+rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95dasd_rules
+rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95dcssblk
+rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95zfcp
+rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95zfcp_rules
+rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95znet
 %endif
 
 mkdir -p $RPM_BUILD_ROOT/boot/dracut
@@ -352,9 +383,7 @@ rm -rf -- $RPM_BUILD_ROOT
 %{_mandir}/man5/dracut.conf.5*
 %endif
 
-%if %{defined _unitdir}
-%{dracutlibdir}/modules.d/00systemd-bootchart
-%else
+%if %{undefined _unitdir}
 %{dracutlibdir}/modules.d/00bootchart
 %endif
 %{dracutlibdir}/modules.d/00bash
@@ -369,7 +398,6 @@ rm -rf -- $RPM_BUILD_ROOT
 %{dracutlibdir}/modules.d/45url-lib
 %{dracutlibdir}/modules.d/50drm
 %{dracutlibdir}/modules.d/50plymouth
-%{dracutlibdir}/modules.d/80cms
 %{dracutlibdir}/modules.d/80lvmmerge
 %{dracutlibdir}/modules.d/90btrfs
 %{dracutlibdir}/modules.d/90crypt
@@ -384,28 +412,34 @@ rm -rf -- $RPM_BUILD_ROOT
 %{dracutlibdir}/modules.d/91crypt-gpg
 %{dracutlibdir}/modules.d/91crypt-loop
 %{dracutlibdir}/modules.d/95debug
+%{dracutlibdir}/modules.d/95fstab-sys
+%{dracutlibdir}/modules.d/95lunmask
 %{dracutlibdir}/modules.d/95resume
 %{dracutlibdir}/modules.d/95rootfs-block
-%{dracutlibdir}/modules.d/95dasd
-%{dracutlibdir}/modules.d/95dasd_mod
-%{dracutlibdir}/modules.d/95dasd_rules
-%{dracutlibdir}/modules.d/95fstab-sys
-%{dracutlibdir}/modules.d/95zfcp
-%{dracutlibdir}/modules.d/95zfcp_rules
 %{dracutlibdir}/modules.d/95terminfo
 %{dracutlibdir}/modules.d/95udev-rules
 %{dracutlibdir}/modules.d/95virtfs
+%ifarch s390 s390x
+%{dracutlibdir}/modules.d/80cms
+%{dracutlibdir}/modules.d/91zipl
+%{dracutlibdir}/modules.d/95dasd
+%{dracutlibdir}/modules.d/95dasd_mod
+%{dracutlibdir}/modules.d/95dasd_rules
+%{dracutlibdir}/modules.d/95dcssblk
+%{dracutlibdir}/modules.d/95zfcp
+%{dracutlibdir}/modules.d/95zfcp_rules
+%endif
 %if %{undefined _unitdir}
 %{dracutlibdir}/modules.d/96securityfs
 %{dracutlibdir}/modules.d/97masterkey
 %{dracutlibdir}/modules.d/98integrity
 %endif
 %{dracutlibdir}/modules.d/97biosdevname
+%{dracutlibdir}/modules.d/98dracut-systemd
 %{dracutlibdir}/modules.d/98ecryptfs
 %{dracutlibdir}/modules.d/98pollcdrom
 %{dracutlibdir}/modules.d/98selinux
 %{dracutlibdir}/modules.d/98syslog
-%{dracutlibdir}/modules.d/98dracut-systemd
 %{dracutlibdir}/modules.d/98usrmount
 %{dracutlibdir}/modules.d/99base
 %{dracutlibdir}/modules.d/99fs-lib
@@ -439,17 +473,19 @@ rm -rf -- $RPM_BUILD_ROOT
 %defattr(-,root,root,0755)
 %{dracutlibdir}/modules.d/02systemd-networkd
 %{dracutlibdir}/modules.d/40network
+%{dracutlibdir}/modules.d/45ifcfg
 %{dracutlibdir}/modules.d/90kernel-network-modules
-%{dracutlibdir}/modules.d/95fcoe
-%{dracutlibdir}/modules.d/95iscsi
 %{dracutlibdir}/modules.d/90qemu-net
 %{dracutlibdir}/modules.d/95cifs
+%{dracutlibdir}/modules.d/95fcoe
+%{dracutlibdir}/modules.d/95fcoe-uefi
+%{dracutlibdir}/modules.d/95iscsi
 %{dracutlibdir}/modules.d/95nbd
 %{dracutlibdir}/modules.d/95nfs
 %{dracutlibdir}/modules.d/95ssh-client
-%{dracutlibdir}/modules.d/45ifcfg
+%ifarch s390 s390x
 %{dracutlibdir}/modules.d/95znet
-%{dracutlibdir}/modules.d/95fcoe-uefi
+%endif
 %{dracutlibdir}/modules.d/99uefi-lib
 
 %if 0%{?fedora} || 0%{?rhel} || 0%{?suse_version}

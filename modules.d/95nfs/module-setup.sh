@@ -51,13 +51,16 @@ cmdline() {
 
     ### ip= ###
     if [[ $nfs_device = [0-9]*\.[0-9]*\.[0-9]*.[0-9]* ]] || [[ $nfs_device = \[.*\] ]]; then
-        nfs_address="$nfs_device"
+        nfs_address="${nfs_device%%:*}"
     else
-        lookup=$(host $(echo ${nfs_device%%:*})| head -n1)
+        lookup=$(host "${nfs_device%%:*}"| grep " address " | head -n1)
         nfs_address=${lookup##* }
     fi
     ifname=$(ip -o route get to $nfs_address | sed -n 's/.*dev \([^ ]*\).*/\1/p')
-    if [ -e /sys/class/net/$ifname/address ] ; then
+    if [ -d /sys/class/net/$ifname/bonding ]; then
+        dinfo "Found bonded interface '${ifname}'. Make sure to provide an appropriate 'bond=' cmdline."
+        return
+    elif [ -e /sys/class/net/$ifname/address ] ; then
         ifmac=$(cat /sys/class/net/$ifname/address)
         printf 'ifname=%s:%s ' ${ifname} ${ifmac}
     fi

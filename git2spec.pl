@@ -5,6 +5,8 @@ sub create_patches {
     my $pdir=shift;
     my $n=1;
     my @lines;
+    my $fname;
+    my $f=0;
 
     mkdir $pdir, 0755;
 
@@ -12,9 +14,13 @@ sub create_patches {
 
     while (<GIT>) {
         if (/^From [a-z0-9]{40} .*$/) {
-            my $fname = sprintf("%04d", $n++).".patch";
-            push @lines, $fname;
+            $fname = sprintf("%04d", $n++).".patch";
             open FH, ">".$pdir."/".$fname;
+            $f=1;
+        }
+        if (/^---$/ && $f == 1) {
+            push @lines, $fname;
+            $f=0;
         }
         print FH;
     }
@@ -39,8 +45,8 @@ while(<>) {
     if (/^Version:/) {
 	print "Version: $tag\n";
     }
-    elsif (/^Release:/) {
-	print "Release: $release%{?dist}\n";
+    elsif (/^%define dist_free_release/) {
+	print "%define dist_free_release $release\n";
     }
     elsif ((/^Source0:/) || (/^Source:/)) {
 	print $_;

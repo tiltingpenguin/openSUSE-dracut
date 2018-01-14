@@ -151,6 +151,10 @@ Creates initial ramdisk images for preloading modules
                         in the initramfs
   --no-hostonly-cmdline Do not store kernel command line arguments needed
                         in the initramfs
+  --no-hostonly-default-device
+                        Do not generate implicit host devices like root,
+                        swap, fstab, etc. Use "--mount" or "--add-device"
+                        to explicitly add devices as needed.
   --hostonly-i18n       Install only needed keyboard and font files according
                         to the host configuration (default).
   --no-hostonly-i18n    Install all keyboard and font files available.
@@ -192,6 +196,9 @@ Creates initial ramdisk images for preloading modules
                          in, otherwise you will not be able to boot.
   --lz4                 Compress the generated initramfs using lz4.
                          Make sure that your kernel has lz4 support compiled
+                         in, otherwise you will not be able to boot.
+  --zstd                Compress the generated initramfs using Zstandard.
+                         Make sure that your kernel has zstd support compiled
                          in, otherwise you will not be able to boot.
   --compress [COMPRESSION] Compress the generated initramfs with the
                          passed compression program.  Make sure your kernel
@@ -279,11 +286,15 @@ dropindirs_sort()
 rearrange_params()
 {
     # Workaround -i, --include taking 2 arguments
-    set -- "${@/--include/++include}"
-
-    # This prevents any long argument ending with "-i"
-    # -i, like --opt-i but I think we can just prevent that
-    set -- "${@/%-i/++include}"
+    newat=()
+    for i in "$@"; do
+      if [[ $i == "-i" ]] || [[ $i == "--include" ]]; then
+            newat+=("++include") # Replace --include by ++include
+        else
+            newat+=("$i")
+        fi
+    done
+    set -- "${newat[@]}" # Set new $@
 
     TEMP=$(unset POSIXLY_CORRECT; getopt \
         -o "a:m:o:d:I:k:c:L:fvqlHhMN" \
@@ -345,6 +356,7 @@ rearrange_params()
         --long no-host-only \
         --long hostonly-cmdline \
         --long no-hostonly-cmdline \
+        --long no-hostonly-default-device \
         --long persistent-policy: \
         --long fstab \
         --long help \
@@ -353,6 +365,7 @@ rearrange_params()
         --long xz \
         --long lzo \
         --long lz4 \
+        --long zstd \
         --long no-compress \
         --long gzip \
         --long list-modules \
@@ -539,6 +552,8 @@ while :; do
                        i18n_install_all_l="yes" ;;
         --no-hostonly-cmdline)
                        hostonly_cmdline_l="no" ;;
+        --no-hostonly-default-device)
+                       hostonly_default_device="no" ;;
         --persistent-policy)
                        persistent_policy_l="$2";       PARMS_TO_STORE+=" '$2'"; shift;;
         --fstab)       use_fstab_l="yes" ;;
@@ -550,6 +565,7 @@ while :; do
         --xz)          compress_l="xz";;
         --lzo)         compress_l="lzo";;
         --lz4)         compress_l="lz4";;
+        --zstd)        compress_l="zstd";;
         --no-compress) _no_compress_l="cat";;
         --gzip)        compress_l="gzip";;
         --list-modules) do_list="yes";;
@@ -761,7 +777,9 @@ if ! [[ $outfile ]]; then
         mkdir -p "$efidir/Linux"
         outfile="$efidir/Linux/linux-$kernel${MACHINE_ID:+-${MACHINE_ID}}${BUILD_ID:+-${BUILD_ID}}.efi"
     else
-        if [[ $MACHINE_ID ]] && ( [[ -d /boot/${MACHINE_ID} ]] || [[ -L /boot/${MACHINE_ID} ]] ); then
+        if [[ -e "/boot/vmlinuz-$kernel" ]]; then
+            outfile="/boot/initramfs-$kernel.img"
+        elif [[ $MACHINE_ID ]] && ( [[ -d /boot/${MACHINE_ID} ]] || [[ -L /boot/${MACHINE_ID} ]] ); then
             outfile="/boot/${MACHINE_ID}/$kernel/initrd"
         else
             outfile="/boot/initramfs-$kernel.img"
@@ -790,7 +808,7 @@ fi
 
 if ! [[ $compress ]]; then
     # check all known compressors, if none specified
-    for i in pigz gzip lz4 lzop lzma xz lbzip2 bzip2 cat; do
+    for i in pigz gzip lz4 lzop zstd lzma xz lbzip2 bzip2 cat; do
         command -v "$i" &>/dev/null || continue
         compress="$i"
         break
@@ -830,6 +848,9 @@ case $compress in
     lz4)
         compress="lz4 -l -9"
         ;;
+    zstd)
+       compress="zstd -15 -q -T0"
+       ;;
 esac
 
 [[ $hostonly = yes ]] && hostonly="-h"
@@ -1133,7 +1154,7 @@ if (( ${#add_device_l[@]} )); then
     push_host_devs "${add_device_l[@]}"
 fi
 
-if [[ $hostonly ]]; then
+if [[ $hostonly ]] && [[ "$hostonly_default_device" != "no" ]]; then
     # in hostonly mode, determine all devices, which have to be accessed
     # and examine them for filesystem types
 
@@ -1151,6 +1172,7 @@ if [[ $hostonly ]]; then
         "/usr/lib64" \
         "/boot" \
         "/boot/efi" \
+        "/boot/zipl" \
         ;
     do
         mp=$(readlink -f "$mp")
@@ -1300,7 +1322,7 @@ export initdir dracutbasedir \
     dracutmodules force_add_dracutmodules add_dracutmodules omit_dracutmodules \
     mods_to_load \
     fw_dir drivers_dir debug no_kernel kernel_only \
-    omit_drivers mdadmconf lvmconf root_dev \
+    omit_drivers mdadmconf lvmconf root_devs \
     use_fstab fstab_lines libdirs fscks nofscks ro_mnt \
     stdloglvl sysloglvl fileloglvl kmsgloglvl logfile \
     debug host_fs_types host_devs swap_devs sshkey add_fstab \
@@ -1449,7 +1471,7 @@ if [[ $no_kernel != yes ]]; then
         hostonly='' instmods $drivers
     fi
 
-    if [[ $add_drivers ]]; then
+    if [[ -n "${add_drivers// }" ]]; then
         hostonly='' instmods -c $add_drivers
     fi
     if [[ $force_drivers ]]; then
@@ -1526,6 +1548,10 @@ if [[ $kernel_only != yes ]]; then
         | xargs -r -0 $DRACUT_INSTALL ${initdir:+-D "$initdir"} -R ${DRACUT_FIPS_MODE:+-f} --
         dinfo "*** Resolving executable dependencies done***"
     fi
+
+    # Now we are done with lazy resolving, always install dependencies
+    unset DRACUT_RESOLVE_LAZY
+    export DRACUT_RESOLVE_DEPS=1
 
     # libpthread workaround: pthread_cancel wants to dlopen libgcc_s.so
     for _dir in $libdirs; do
@@ -1752,7 +1778,7 @@ if ! (
     exit 1
 fi
 
-if (( maxloglvl >= 5 )); then
+if (( maxloglvl >= 5 )) && (( verbosity_mod_l >= 0 )); then
     if [[ $allowlocal ]]; then
 	"$dracutbasedir/lsinitrd.sh" "${DRACUT_TMPDIR}/initramfs.img"| ddebug
     else
@@ -1806,10 +1832,16 @@ fi
 
 command -v restorecon &>/dev/null && restorecon -- "$outfile"
 
-sync $outfile 2> /dev/null
-if [ $? -ne 0 ] ; then
-    dinfo "dracut: sync operartion on newly created initramfs $outfile failed"
+if ! sync "$outfile" 2> /dev/null; then
+    dinfo "dracut: sync operation on newly created initramfs $outfile failed"
     exit 1
+fi
+
+# use fsfreeze only if we're not writing to /
+if [[ "$(stat -c %m -- "$outfile")" != "/" && "$(stat -f -c %T -- "$outfile")" != "msdos" ]]; then
+    if ! $(fsfreeze -f $(dirname "$outfile") 2>/dev/null && fsfreeze -u $(dirname "$outfile") 2>/dev/null); then
+        dinfo "dracut: warning: could not fsfreeze $(dirname "$outfile")"
+    fi
 fi
 
 exit 0

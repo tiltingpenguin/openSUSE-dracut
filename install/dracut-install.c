@@ -633,7 +633,7 @@ static int dracut_install(const char *src, const char *dst, bool isdir, bool res
 
         hashmap_put(items, i, i);
 
-        ret = asprintf(&fulldstpath, "%s/%s", destrootdir, dst);
+        ret = asprintf(&fulldstpath, "%s/%s", destrootdir, (dst[0]=='/' ? (dst+1) : dst));
         if (ret < 0) {
                 log_error("Out of memory!");
                 exit(EXIT_FAILURE);
@@ -720,7 +720,7 @@ static int dracut_install(const char *src, const char *dst, bool isdir, bool res
                 if (lstat(fulldstpath, &sb) != 0) {
                         _cleanup_free_ char *absdestpath = NULL;
 
-                        ret = asprintf(&absdestpath, "%s/%s", destrootdir, abspath);
+                        ret = asprintf(&absdestpath, "%s/%s", destrootdir, (abspath[0]=='/' ? (abspath+1) : abspath));
                         if (ret < 0) {
                                 log_error("Out of memory!");
                                 exit(EXIT_FAILURE);
@@ -933,13 +933,6 @@ static int parse_argv(int argc, char *argv[])
                         break;
                 case ARG_KERNELDIR:
                         kerneldir = strdup(optarg);
-                        if ((strncmp("/lib/modules/", kerneldir, 13) != 0)
-                            && (strncmp("/usr/lib/modules/", kerneldir, 17) != 0)) {
-                                char *p;
-                                p = strstr(kerneldir, "/lib/modules/");
-                                if (p != NULL)
-                                        kerneldirlen = p - kerneldir;
-                        }
                         break;
                 case ARG_FIRMWAREDIRS:
                         firmwaredirs = strv_split(optarg, ":");
@@ -1399,9 +1392,17 @@ static int install_modules(int argc, char **argv)
         struct kmod_module *mod = NULL, *mod_o = NULL;
 
         const char *modname = NULL;
+        const char *abskpath = NULL;
+        char *p;
         int i;
 
         ctx = kmod_new(kerneldir, NULL);
+        abskpath = kmod_get_dirname(ctx);
+
+        p = strstr(abskpath, "/lib/modules/");
+        if (p != NULL)
+                kerneldirlen = p - abskpath;
+
         if (arg_hostonly) {
                 char *modalias_file;
                 modalias_file = getenv("DRACUT_KERNEL_MODALIASES");
