@@ -3,9 +3,9 @@ Section: utils
 Priority: optional
 Maintainer: Thomas Lange <lange@debian.org>
 Build-Depends: debhelper, asciidoc-base, xsltproc, docbook-xsl, docbook-xml, quilt, libkmod-dev
-Standards-Version: 3.9.8
-Vcs-Browser: http://anonscm.debian.org/gitweb/?p=collab-maint/dracut.git
-Vcs-Git: git://anonscm.debian.org/collab-maint/dracut.git
+Standards-Version: 4.1.3.0
+Vcs-Browser: https://salsa.debian.org/debian/dracut.git
+Vcs-Git: git@salsa.debian.org:debian/dracut.git
 Homepage: http://www.kernel.org/pub/linux/utils/boot/dracut/dracut.html
 
 Package: dracut
