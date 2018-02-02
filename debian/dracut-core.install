@@ -53,6 +53,7 @@ modules.d/95dasd_rules		usr/lib/dracut/modules.d
 modules.d/95debug		usr/lib/dracut/modules.d
 modules.d/95fstab-sys		usr/lib/dracut/modules.d
 modules.d/95resume		usr/lib/dracut/modules.d
+modules.d/95lunmask		usr/lib/dracut/modules.d
 modules.d/95rootfs-block	usr/lib/dracut/modules.d
 modules.d/95terminfo		usr/lib/dracut/modules.d
 modules.d/95udev-rules		usr/lib/dracut/modules.d
