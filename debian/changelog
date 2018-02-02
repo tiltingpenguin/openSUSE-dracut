@@ -1,6 +1,7 @@
 dracut (046+164+1) UNRELEASED; urgency=medium
 
-  * control: add depends, Closes: #887202
+  * control: add depends, Closes: #887202, update Vcs fields,
+    update standards version
 
  -- Thomas Lange <lange@debian.org>  Sun, 14 Jan 2018 20:56:59 +0100
 
