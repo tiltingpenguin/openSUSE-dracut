@@ -39,8 +39,10 @@ URL: https://dracut.wiki.kernel.org/
 Source0: http://www.kernel.org/pub/linux/utils/boot/dracut/dracut-%{version}.tar.xz
 Source1: https://www.gnu.org/licenses/lgpl-2.1.txt
 
-BuildRequires: bash git
-BuildRequires: kmod-devel >= 15
+BuildRequires: bash
+BuildRequires: git
+BuildRequires: kmod-devel >= 23
+BuildRequires: gcc
 
 %if 0%{?fedora} || 0%{?rhel}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
@@ -287,6 +289,7 @@ rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/98integrity
 %ifnarch s390 s390x
 # remove architecture specific modules
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/80cms
+rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/81cio_ignore
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/91zipl
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95dasd
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95dasd_mod
@@ -421,6 +424,7 @@ rm -rf -- $RPM_BUILD_ROOT
 %{dracutlibdir}/modules.d/95virtfs
 %ifarch s390 s390x
 %{dracutlibdir}/modules.d/80cms
+%{dracutlibdir}/modules.d/81cio_ignore
 %{dracutlibdir}/modules.d/91zipl
 %{dracutlibdir}/modules.d/95dasd
 %{dracutlibdir}/modules.d/95dasd_mod

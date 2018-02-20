@@ -72,16 +72,29 @@ load_evm_x509()
     if [ ! -f "${EVMX509PATH}" ]; then
         if [ "${RD_DEBUG}" = "yes" ]; then
             info "integrity: EVM x509 cert file not found: ${EVMX509PATH}"
-	fi
+        fi
         return 1
     fi
 
+    local evm_pubid
+    local line=$(keyctl describe %keyring:.evm)
+    if [ $? -eq 0 ]; then
+        # the kernel already setup a trusted .evm keyring so use that one
+        evm_pubid=${line%%:*}
+    else
+        # look for an existing regular keyring
+        evm_pubid=`keyctl search @u keyring _evm`
+        if [ -z "${evm_pubid}" ]; then
+            # create a new regular _evm keyring
+            evm_pubid=`keyctl newring _evm @u`
+        fi
+    fi
+
     # load the EVM public key onto the EVM keyring
-    evm_pubid=`keyctl newring _evm @u`
     EVMX509ID=$(evmctl import ${EVMX509PATH} ${evm_pubid})
     [ $? -eq 0 ] || {
-	info "integrity: failed to load the EVM X509 cert ${EVMX509PATH}";
-	return 1;
+        info "integrity: failed to load the EVM X509 cert ${EVMX509PATH}";
+        return 1;
     }
 
     if [ "${RD_DEBUG}" = "yes" ]; then
@@ -112,11 +125,18 @@ enable_evm()
         return 0
     fi
 
-    # load the EVM encrypted key
-    load_evm_key || return 1
+    local evm_configured
 
-    # load the EVM public key, if it exists
-    load_evm_x509
+    # try to load the EVM encrypted key
+    load_evm_key && evm_configured=1
+
+    # try to load the EVM public key
+    load_evm_x509 && evm_configured=1
+
+    # only enable EVM if a key or x509 certificate could be loaded
+    if [ -z "$evm_configured" ]; then
+        return 1
+    fi
 
     # initialize EVM
     info "Enabling EVM"
