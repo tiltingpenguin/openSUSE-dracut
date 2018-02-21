@@ -1,8 +1,8 @@
 sed -i -e '3i:revdate: 2012-03-14' dracut-catimages.8.asc
-sed -i -e '3i:revdate: 2017-03-20' dracut.8.asc
+sed -i -e '3i:revdate: 2017-09-05' dracut.8.asc
 sed -i -e '3i:revdate: 2014-01-13' dracut.bootup.7.asc
-sed -i -e '3i:revdate: 2017-06-23' dracut.cmdline.7.asc
-sed -i -e '3i:revdate: 2017-07-17' dracut.conf.5.asc
+sed -i -e '3i:revdate: 2018-01-18' dracut.cmdline.7.asc
+sed -i -e '3i:revdate: 2018-01-18' dracut.conf.5.asc
 sed -i -e '3i:revdate: 2017-01-03' dracut.modules.7.asc
 sed -i -e '3i:revdate: 2016-03-17' lsinitrd.1.asc
 sed -i -e '3i:revdate: 2016-12-02' mkinitrd-suse.8.asc
