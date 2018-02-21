@@ -1,9 +1,11 @@
-dracut (046+164+1) UNRELEASED; urgency=medium
+dracut (047-1) unstable; urgency=low
 
+  * new upstream version
   * control: add depends, Closes: #887202, update Vcs fields,
     update standards version
+  * add modules.d/81cio_ignore
 
- -- Thomas Lange <lange@debian.org>  Sun, 14 Jan 2018 20:56:59 +0100
+ -- Thomas Lange <lange@debian.org>  Wed, 21 Feb 2018 09:49:15 +0100
 
 dracut (045+132-1) unstable; urgency=low
 
