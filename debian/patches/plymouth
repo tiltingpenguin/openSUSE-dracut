@@ -1,23 +1,12 @@
---- a/modules.d/50plymouth/module-setup.sh
-+++ b/modules.d/50plymouth/module-setup.sh
-@@ -18,6 +18,7 @@
-         PKGLIBDIR="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/plymouth"
-     fi
-     [ -x /usr/libexec/plymouth/plymouth-populate-initrd ] && PKGLIBDIR="/usr/libexec/plymouth"
-+    [ -x /usr/lib/x86_64-linux-gnu/plymouth/plymouth-populate-initrd ] && PKGLIBDIR="/usr/lib/x86_64-linux-gnu/plymouth"
- 
-     if grep -q nash ${PKGLIBDIR}/plymouth-populate-initrd \
-         || [ ! -x ${PKGLIBDIR}/plymouth-populate-initrd ]; then
 --- a/modules.d/50plymouth/plymouth-populate-initrd.sh
 +++ b/modules.d/50plymouth/plymouth-populate-initrd.sh
-@@ -3,9 +3,7 @@
+@@ -3,8 +3,7 @@
  PLYMOUTH_LOGO_FILE="/usr/share/pixmaps/system-logo-white.png"
  PLYMOUTH_THEME=$(plymouth-set-default-theme)
  
 -inst_multiple plymouthd plymouth \
--    "${PLYMOUTH_LOGO_FILE}" \
 -    /etc/system-release
 +inst_multiple plymouthd plymouth
  
- mkdir -m 0755 -p "${initdir}/usr/share/plymouth"
+ test -e "${PLYMOUTH_LOGO_FILE}" && inst_simple "${PLYMOUTH_LOGO_FILE}"
  
