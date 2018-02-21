@@ -9,8 +9,7 @@ usr/lib/dracut/dracut-install
 usr/lib/dracut/skipcpio
 usr/lib/dracut/dracut-logger.sh
 lib/systemd/system
-usr/share/bash-completion/completions/dracut   etc/bash_completion.d
-usr/share/bash-completion/completions/lsinitrd etc/bash_completion.d
+usr/share/bash-completion/completions
 dracut-version.sh		usr/lib/dracut
 debian/etc/10-debian.conf	etc/dracut.conf.d
 etc/dracut.conf                 etc
