@@ -1,6 +1,6 @@
 --- a/dracut.sh
 +++ b/dracut.sh
-@@ -1245,7 +1245,6 @@
+@@ -1297,7 +1297,6 @@
  
  if ! [[ -d "$systemdutildir" ]]; then
      [[ ! -h /lib ]] && [[ -d /lib/systemd ]] && systemdutildir=/lib/systemd
