@@ -1,6 +1,6 @@
 dracut (047-2) unstable; urgency=low
 
-  * add missing depends, Closes #890990
+  * add missing depends, Closes: #890990
 
  -- Thomas Lange <lange@debian.org>  Wed, 21 Feb 2018 14:55:16 +0100
 
