@@ -1,3 +1,14 @@
+dracut (047+31-1) unstable; urgency=medium
+
+  * new upstream version
+  * add patch for early microcode loading, Closes: #875297
+  * rules: remove quilt option
+  * control: update standards version, no changes
+  * 10-debian.conf: crc32c modules not needed any more
+  * add dracut.pc to debian-core, Closes: #880984
+
+ -- Thomas Lange <lange@debian.org>  Thu, 17 May 2018 17:44:36 +0200
+
 dracut (047-2) unstable; urgency=low
 
   * add missing depends, Closes: #890990
