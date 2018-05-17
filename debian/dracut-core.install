@@ -10,6 +10,7 @@ usr/lib/dracut/skipcpio
 usr/lib/dracut/dracut-logger.sh
 lib/systemd/system
 usr/share/bash-completion/completions
+usr/share/pkgconfig/dracut.pc
 dracut-version.sh		usr/lib/dracut
 debian/etc/10-debian.conf	etc/dracut.conf.d
 etc/dracut.conf                 etc

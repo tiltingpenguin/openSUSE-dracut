@@ -23,6 +23,7 @@ usr/lib/dracut/modules.d/98syslog
 usr/lib/dracut/modules.d/98usrmount
 usr/lib/dracut/modules.d/99base
 usr/share/bash-completion/completions
+usr/share/pkgconfig
 /var/lib/dracut
 /etc/dracut.conf.d
 /etc/logrotate.d
