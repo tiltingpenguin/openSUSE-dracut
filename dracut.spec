@@ -5,15 +5,6 @@
 # strip the automatically generated dep here and instead co-own the
 # directory.
 %global __requires_exclude pkg-config
-
-# Variables must be defined
-%define with_nbd                1
-
-# nbd in Fedora only
-%if 0%{?rhel} >= 6
-%define with_nbd 0
-%endif
-
 %define dist_free_release xxx
 
 Name: dracut
@@ -45,15 +36,11 @@ BuildRequires: kmod-devel >= 23
 BuildRequires: gcc
 
 %if 0%{?fedora} || 0%{?rhel}
-BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: pkgconfig
+BuildRequires: systemd
 %endif
 %if 0%{?fedora}
 BuildRequires: bash-completion
-%endif
-
-%if 0%{?suse_version}
-BuildRoot: %{_tmppath}/%{name}-%{version}-build
 %endif
 
 %if %{with doc}
@@ -68,30 +55,15 @@ BuildRequires: docbook-style-xsl docbook-dtds libxslt
 BuildRequires: asciidoc
 %endif
 
-%if 0%{?fedora} > 12 || 0%{?rhel}
-# no "provides", because dracut does not offer
-# all functionality of the obsoleted packages
-Obsoletes: mkinitrd < 6.0.94
-Obsoletes: mkinitrd-devel < 6.0.94
-Obsoletes: nash < 6.0.94
-Obsoletes: libbdevid-python < 6.0.94
-%endif
-
-%if 0%{?fedora} > 16 || 0%{?rhel} > 6
-BuildRequires: systemd-units
-%endif
-
 %if 0%{?suse_version} > 9999
 Obsoletes: mkinitrd < 2.6.1
 Provides: mkinitrd = 2.6.1
 %endif
 
-Obsoletes: dracut-kernel < 005
-Provides:  dracut-kernel = %{version}-%{release}
-
-Obsoletes: dracut < 030
-Obsoletes: dracut-norescue < 030
-Provides:  dracut-norescue = %{version}-%{release}
+Obsoletes: dracut-fips <= 047
+Provides:  dracut-fips = %{version}-%{release}
+Obsoletes: dracut-fips-aesni <= 047
+Provides:  dracut-fips-aesni = %{version}-%{release}
 
 Requires: bash >= 4
 Requires: coreutils
@@ -104,39 +76,35 @@ Requires: sed
 Requires: xz
 Requires: gzip
 
-%if 0%{?fedora} > 22 || 0%{?rhel} > 7
-Recommends: grubby
+%if 0%{?fedora} || 0%{?rhel}
 Recommends: hardlink
 Recommends: pigz
 Recommends: kpartx
-%else
-Requires: hardlink
-Requires: gzip
-Requires: kpartx
-%endif
-
-%if 0%{?fedora} || 0%{?rhel} > 6
 Requires: util-linux >= 2.21
 Requires: systemd >= 219
 Requires: systemd-udev >= 219
 Requires: procps-ng
-Conflicts: grubby < 8.23
-Conflicts: initscripts < 8.63-1
-Conflicts: plymouth < 0.8.0-0.2009.29.09.19.1
-Conflicts: bcache-tools < 0-0.14.20130909git
 %else
+Requires: hardlink
+Requires: gzip
+Requires: kpartx
 Requires: udev > 166
 Requires: util-linux-ng >= 2.21
 %endif
 
-Conflicts: mdadm < 3.2.6-14
+%if 0%{?fedora} || 0%{?rhel} || 0%{?suse_version}
+Requires: hmaccalc
+Requires: nss
+Requires: nss-softokn-freebl
+%endif
 
 %description
-dracut contains tools to create a bootable initramfs for 2.6 Linux kernels.
-Unlike existing implementations, dracut does hard-code as little as possible
-into the initramfs. dracut contains various modules which are driven by the
-event-based udev. Having root on MD, DM, LVM2, LUKS is supported as well as
-NFS, iSCSI, NBD, FCoE with the dracut-network package.
+dracut contains tools to create bootable initramfses for the Linux
+kernel. Unlike previous implementations, dracut hard-codes as little
+as possible into the initramfs. dracut contains various modules which
+are driven by the event-based udev. Having root on MD, DM, LVM2, LUKS
+is supported as well as NFS, iSCSI, NBD, FCoE with the dracut-network
+package.
 
 %package network
 Summary: dracut modules to build a dracut initramfs with network support
@@ -158,32 +126,6 @@ Provides:  dracut-generic = %{version}-%{release}
 %description network
 This package requires everything which is needed to build a generic
 all purpose initramfs with network support with dracut.
-
-%if 0%{?fedora} || 0%{?rhel} >= 6 || 0%{?suse_version}
-%package fips
-Summary: dracut modules to build a dracut initramfs with an integrity check
-Requires: %{name} = %{version}-%{release}
-Requires: hmaccalc
-%if 0%{?rhel} > 5
-# For Alpha 3, we want nss instead of nss-softokn
-Requires: nss
-%else
-Requires: nss-softokn
-%endif
-Requires: nss-softokn-freebl
-
-%description fips
-This package requires everything which is needed to build an
-initramfs with dracut, which does an integrity check.
-%endif
-
-%package fips-aesni
-Summary: dracut modules to build a dracut initramfs with an integrity check with aesni-intel
-Requires: %{name}-fips = %{version}-%{release}
-
-%description fips-aesni
-This package requires everything which is needed to build an
-initramfs with dracut, which does an integrity check and adds the aesni-intel kernel module.
 
 %package caps
 Summary: dracut modules to build a dracut initramfs which drops capabilities
@@ -254,9 +196,6 @@ cp %{SOURCE1} .
 make %{?_smp_mflags}
 
 %install
-%if 0%{?fedora} || 0%{?rhel}
-rm -rf -- $RPM_BUILD_ROOT
-%endif
 make %{?_smp_mflags} install \
      DESTDIR=$RPM_BUILD_ROOT \
      libdir=%{_prefix}/lib
@@ -314,30 +253,15 @@ rm -f $RPM_BUILD_ROOT%{_mandir}/man?/*suse*
 install -m 0644 dracut.conf.d/suse.conf.example   $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/01-dist.conf
 %endif
 
-%if 0%{?fedora} || 0%{?rhel} || 0%{?suse_version}
-install -m 0644 dracut.conf.d/fips.conf.example $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/40-fips.conf
-%endif
-
-%if 0%{?fedora} <= 12 && 0%{?rhel} < 6 && 0%{?suse_version} <= 9999
+%if 0%{?fedora} == 0 && 0%{?rhel} == 0 && 0%{?suse_version} <= 9999
 rm -f -- $RPM_BUILD_ROOT%{_bindir}/mkinitrd
 rm -f -- $RPM_BUILD_ROOT%{_bindir}/lsinitrd
 %endif
 
-%if 0%{?fedora} || 0%{?rhel} > 6
-# FIXME: remove after F19
-mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/kernel/postinst.d
-install -m 0755 51-dracut-rescue-postinst.sh $RPM_BUILD_ROOT%{_sysconfdir}/kernel/postinst.d/51-dracut-rescue-postinst.sh
-
+%if 0%{?fedora} || 0%{?rhel}
 echo 'hostonly="no"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/02-generic-image.conf
 echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/02-rescue.conf
 %endif
-
-%if 0%{?fedora} || 0%{?rhel} || 0%{?suse_version}
-> $RPM_BUILD_ROOT/etc/system-fips
-%endif
-
-%clean
-rm -rf -- $RPM_BUILD_ROOT
 
 %files
 %defattr(-,root,root,0755)
@@ -349,7 +273,7 @@ rm -rf -- $RPM_BUILD_ROOT
 %{_bindir}/dracut
 %{_datadir}/bash-completion/completions/dracut
 %{_datadir}/bash-completion/completions/lsinitrd
-%if 0%{?fedora} > 12 || 0%{?rhel} >= 6 || 0%{?suse_version} > 9999
+%if 0%{?fedora} || 0%{?rhel} || 0%{?suse_version} > 9999
 %{_bindir}/mkinitrd
 %{_bindir}/lsinitrd
 %endif
@@ -375,7 +299,7 @@ rm -rf -- $RPM_BUILD_ROOT
 %if %{with doc}
 %{_mandir}/man8/dracut.8*
 %{_mandir}/man8/*service.8*
-%if 0%{?fedora} > 12 || 0%{?rhel} >= 6 || 0%{?suse_version} > 9999
+%if 0%{?fedora} || 0%{?rhel} || 0%{?suse_version} > 9999
 %{_mandir}/man8/mkinitrd.8*
 %{_mandir}/man1/lsinitrd.1*
 %endif
@@ -411,6 +335,7 @@ rm -rf -- $RPM_BUILD_ROOT
 %{dracutlibdir}/modules.d/90mdraid
 %{dracutlibdir}/modules.d/90multipath
 %{dracutlibdir}/modules.d/90multipath-hostonly
+%{dracutlibdir}/modules.d/90stratis
 %{dracutlibdir}/modules.d/90qemu
 %{dracutlibdir}/modules.d/91crypt-gpg
 %{dracutlibdir}/modules.d/91crypt-loop
@@ -469,8 +394,14 @@ rm -rf -- $RPM_BUILD_ROOT
 %{_unitdir}/initrd.target.wants/dracut-pre-udev.service
 
 %endif
-%if 0%{?fedora} || 0%{?rhel} > 6
+%if 0%{?fedora} || 0%{?rhel}
 %{_prefix}/lib/kernel/install.d/50-dracut.install
+%endif
+
+%if 0%{?fedora} || 0%{?rhel} || 0%{?suse_version}
+%defattr(-,root,root,0755)
+%{dracutlibdir}/modules.d/01fips
+%{dracutlibdir}/modules.d/02fips-aesni
 %endif
 
 %files network
@@ -491,18 +422,6 @@ rm -rf -- $RPM_BUILD_ROOT
 %{dracutlibdir}/modules.d/95znet
 %endif
 %{dracutlibdir}/modules.d/99uefi-lib
-
-%if 0%{?fedora} || 0%{?rhel} || 0%{?suse_version}
-%files fips
-%defattr(-,root,root,0755)
-%{dracutlibdir}/modules.d/01fips
-%{dracutlibdir}/dracut.conf.d/40-fips.conf
-%config(missingok) /etc/system-fips
-%endif
-
-%files fips-aesni
-%defattr(-,root,root,0755)
-%{dracutlibdir}/modules.d/02fips-aesni
 
 %files caps
 %defattr(-,root,root,0755)
@@ -534,9 +453,8 @@ rm -rf -- $RPM_BUILD_ROOT
 %files config-rescue
 %defattr(-,root,root,0755)
 %{dracutlibdir}/dracut.conf.d/02-rescue.conf
-%if 0%{?fedora} || 0%{?rhel} > 6
+%if 0%{?fedora} || 0%{?rhel}
 %{_prefix}/lib/kernel/install.d/51-dracut-rescue.install
-%{_sysconfdir}/kernel/postinst.d/51-dracut-rescue-postinst.sh
 %endif
 
 %changelog
