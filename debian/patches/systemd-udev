@@ -8,3 +8,14 @@
  fi
  
  [[ -d $systemdsystemunitdir ]] \
+@@ -1676,9 +1675,8 @@
+                 _src="*"
+                 dinfo "*** Constructing ${ucode_dest[$idx]} ****"
+                 if [[ $hostonly ]]; then
+-                    _src=$(get_ucode_file)
++                    _src="$(get_ucode_file)*"
+                     [[ $_src ]] || break
+-                    [[ -r $_fwdir/$_fw/$_src ]] || break
+                 fi
+ 
+                 for i in $_fwdir/$_fw/$_src; do
