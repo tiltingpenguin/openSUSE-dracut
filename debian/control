@@ -15,7 +15,7 @@ Suggests: dracut-network
 Depends: dracut-core (>= ${binary:Version}), dracut-core (<< ${binary:Version}+b+~)
 Provides: linux-initramfs-tool
 Conflicts: initramfs-tools, live-tools
-Description: Low-level tool for generating an initramfs image (automation)
+Description: dracut is an event driven initramfs infrastructure
  This package builds a bootable initramfs for Linux kernel packages.  The
  initramfs is loaded along with the kernel and is responsible for
  mounting the root filesystem and starting the main init system.
@@ -27,7 +27,7 @@ Recommends: cryptsetup, dmsetup, dmraid, lvm2, mdadm, console-setup, binutils, s
 Depends: cpio, kmod, udev, kpartx, util-linux (>= 2.20), pkg-config, libkmod2, e2fsprogs, ${shlibs:Depends}, ${misc:Depends}
 Breaks: dracut-network (<< 043-2), dracut (<< 044+3-2~)
 Replaces: dracut-network (<< 043-2), dracut (<< 044+3-2~)
-Description: Low-level tool for generating an initramfs image (core tools)
+Description: dracut is an event driven initramfs infrastructure (core tools)
  Unlike existing initramfs's, this is an attempt at having as little as
  possible hard-coded into the initramfs as possible.  The initramfs has
  (basically) one purpose in life -- getting the rootfs mounted so that
@@ -42,7 +42,7 @@ Package: dracut-network
 Architecture: all
 Recommends: nfs-common, open-iscsi, nbd-client, curl
 Depends: dracut-core, iputils-arping, isc-dhcp-client, ${misc:Depends}
-Description: Low-level tool for generating an initramfs image (network modules)
+Description: dracut is an event driven initramfs infrastructure (network modules)
  Unlike existing initramfs's, this is an attempt at having as little as
  possible hard-coded into the initramfs as possible.  The initramfs has
  (basically) one purpose in life -- getting the rootfs mounted so that
@@ -56,11 +56,11 @@ Description: Low-level tool for generating an initramfs image (network modules)
 Package: dracut-config-generic
 Architecture: all
 Depends: dracut-core
-Description: Low-level tool for generating an initramfs image
+Description: dracut is an event driven initramfs infrastructure
  This is the dracut configuration to turn off hostonly image generation
 
 Package: dracut-config-rescue
 Architecture: all
 Depends: dracut-core
-Description: Low-level tool for generating an initramfs image
+Description: dracut is an event driven initramfs infrastructure
  This is the dracut configuration to turn on rescue image generation
