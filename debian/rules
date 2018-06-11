@@ -1,6 +1,8 @@
 #!/usr/bin/make -f
 
 export DH_VERBOSE=1
+DPKG_EXPORT_BUILDTOOLS=1
+-include /usr/share/dpkg/buildtools.mk
 
 %:
 	dh $@
