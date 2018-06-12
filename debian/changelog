@@ -1,3 +1,13 @@
+dracut (047+31-2) unstable; urgency=low
+
+  [ Helmut Grohne ]
+  * Fix FTCBFS: Let buildtools.mk export PKG_CONFIG etc. Closes: #901173
+
+  [ Thomas Lange ]
+  * add patch for adding crc32c when using ext3
+
+ -- Thomas Lange <lange@debian.org>  Tue, 12 Jun 2018 13:29:28 +0200
+
 dracut (047+31-1) unstable; urgency=medium
 
   * new upstream version
