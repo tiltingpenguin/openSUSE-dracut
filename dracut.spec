@@ -93,9 +93,7 @@ Requires: util-linux-ng >= 2.21
 %endif
 
 %if 0%{?fedora} || 0%{?rhel} || 0%{?suse_version}
-Requires: hmaccalc
-Requires: nss
-Requires: nss-softokn-freebl
+Requires: libkcapi-hmaccalc
 %endif
 
 %description
@@ -204,7 +202,6 @@ echo "DRACUT_VERSION=%{version}-%{release}" > $RPM_BUILD_ROOT/%{dracutlibdir}/dr
 
 %if 0%{?fedora} == 0 && 0%{?rhel} == 0 && 0%{?suse_version} == 0
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/01fips
-rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/02fips-aesni
 %endif
 
 %if %{defined _unitdir}
@@ -227,6 +224,7 @@ rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/98integrity
 
 %ifnarch s390 s390x
 # remove architecture specific modules
+rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/00warpclock
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/80cms
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/81cio_ignore
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/91zipl
@@ -234,6 +232,7 @@ rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95dasd
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95dasd_mod
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95dasd_rules
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95dcssblk
+rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95qeth_rules
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95zfcp
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95zfcp_rules
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/95znet
@@ -261,10 +260,13 @@ rm -f -- $RPM_BUILD_ROOT%{_bindir}/lsinitrd
 %if 0%{?fedora} || 0%{?rhel}
 echo 'hostonly="no"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/02-generic-image.conf
 echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/02-rescue.conf
+
+# FIXME: remove after F30
+mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/kernel/postinst.d
+install -m 0755 51-dracut-rescue-postinst.sh $RPM_BUILD_ROOT%{_sysconfdir}/kernel/postinst.d/51-dracut-rescue-postinst.sh
 %endif
 
 %files
-%defattr(-,root,root,0755)
 %if %{with doc}
 %doc README HACKING TODO AUTHORS NEWS dracut.html dracut.png dracut.svg
 %endif
@@ -315,6 +317,12 @@ echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/
 %endif
 %{dracutlibdir}/modules.d/00bash
 %{dracutlibdir}/modules.d/00systemd
+%ifnarch s390 s390x
+%{dracutlibdir}/modules.d/00warpclock
+%endif
+%if 0%{?fedora} || 0%{?rhel} || 0%{?suse_version}
+%{dracutlibdir}/modules.d/01fips
+%endif
 %{dracutlibdir}/modules.d/01systemd-initrd
 %{dracutlibdir}/modules.d/03modsign
 %{dracutlibdir}/modules.d/03rescue
@@ -334,7 +342,6 @@ echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/
 %{dracutlibdir}/modules.d/90lvm
 %{dracutlibdir}/modules.d/90mdraid
 %{dracutlibdir}/modules.d/90multipath
-%{dracutlibdir}/modules.d/90multipath-hostonly
 %{dracutlibdir}/modules.d/90stratis
 %{dracutlibdir}/modules.d/90qemu
 %{dracutlibdir}/modules.d/91crypt-gpg
@@ -355,6 +362,7 @@ echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/
 %{dracutlibdir}/modules.d/95dasd_mod
 %{dracutlibdir}/modules.d/95dasd_rules
 %{dracutlibdir}/modules.d/95dcssblk
+%{dracutlibdir}/modules.d/95qeth_rules
 %{dracutlibdir}/modules.d/95zfcp
 %{dracutlibdir}/modules.d/95zfcp_rules
 %endif
@@ -398,14 +406,7 @@ echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/
 %{_prefix}/lib/kernel/install.d/50-dracut.install
 %endif
 
-%if 0%{?fedora} || 0%{?rhel} || 0%{?suse_version}
-%defattr(-,root,root,0755)
-%{dracutlibdir}/modules.d/01fips
-%{dracutlibdir}/modules.d/02fips-aesni
-%endif
-
 %files network
-%defattr(-,root,root,0755)
 %{dracutlibdir}/modules.d/02systemd-networkd
 %{dracutlibdir}/modules.d/40network
 %{dracutlibdir}/modules.d/45ifcfg
@@ -424,19 +425,15 @@ echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/
 %{dracutlibdir}/modules.d/99uefi-lib
 
 %files caps
-%defattr(-,root,root,0755)
 %{dracutlibdir}/modules.d/02caps
 
 %files live
-%defattr(-,root,root,0755)
 %{dracutlibdir}/modules.d/99img-lib
 %{dracutlibdir}/modules.d/90dmsquash-live
 %{dracutlibdir}/modules.d/90dmsquash-live-ntfs
 %{dracutlibdir}/modules.d/90livenet
 
 %files tools
-%defattr(-,root,root,0755)
-
 %if %{with doc}
 %doc %{_mandir}/man8/dracut-catimages.8*
 %endif
@@ -447,14 +444,14 @@ echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/
 %dir /var/lib/dracut/overlay
 
 %files config-generic
-%defattr(-,root,root,0755)
 %{dracutlibdir}/dracut.conf.d/02-generic-image.conf
 
 %files config-rescue
-%defattr(-,root,root,0755)
 %{dracutlibdir}/dracut.conf.d/02-rescue.conf
 %if 0%{?fedora} || 0%{?rhel}
 %{_prefix}/lib/kernel/install.d/51-dracut-rescue.install
+# FIXME: remove after F30
+%{_sysconfdir}/kernel/postinst.d/51-dracut-rescue-postinst.sh
 %endif
 
 %changelog
