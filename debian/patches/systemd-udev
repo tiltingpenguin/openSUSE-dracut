@@ -1,14 +1,6 @@
 --- a/dracut.sh
 +++ b/dracut.sh
-@@ -1297,7 +1297,6 @@
- 
- if ! [[ -d "$systemdutildir" ]]; then
-     [[ ! -h /lib ]] && [[ -d /lib/systemd ]] && systemdutildir=/lib/systemd
--    [[ -d /usr/lib/systemd ]] && systemdutildir=/usr/lib/systemd
- fi
- 
- [[ -d $systemdsystemunitdir ]] \
-@@ -1676,9 +1675,8 @@
+@@ -1692,9 +1692,8 @@
                  _src="*"
                  dinfo "*** Constructing ${ucode_dest[$idx]} ****"
                  if [[ $hostonly ]]; then
