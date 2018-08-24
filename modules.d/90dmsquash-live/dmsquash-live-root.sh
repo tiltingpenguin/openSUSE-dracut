@@ -137,7 +137,7 @@ do_live_overlay() {
                 fi
                 if [ -n "$overlayfs" ]; then
                     unset -v overlayfs
-                    [ -n "$DRACUT_SYSTEMD" ] && reloadsysrootmountunit="yes"
+                    [ -n "$DRACUT_SYSTEMD" ] && reloadsysrootmountunit=":>/xor_overlayfs;"
                 fi
                 setup="yes"
             else
@@ -148,7 +148,7 @@ do_live_overlay() {
                     ln -s /run/initramfs/overlayfs/ovlwork /run/ovlwork$opt
                     if [ -z "$overlayfs" ]; then
                         overlayfs="yes"
-                        [ -n "$DRACUT_SYSTEMD" ] && reloadsysrootmountunit="yes"
+                        [ -n "$DRACUT_SYSTEMD" ] && reloadsysrootmountunit=":>/xor_overlayfs;"
                     fi
                     setup="yes"
                 fi
@@ -159,7 +159,7 @@ do_live_overlay() {
             ln -s /run/initramfs/overlayfs$pathspec/../ovlwork /run/ovlwork$opt
             if [ -z "$overlayfs" ]; then
                 overlayfs="yes"
-                [ -n "$DRACUT_SYSTEMD" ] && reloadsysrootmountunit="yes"
+                [ -n "$DRACUT_SYSTEMD" ] && reloadsysrootmountunit=":>/xor_overlayfs;"
             fi
             setup="yes"
         fi
@@ -168,8 +168,7 @@ do_live_overlay() {
         modprobe overlay
         if [ $? != 0 ]; then
             m='OverlayFS is not available; using temporary Device-mapper overlay.'
-            unset -v overlayfs setup
-            [ -n "$reloadsysrootmountunit" ] && unset -v reloadsysrootmountunit
+            unset -v overlayfs setup reloadsysrootmountunit
         fi
     fi
 
@@ -181,7 +180,7 @@ do_live_overlay() {
                 m='   Unable to find a persistent overlay; using a temporary one.'
             m="$m"$'\n      All root filesystem changes will be lost on shutdown.'
             m="$m"$'\n         Press [Enter] to continue.'
-            echo -e "\n\n\n\n${m}\n\n\n" > /dev/kmsg
+            printf "\n\n\n\n${m}\n\n\n" > /dev/kmsg
             if [ -n "$DRACUT_SYSTEMD" ]; then
                 if type plymouth >/dev/null 2>&1 && plymouth --ping ; then
                     if getargbool 0 rhgb || getargbool 0 splash ; then
@@ -203,6 +202,11 @@ do_live_overlay() {
         if [ -n "$overlayfs" ]; then
             mkdir -m 0755 /run/overlayfs
             mkdir -m 0755 /run/ovlwork
+            if [ -n "$readonly_overlay" ] && ! [ -h /run/overlayfs-r ]; then
+                info "No persistent overlay found."
+                unset -v readonly_overlay
+                [ -n "$DRACUT_SYSTEMD" ] && reloadsysrootmountunit="${reloadsysrootmountunit}:>/xor_readonly;"
+            fi
         else
             dd if=/dev/null of=/overlay bs=1024 count=1 seek=$((overlay_size*1024)) 2> /dev/null
             if [ -n "$setup" -a -n "$readonly_overlay" ]; then
@@ -250,14 +254,13 @@ do_live_overlay() {
         echo 0 $sz snapshot $base $over PO 8 | dmsetup create live-rw
     fi
 
-    # Create a device that always points to a ro base image
-    if [ -n "$overlayfs" ]; then
-        BASE_LOOPDUP=$(losetup -f --show -r $BASE_LOOPDEV)
-        echo 0 $sz linear $BASE_LOOPDUP 0 | dmsetup create --readonly live-base
-    else
+    # Create a device for the ro base of overlayed file systems.
+    if [ -z "$overlayfs" ]; then
         echo 0 $sz linear $BASE_LOOPDEV 0 | dmsetup create --readonly live-base
     fi
+    ln -s $BASE_LOOPDEV /dev/live-base
 }
+# end do_live_overlay()
 
 # we might have a genMinInstDelta delta file for anaconda to take advantage of
 if [ -e /run/initramfs/live/${live_dir}/osmin.img ]; then
@@ -291,10 +294,21 @@ if [ -e "$SQUASHED" ]; then
     mkdir -m 0755 -p /run/initramfs/squashfs
     mount -n -t squashfs -o ro $SQUASHED_LOOPDEV /run/initramfs/squashfs
 
-    if [ -f /run/initramfs/squashfs/LiveOS/rootfs.img ]; then
-        FSIMG="/run/initramfs/squashfs/LiveOS/rootfs.img"
-    elif [ -f /run/initramfs/squashfs/LiveOS/ext3fs.img ]; then
-        FSIMG="/run/initramfs/squashfs/LiveOS/ext3fs.img"
+    if [ -d /run/initramfs/squashfs/LiveOS ]; then
+        if [ -f /run/initramfs/squashfs/LiveOS/rootfs.img ]; then
+            FSIMG="/run/initramfs/squashfs/LiveOS/rootfs.img"
+        elif [ -f /run/initramfs/squashfs/LiveOS/ext3fs.img ]; then
+            FSIMG="/run/initramfs/squashfs/LiveOS/ext3fs.img"
+        fi
+    elif [ -d /run/initramfs/squashfs/proc ]; then
+        FSIMG=$SQUASHED
+        if [ -z "$overlayfs" ]; then
+            overlayfs="yes"
+            [ -n "$DRACUT_SYSTEMD" ] && reloadsysrootmountunit=":>/xor_overlayfs;"
+        fi
+    else
+        die "Failed to find a root filesystem in $SQUASHED."
+        exit 1
     fi
 else
     # we might have an embedded fs image to use as rootfs (uncompressed live)
@@ -312,8 +326,8 @@ else
     fi
 fi
 
-if [ -n "$FSIMG" ] ; then
-    if [ -n "$writable_fsimg" ] ; then
+if [ -n "$FSIMG" ]; then
+    if [ -n "$writable_fsimg" ]; then
         # mount the provided filesystem read/write
         echo "Unpacking live filesystem (may take some time)" > /dev/kmsg
         mkdir -m 0755 /run/initramfs/fsimg/
@@ -336,17 +350,19 @@ if [ -n "$FSIMG" ] ; then
             setup=yes
         fi
     fi
-    BASE_LOOPDEV=$(losetup -f --show $opt $FSIMG)
-    sz=$(blockdev --getsz $BASE_LOOPDEV)
-    if [ "$setup" == rw ]; then
+    if [ "$FSIMG" = "$SQUASHED" ]; then
+        BASE_LOOPDEV=$SQUASHED_LOOPDEV
+    else
+        BASE_LOOPDEV=$(losetup -f --show $opt $FSIMG)
+        sz=$(blockdev --getsz $BASE_LOOPDEV)
+    fi
+    if [ "$setup" = rw ]; then
         echo 0 $sz linear $BASE_LOOPDEV 0 | dmsetup create live-rw
     else
         # Add a DM snapshot or OverlayFS for writes.
         do_live_overlay
     fi
 fi
-
-[ -e "$SQUASHED" ] && [ -z "$overlayfs" ] && umount -l /run/initramfs/squashfs
 
 if [ -b "$OSMIN_LOOPDEV" ]; then
     # set up the devicemapper snapshot device, which will merge
@@ -355,7 +371,7 @@ if [ -b "$OSMIN_LOOPDEV" ]; then
 fi
 
 if [ -n "$reloadsysrootmountunit" ]; then
-    > /xor_overlayfs
+    eval "$reloadsysrootmountunit"
     systemctl daemon-reload
 fi
 
@@ -363,33 +379,33 @@ ROOTFLAGS="$(getarg rootflags)"
 
 if [ -n "$overlayfs" ]; then
     mkdir -m 0755 /run/rootfsbase
-    if [ -n "$reset_overlay" ] && [ -L /run/overlayfs ]; then
+    if [ -n "$reset_overlay" ] && [ -h /run/overlayfs ]; then
         ovlfs=$(readlink /run/overlayfs)
         info "Resetting the OverlayFS overlay directory."
         rm -r -- ${ovlfs}/* ${ovlfs}/.* >/dev/null 2>&1
     fi
-    if [ -n "$readonly_overlay" ]; then
-        mkdir -m 0755 /run/rootfsbase-r
-        mount -r $FSIMG /run/rootfsbase-r
-        mount -t overlay LiveOS_rootfs-r -oro,lowerdir=/run/overlayfs-r:/run/rootfsbase-r /run/rootfsbase
+    if [ -n "$readonly_overlay" ] && [ -h /run/overlayfs-r ]; then
+        ovlfs=lowerdir=/run/overlayfs-r:/run/rootfsbase
     else
-        mount -r $FSIMG /run/rootfsbase
+        ovlfs=lowerdir=/run/rootfsbase
     fi
+    mount -r $FSIMG /run/rootfsbase
     if [ -z "$DRACUT_SYSTEMD" ]; then
-        #FIXME What to link to /dev/root? Is it even needed?
         printf 'mount -t overlay LiveOS_rootfs -o%s,%s %s\n' "$ROOTFLAGS" \
-        'lowerdir=/run/rootfsbase,upperdir=/run/overlayfs,workdir=/run/ovlwork' \
+        "$ovlfs",upperdir=/run/overlayfs,workdir=/run/ovlwork \
         "$NEWROOT" > $hookdir/mount/01-$$-live.sh
     fi
 else
-    ln -s /dev/mapper/live-rw /dev/root
     if [ -z "$DRACUT_SYSTEMD" ]; then
         [ -n "$ROOTFLAGS" ] && ROOTFLAGS="-o $ROOTFLAGS"
         printf 'mount %s /dev/mapper/live-rw %s\n' "$ROOTFLAGS" "$NEWROOT" > $hookdir/mount/01-$$-live.sh
     fi
-    ln -s $BASE_LOOPDEV /run/rootfsbase
 fi
+[ -e "$SQUASHED" ] && umount -l /run/initramfs/squashfs
+
+ln -s null /dev/root
 
 need_shutdown
 
 exit 0
+
