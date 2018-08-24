@@ -1,7 +1,6 @@
 usr/lib/dracut
 usr/lib/dracut/modules.d/00dash
 usr/lib/dracut/modules.d/01fips
-usr/lib/dracut/modules.d/02fips-aesni
 usr/lib/dracut/modules.d/90crypt
 usr/lib/dracut/modules.d/90dm
 usr/lib/dracut/modules.d/90dmraid
