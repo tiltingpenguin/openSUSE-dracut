@@ -5,6 +5,7 @@ usr/lib/dracut/modules.d/90crypt
 usr/lib/dracut/modules.d/90dm
 usr/lib/dracut/modules.d/90dmraid
 usr/lib/dracut/modules.d/90kernel-modules
+usr/lib/dracut/modules.d/90kernel-modules-extra
 usr/lib/dracut/modules.d/80lvmmerge
 usr/lib/dracut/modules.d/90lvm
 usr/lib/dracut/modules.d/90mdraid

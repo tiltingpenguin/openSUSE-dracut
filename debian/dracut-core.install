@@ -38,6 +38,7 @@ modules.d/90dmraid		usr/lib/dracut/modules.d
 modules.d/90dmsquash-live	usr/lib/dracut/modules.d
 modules.d/90dm			usr/lib/dracut/modules.d
 modules.d/90kernel-modules	usr/lib/dracut/modules.d
+modules.d/90kernel-modules-extra	usr/lib/dracut/modules.d
 modules.d/80lvmmerge		usr/lib/dracut/modules.d
 modules.d/81cio_ignore		usr/lib/dracut/modules.d
 modules.d/90lvm			usr/lib/dracut/modules.d
