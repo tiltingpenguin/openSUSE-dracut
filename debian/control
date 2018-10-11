@@ -53,6 +53,18 @@ Description: dracut is an event driven initramfs infrastructure (network modules
  Having the root on MD, LVM2, LUKS is supported as well as NFS, iSCSI,
  NBD and FCOE with dracut-network.
 
+Package: dracut-squash
+Architecture: all
+Recommends: nfs-common, open-iscsi, nbd-client, curl
+Depends: dracut-core, squashfs-tools, ${misc:Depends}
+Description: dracut is an event driven initramfs infrastructure (squashfs modules)
+ Dracut package to build an initramfs with most files in a squashfs
+ image.
+ .
+ This package provides a dracut module to build an initramfs, but
+ store most files in a squashfs image, result in a smaller initramfs
+ size and reduce runtime memory usage.
+
 Package: dracut-config-generic
 Architecture: all
 Depends: dracut-core
