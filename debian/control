@@ -55,7 +55,6 @@ Description: dracut is an event driven initramfs infrastructure (network modules
 
 Package: dracut-squash
 Architecture: all
-Recommends: nfs-common, open-iscsi, nbd-client, curl
 Depends: dracut-core, squashfs-tools, ${misc:Depends}
 Description: dracut is an event driven initramfs infrastructure (squashfs modules)
  Dracut package to build an initramfs with most files in a squashfs
@@ -64,6 +63,15 @@ Description: dracut is an event driven initramfs infrastructure (squashfs module
  This package provides a dracut module to build an initramfs, but
  store most files in a squashfs image, result in a smaller initramfs
  size and reduce runtime memory usage.
+
+Package: dracut-live
+Architecture: all
+Depends: dracut-network, curl, dmsetup, ${misc:Depends}
+Description: dracut is an event driven initramfs infrastructure (squashfs modules)
+ Dracut package to build a dracut initramfs with live image capabilities
+ .
+ This package requires everything which is needed to build an
+ initramfs with dracut, with live image capabilities, like Live CDs.
 
 Package: dracut-config-generic
 Architecture: all
