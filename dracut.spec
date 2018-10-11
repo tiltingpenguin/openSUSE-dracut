@@ -49,7 +49,7 @@ BuildRequires: docbook-style-xsl docbook-dtds libxslt
 %endif
 
 %if 0%{?suse_version}
--BuildRequires: docbook-xsl-stylesheets libxslt
+BuildRequires: docbook-xsl-stylesheets libxslt
 %endif
 
 BuildRequires: asciidoc
@@ -177,6 +177,16 @@ Requires: %{name} = %{version}-%{release}
 
 %description tools
 This package contains tools to assemble the local initrd and host configuration.
+
+%package squash
+Summary: dracut module to build an initramfs with most files in a squashfs image
+Requires: %{name} = %{version}-%{release}
+Requires: squashfs-tools
+
+%description squash
+This package provides a dracut module to build an initramfs, but store most files
+in a squashfs image, result in a smaller initramfs size and reduce runtime memory
+usage.
 
 %prep
 %autosetup -n %{name}-%{version} -S git_am
@@ -340,6 +350,7 @@ install -m 0755 51-dracut-rescue-postinst.sh $RPM_BUILD_ROOT%{_sysconfdir}/kerne
 %{dracutlibdir}/modules.d/90dm
 %{dracutlibdir}/modules.d/90dmraid
 %{dracutlibdir}/modules.d/90kernel-modules
+%{dracutlibdir}/modules.d/90kernel-modules-extra
 %{dracutlibdir}/modules.d/90lvm
 %{dracutlibdir}/modules.d/90mdraid
 %{dracutlibdir}/modules.d/90multipath
@@ -409,6 +420,8 @@ install -m 0755 51-dracut-rescue-postinst.sh $RPM_BUILD_ROOT%{_sysconfdir}/kerne
 
 %files network
 %{dracutlibdir}/modules.d/02systemd-networkd
+%{dracutlibdir}/modules.d/35network-manager
+%{dracutlibdir}/modules.d/35network-legacy
 %{dracutlibdir}/modules.d/40network
 %{dracutlibdir}/modules.d/45ifcfg
 %{dracutlibdir}/modules.d/90kernel-network-modules
@@ -443,6 +456,9 @@ install -m 0755 51-dracut-rescue-postinst.sh $RPM_BUILD_ROOT%{_sysconfdir}/kerne
 %dir /boot/dracut
 %dir /var/lib/dracut
 %dir /var/lib/dracut/overlay
+
+%files squash
+%{dracutlibdir}/modules.d/99squash
 
 %files config-generic
 %{dracutlibdir}/dracut.conf.d/02-generic-image.conf

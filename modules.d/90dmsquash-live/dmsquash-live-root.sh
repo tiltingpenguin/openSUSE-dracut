@@ -109,15 +109,15 @@ do_live_overlay() {
 
     if [ -z "$overlay" ]; then
         pathspec="/${live_dir}/overlay-$l-$u"
-    elif ( echo $overlay | grep -q ":" ); then
+    elif strstr $overlay ":"; then
         # pathspec specified, extract
-        pathspec=$( echo $overlay | sed -e 's/^.*://' )
+        pathspec=${overlay##*:}
     fi
 
     if [ -z "$pathspec" -o "$pathspec" = "auto" ]; then
         pathspec="/${live_dir}/overlay-$l-$u"
     fi
-    devspec=$( echo $overlay | sed -e 's/:.*$//' )
+    devspec=${overlay%%:*}
 
     # need to know where to look for the overlay
     if [ -z "$setup" -a -n "$devspec" -a -n "$pathspec" -a -n "$overlay" ]; then
@@ -146,10 +146,10 @@ do_live_overlay() {
                     [ -d /run/initramfs/overlayfs/ovlwork ]; then
                     ln -s /run/initramfs/overlayfs/overlayfs /run/overlayfs$opt
                     ln -s /run/initramfs/overlayfs/ovlwork /run/ovlwork$opt
-                    if [ -z "$overlayfs" ]; then
-                        overlayfs="yes"
-                        [ -n "$DRACUT_SYSTEMD" ] && reloadsysrootmountunit=":>/xor_overlayfs;"
+                    if [ -z "$overlayfs" ] && [ -n "$DRACUT_SYSTEMD" ]; then
+                        reloadsysrootmountunit=":>/xor_overlayfs;"
                     fi
+                    overlayfs="required"
                     setup="yes"
                 fi
             fi
@@ -157,18 +157,24 @@ do_live_overlay() {
             [ -d /run/initramfs/overlayfs$pathspec/../ovlwork ]; then
             ln -s /run/initramfs/overlayfs$pathspec /run/overlayfs$opt
             ln -s /run/initramfs/overlayfs$pathspec/../ovlwork /run/ovlwork$opt
-            if [ -z "$overlayfs" ]; then
-                overlayfs="yes"
-                [ -n "$DRACUT_SYSTEMD" ] && reloadsysrootmountunit=":>/xor_overlayfs;"
+            if [ -z "$overlayfs" ] && [ -n "$DRACUT_SYSTEMD" ]; then
+                reloadsysrootmountunit=":>/xor_overlayfs;"
             fi
+            overlayfs="required"
             setup="yes"
         fi
     fi
     if [ -n "$overlayfs" ]; then
         modprobe overlay
         if [ $? != 0 ]; then
+            if [ "$overlayfs" = required ]; then
+                die "OverlayFS is required but not available."
+                exit 1
+            fi
+            [ -n "$DRACUT_SYSTEMD" ] && reloadsysrootmountunit=":>/xor_overlayfs;"
             m='OverlayFS is not available; using temporary Device-mapper overlay.'
-            unset -v overlayfs setup reloadsysrootmountunit
+            info $m
+            unset -v overlayfs setup
         fi
     fi
 
@@ -302,10 +308,10 @@ if [ -e "$SQUASHED" ]; then
         fi
     elif [ -d /run/initramfs/squashfs/proc ]; then
         FSIMG=$SQUASHED
-        if [ -z "$overlayfs" ]; then
-            overlayfs="yes"
-            [ -n "$DRACUT_SYSTEMD" ] && reloadsysrootmountunit=":>/xor_overlayfs;"
+        if [ -z "$overlayfs" ] && [ -n "$DRACUT_SYSTEMD" ]; then
+            reloadsysrootmountunit=":>/xor_overlayfs;"
         fi
+        overlayfs="required"
     else
         die "Failed to find a root filesystem in $SQUASHED."
         exit 1
