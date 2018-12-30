@@ -4,7 +4,7 @@
 check() {
     local _rootdev
     # If our prerequisites are not met, fail anyways.
-    require_binaries hostname iscsi-iname iscsiadm iscsid || return 1
+    require_binaries iscsi-iname iscsiadm iscsid || return 1
 
     # If hostonly was requested, fail the check if we are not actually
     # booting from root.
@@ -206,7 +206,7 @@ cmdline() {
 install() {
     inst_multiple -o iscsiuio
     inst_libdir_file 'libgcc_s.so*'
-    inst_multiple umount hostname iscsi-iname iscsiadm iscsid
+    inst_multiple umount iscsi-iname iscsiadm iscsid
 
     inst_multiple -o \
         $systemdsystemunitdir/iscsid.socket \
@@ -257,14 +257,6 @@ install() {
             ; do
             ln_r "$systemdsystemunitdir/${i}" "$systemdsystemunitdir/basic.target.wants/${i}"
         done
-
-        # Make sure iscsid is started after dracut-cmdline and ready for the initqueue
-        mkdir -p "${initdir}/$systemdsystemunitdir/iscsid.service.d"
-        (
-            echo "[Unit]"
-            echo "After=dracut-cmdline.service"
-            echo "Before=dracut-initqueue.service"
-        ) > "${initdir}/$systemdsystemunitdir/iscsid.service.d/dracut.conf"
     fi
     inst_dir /var/lib/iscsi
     dracut_need_initqueue
