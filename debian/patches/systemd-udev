@@ -2,7 +2,7 @@
 +++ b/dracut.sh
 @@ -1692,9 +1692,8 @@
                  _src="*"
-                 dinfo "*** Constructing ${ucode_dest[$idx]} ****"
+                 dinfo "*** Constructing ${ucode_dest[$idx]} ***"
                  if [[ $hostonly ]]; then
 -                    _src=$(get_ucode_file)
 +                    _src="$(get_ucode_file)*"
