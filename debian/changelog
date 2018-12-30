@@ -1,3 +1,9 @@
+dracut (049+26-1) unstable; urgency=low
+
+  * new upstream version
+
+ -- Thomas Lange <lange@debian.org>  Sun, 30 Dec 2018 17:06:13 +0100
+
 dracut (048+80-1) unstable; urgency=low
 
   * new upstream
