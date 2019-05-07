@@ -1,3 +1,4 @@
+fix-bashism
 bash5-fix
 crc32c
 systemd-udev

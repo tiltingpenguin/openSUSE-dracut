@@ -1,0 +1,55 @@
+--- a/modules.d/90crypt/crypt-lib.sh
++++ b/modules.d/90crypt/crypt-lib.sh
+@@ -191,7 +191,7 @@
+     local device="$3"
+ 
+     # No mounting needed if the keyfile resides inside the initrd
+-    if [ "/" == "$keydev" ]; then
++    if [ "/" = "$keydev" ]; then
+         local mntp=/
+     else
+         # This creates a unique single mountpoint for *, or several for explicitly
+--- a/modules.d/90crypt/parse-keydev.sh
++++ b/modules.d/90crypt/parse-keydev.sh
+@@ -18,7 +18,7 @@
+         fi
+ 
+         # A keydev of '/' is treated as the initrd itself
+-        if [ "/" == "$keydev" ]; then
++        if [ "/" = "$keydev" ]; then
+             [ -z "$luksdev" ] && luksdev='*'
+             echo "$luksdev:$keydev:$keypath" >> /tmp/luks.keys
+             continue
+--- a/modules.d/91crypt-gpg/crypt-gpg-lib.sh
++++ b/modules.d/91crypt-gpg/crypt-gpg-lib.sh
+@@ -53,7 +53,7 @@
+         --tries 3 --tty-echo-off
+ 
+     # Clean up the smartcard gpg-agent
+-    if [ "${useSmartcard}" == "1" ]; then
++    if [ "${useSmartcard}" = "1" ]; then
+         GNUPGHOME="$gpghome" gpg-connect-agent 1>/dev/null killagent /bye
+     fi
+ 
+--- a/modules.d/95dcssblk/parse-dcssblk.sh
++++ b/modules.d/95dcssblk/parse-dcssblk.sh
+@@ -2,7 +2,7 @@
+ # -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
+ # ex: ts=8 sw=4 sts=4 et filetype=sh
+ dcssblk_arg=$(getarg rd.dcssblk=)
+-if [ $? == 0 ];then
++if [ $? = 0 ];then
+ 	info "Loading dcssblk segments=$dcssblk_arg"
+ 	modprobe dcssblk segments=$dcssblk_arg
+ fi
+--- a/modules.d/98syslog/rsyslogd-start.sh
++++ b/modules.d/98syslog/rsyslogd-start.sh
+@@ -38,7 +38,7 @@
+ [ -f /tmp/syslog.conf ] && read conf < /tmp/syslog.conf
+ [ -z "$conf" ] && conf="/etc/rsyslog.conf" && echo "$conf" > /tmp/syslog.conf
+ 
+-if [ $type == "rsyslogd" ]; then
++if [ $type = "rsyslogd" ]; then
+     template=/etc/templates/rsyslog.conf
+     if [ -n "$server" ]; then
+         rsyslog_config "$server" "$template" "$filters" > $conf
