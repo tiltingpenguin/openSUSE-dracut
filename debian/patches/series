@@ -2,6 +2,5 @@ crc32c
 systemd-udev
 plymouth
 multipath
-libdir
 initramfs-restore
 dev-shm-mount
