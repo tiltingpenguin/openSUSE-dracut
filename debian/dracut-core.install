@@ -68,5 +68,4 @@ modules.d/98syslog		usr/lib/dracut/modules.d
 modules.d/98usrmount		usr/lib/dracut/modules.d
 modules.d/99base		usr/lib/dracut/modules.d
 modules.d/99fs-lib		usr/lib/dracut/modules.d
-modules.d/99img-lib		usr/lib/dracut/modules.d
 modules.d/99shutdown		usr/lib/dracut/modules.d
