@@ -15,7 +15,7 @@ test_run() {
 	-net none \
 	-watchdog i6300esb -watchdog-action poweroff \
         -no-reboot \
-	-append "panic=1 root=LABEL=dracut rw systemd.log_level=debug systemd.log_target=console rd.retry=3 rd.debug console=ttyS0,115200n81 rd.shell=0 $DEBUGFAIL" \
+	-append "panic=1 systemd.crash_reboot root=LABEL=dracut rw systemd.log_level=debug systemd.log_target=console rd.retry=3 rd.debug console=ttyS0,115200n81 rd.shell=0 $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing || return 1
     grep -F -m 1 -q dracut-root-block-success $TESTDIR/result || return 1
 }
@@ -70,7 +70,7 @@ test_setup() {
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-m "dash udev-rules base rootfs-block fs-lib kernel-modules fs-lib" \
+	-m "dash udev-rules base rootfs-block fs-lib kernel-modules fs-lib qemu" \
 	-d "piix ide-gd_mod ata_piix ext3 sd_mod" \
         --nomdadmconf \
         --no-hostonly-cmdline -N \

@@ -7,11 +7,14 @@ KVERSION="${KVERSION-$(uname -r)}"
 #DEBUGFAIL="rd.shell rd.break rd.debug systemd.log_level=debug systemd.log_target=console"
 
 test_check() {
-    if ! [ -d "/usr/lib/python2.7/site-packages/imgcreate" ]; then
-        echo "python-imgcreate not installed"
+    for pdir in $(python -c "import site; print(site.getsitepackages())" | sed -e 's/\[\(.*\)\]/\1/' -e "s/', /' /g") ; do
+        pdir1=$(echo $pdir | sed "s/^'\(.*\)'$/\1/")
+        if [[ -d $pdir1/imgcreate ]]; then
+            return 0
+        fi
+    done
+    echo "python-imgcreate not installed"
 	return 1
-    fi
-    return 0
 }
 
 test_run() {
@@ -23,7 +26,7 @@ test_run() {
         -nographic \
         -net none \
         -no-reboot \
-        -append "panic=1 root=live:CDLABEL=LiveCD live rw quiet rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.shell=0 $DEBUGFAIL" \
+        -append "panic=1 systemd.crash_reboot root=live:CDLABEL=LiveCD live rw quiet rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.shell=0 $DEBUGFAIL" \
         -initrd "$TESTDIR"/initramfs.testing
 
     # mediacheck test with qemu GUI
@@ -52,7 +55,8 @@ test_setup() {
     dd if=/dev/zero of="$TESTDIR"/root.img count=100
 
     sudo $basedir/dracut.sh -l -i "$TESTDIR"/overlay / \
-	-a "debug dmsquash-live" \
+	-a "debug dmsquash-live qemu" \
+        -o "rngd" \
 	-d "piix ide-gd_mod ata_piix ext3 sd_mod" \
         --no-hostonly-cmdline -N \
 	-f "$TESTDIR"/initramfs.testing "$KVERSION" || return 1

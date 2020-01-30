@@ -12,14 +12,14 @@ test_run() {
 	-m 512M  -smp 2 -nographic \
 	-net none \
         -no-reboot \
-	-append "panic=1 root=/dev/dracut/root rw rd.auto=1 quiet rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug rd.shell=0 $DEBUGFAIL" \
+	-append "panic=1 systemd.crash_reboot root=/dev/dracut/root rw rd.auto=1 quiet rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug rd.shell=0 $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
     grep -F -m 1 -q dracut-root-block-success $TESTDIR/root.ext2 || return 1
 }
 
 test_setup() {
     # Create the blank file to use as a root filesystem
-    dd if=/dev/null of=$TESTDIR/root.ext2 bs=1M seek=80
+    dd if=/dev/null of=$TESTDIR/root.ext2 bs=1M seek=92
 
     kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay
@@ -56,7 +56,7 @@ test_setup() {
     (
 	export initdir=$TESTDIR/overlay
 	. $basedir/dracut-init.sh
-	inst_multiple sfdisk mke2fs poweroff cp umount
+	inst_multiple sfdisk mke2fs poweroff cp umount grep dmsetup
 	inst_hook initqueue 01 ./create-root.sh
         inst_hook initqueue/finished 01 ./finished-false.sh
 	inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
@@ -66,7 +66,7 @@ test_setup() {
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-m "dash lvm mdraid udev-rules base rootfs-block fs-lib kernel-modules" \
+	-m "dash lvm mdraid udev-rules base rootfs-block fs-lib kernel-modules qemu" \
 	-d "piix ide-gd_mod ata_piix ext2 sd_mod" \
         --no-hostonly-cmdline -N \
 	-f $TESTDIR/initramfs.makeroot $KVERSION || return 1

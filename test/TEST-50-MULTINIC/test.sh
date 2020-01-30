@@ -23,7 +23,7 @@ run_server() {
         ${SERIAL:--serial file:"$TESTDIR"/server.log} \
         -watchdog i6300esb -watchdog-action poweroff \
         -no-reboot \
-        -append "panic=1 loglevel=7 root=/dev/sda rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0" \
+        -append "panic=1 systemd.crash_reboot loglevel=7 root=/dev/sda rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0" \
         -initrd "$TESTDIR"/initramfs.server \
         -pidfile "$TESTDIR"/server.pid -daemonize || return 1
 
@@ -63,7 +63,7 @@ client_test() {
                       -device e1000,netdev=n2,mac=52:54:00:12:34:99 \
                       -watchdog i6300esb -watchdog-action poweroff \
                       -no-reboot \
-                      -append "panic=1 rd.shell=0 $cmdline $DEBUGFAIL rd.retry=5 ro console=ttyS0,115200n81 selinux=0 init=/sbin/init rd.debug systemd.log_target=console loglevel=7" \
+                      -append "panic=1 systemd.crash_reboot rd.shell=0 $cmdline $DEBUGFAIL rd.retry=5 ro console=ttyS0,115200n81 selinux=0 init=/sbin/init rd.debug systemd.log_target=console loglevel=7" \
                       -initrd "$TESTDIR"/initramfs.testing
 
     { read OK; read IFACES; } < "$TESTDIR"/client.img
@@ -281,12 +281,13 @@ test_setup() {
         inst_hook shutdown-emergency 000 ./hard-off.sh
         inst_hook emergency 000 ./hard-off.sh
         inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
+        inst_simple ./99-default.link /etc/systemd/network/99-default.link
     )
 
     # Make server's dracut image
     $basedir/dracut.sh \
         -l -i "$TESTDIR"/overlay / \
-        -m "dash udev-rules base rootfs-block fs-lib debug kernel-modules watchdog" \
+        -m "dash udev-rules base rootfs-block fs-lib debug kernel-modules watchdog qemu" \
         -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod nfsv2 nfsv3 nfsv4 nfs_acl nfs_layout_nfsv41_files nfsd e1000 i6300esb ib700wdt" \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.server "$KVERSION" || return 1

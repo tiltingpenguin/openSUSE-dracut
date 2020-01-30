@@ -15,7 +15,7 @@ test_run() {
 	-m 512M -smp 2 -nographic \
 	-net none \
         -no-reboot \
-	-append "panic=1 root=LABEL=root rw rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.shell=0 $DEBUGFAIL" \
+	-append "panic=1 systemd.crash_reboot root=LABEL=root rw rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.shell=0 $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
     grep -F -m 1 -q dracut-root-block-success $MARKER_DISKIMAGE || return 1
 }
@@ -70,7 +70,7 @@ test_setup() {
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-m "dash btrfs udev-rules base rootfs-block fs-lib kernel-modules" \
+	-m "dash btrfs udev-rules base rootfs-block fs-lib kernel-modules qemu" \
 	-d "piix ide-gd_mod ata_piix btrfs sd_mod" \
         --nomdadmconf \
         --no-hostonly-cmdline -N \

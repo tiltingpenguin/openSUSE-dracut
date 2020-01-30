@@ -26,7 +26,7 @@ run_server() {
         -net nic,macaddr=52:54:00:12:34:57,model=e1000 \
         -net socket,listen=127.0.0.1:12330 \
         -no-reboot \
-        -append "panic=1 root=/dev/sda rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0 $SERVER_DEBUG" \
+        -append "panic=1 systemd.crash_reboot root=/dev/sda rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0 $SERVER_DEBUG" \
         -initrd $TESTDIR/initramfs.server \
         -pidfile $TESTDIR/server.pid -daemonize || return 1
     sudo chmod 644 $TESTDIR/server.pid || return 1
@@ -51,7 +51,8 @@ run_client() {
         -net nic,macaddr=52:54:00:12:34:01,model=e1000 \
         -net socket,connect=127.0.0.1:12330 \
         -no-reboot \
-        -append "panic=1 rw rd.auto rd.retry=50 console=ttyS0,115200n81 selinux=0 rd.debug=0 rd.shell=0 $DEBUGFAIL $*" \
+        -acpitable file=ibft.table \
+        -append "panic=1 systemd.crash_reboot rw rd.auto rd.retry=50 console=ttyS0,115200n81 selinux=0 rd.debug=0 rd.shell=0 $DEBUGFAIL $*" \
         -initrd $TESTDIR/initramfs.testing
     if ! grep -F -m 1 -q iscsi-OK $TESTDIR/client.img; then
 	echo "CLIENT TEST END: $test_name [FAILED - BAD EXIT]"
@@ -84,6 +85,12 @@ do_test_run() {
                "rd.iscsi.initiator=$initiator" \
         || return 1
 
+    run_client "root=ibft" \
+               "root=LABEL=singleroot" \
+               "rd.iscsi.ibft=1" \
+               "rd.iscsi.firmware=1" \
+        || return 1
+
     echo "All tests passed [OK]"
     return 0
 }
@@ -109,9 +116,9 @@ test_setup() {
     fi
 
     # Create the blank file to use as a root filesystem
-    dd if=/dev/null of=$TESTDIR/root.ext3 bs=1M seek=40
-    dd if=/dev/null of=$TESTDIR/iscsidisk2.img bs=1M seek=40
-    dd if=/dev/null of=$TESTDIR/iscsidisk3.img bs=1M seek=40
+    dd if=/dev/null of=$TESTDIR/root.ext3 bs=1M seek=45
+    dd if=/dev/null of=$TESTDIR/iscsidisk2.img bs=1M seek=45
+    dd if=/dev/null of=$TESTDIR/iscsidisk3.img bs=1M seek=45
 
     kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay
@@ -153,7 +160,7 @@ test_setup() {
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-        -m "dash crypt lvm mdraid udev-rules base rootfs-block fs-lib kernel-modules" \
+        -m "dash crypt lvm mdraid udev-rules base rootfs-block fs-lib kernel-modules qemu" \
         -d "piix ide-gd_mod ata_piix ext3 sd_mod" \
         --no-hostonly-cmdline -N \
         -f $TESTDIR/initramfs.makeroot $KVERSION || return 1

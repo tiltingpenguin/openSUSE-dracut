@@ -13,7 +13,7 @@ test_run() {
 	-m 512M  -smp 2 -nographic \
 	-net none \
         -no-reboot \
-	-append "panic=1 root=/dev/dracut/root rd.auto rw rd.retry=10 console=ttyS0,115200n81 selinux=0 rd.shell=0 $DEBUGFAIL" \
+	-append "panic=1 systemd.crash_reboot root=/dev/dracut/root rd.auto rw rd.retry=10 console=ttyS0,115200n81 selinux=0 rd.shell=0 $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
     grep -F -m 1 -q dracut-root-block-success $DISKIMAGE || return 1
 }
@@ -22,7 +22,7 @@ test_setup() {
     DISKIMAGE=$TESTDIR/TEST-10-RAID-root.img
     # Create the blank file to use as a root filesystem
     rm -f -- $DISKIMAGE
-    dd if=/dev/null of=$DISKIMAGE bs=1M seek=80
+    dd if=/dev/null of=$DISKIMAGE bs=1M seek=128
 
     kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay
@@ -68,7 +68,7 @@ test_setup() {
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-m "dash crypt lvm mdraid udev-rules base rootfs-block fs-lib kernel-modules" \
+	-m "dash crypt lvm mdraid udev-rules base rootfs-block fs-lib kernel-modules qemu" \
 	-d "piix ide-gd_mod ata_piix ext2 sd_mod" \
         --nomdadmconf \
         --no-hostonly-cmdline -N \

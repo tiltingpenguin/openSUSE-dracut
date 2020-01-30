@@ -25,9 +25,10 @@ depends() {
 # called by dracut
 installkernel() {
     hostonly="" instmods drbg
-    arch=$(arch)
+    arch=$(uname -m)
     [[ $arch == x86_64 ]] && arch=x86
     [[ $arch == s390x ]] && arch=s390
+    [[ $arch == aarch64 ]] && arch=arm64
     instmods dm_crypt =crypto =drivers/crypto =arch/$arch/crypto
 }
 
@@ -67,7 +68,7 @@ install() {
         inst_hook cleanup 30 "$moddir/crypt-cleanup.sh"
     fi
 
-    if [[ $hostonly ]] && [[ -f /etc/crypttab ]]; then
+    if [[ $hostonly ]] && [[ -f $dracutsysrootdir/etc/crypttab ]]; then
         # filter /etc/crypttab for the devices we need
         while read _mapper _dev _luksfile _luksoptions || [ -n "$_mapper" ]; do
             [[ $_mapper = \#* ]] && continue
@@ -113,7 +114,7 @@ install() {
                     fi
                 done
             fi
-        done < /etc/crypttab > $initdir/etc/crypttab
+        done < $dracutsysrootdir/etc/crypttab > $initdir/etc/crypttab
         mark_hostonly /etc/crypttab
     fi
 

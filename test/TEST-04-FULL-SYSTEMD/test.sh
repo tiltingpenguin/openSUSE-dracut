@@ -23,7 +23,7 @@ client_run() {
 	-m 512M  -smp 2 -nographic \
 	-net none \
         -no-reboot \
-	-append "panic=1 root=LABEL=dracut $client_opts rd.retry=3 console=ttyS0,115200n81 selinux=0 $DEBUGOUT rd.shell=0 $DEBUGFAIL" \
+	-append "panic=1 systemd.crash_reboot root=LABEL=dracut $client_opts rd.retry=3 console=ttyS0,115200n81 selinux=0 $DEBUGOUT rd.shell=0 $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
 
     if (($? != 0)); then
@@ -173,14 +173,13 @@ EOF
         inst /usr/lib/systemd/system/dbus.service
 
         (
-            echo "FONT=latarcyrheb-sun16"
+            echo "FONT=eurlatgr"
             echo "KEYMAP=us"
         ) >$initrd/etc/vconsole.conf
 
         # install basic keyboard maps and fonts
         for i in \
             /usr/lib/kbd/consolefonts/eurlatgr* \
-            /usr/lib/kbd/consolefonts/latarcyrheb-sun16* \
             /usr/lib/kbd/keymaps/{legacy/,/}include/* \
             /usr/lib/kbd/keymaps/{legacy/,/}i386/include/* \
             /usr/lib/kbd/keymaps/{legacy/,/}i386/qwerty/us.*; do
@@ -239,7 +238,7 @@ EOF
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-m "dash udev-rules btrfs base rootfs-block fs-lib kernel-modules" \
+	-m "dash udev-rules btrfs base rootfs-block fs-lib kernel-modules qemu" \
 	-d "piix ide-gd_mod ata_piix btrfs sd_mod" \
         --nomdadmconf \
         --nohardlink \
@@ -271,9 +270,9 @@ EOF
     [ -e /etc/machine-info ] && EXTRA_MACHINE+=" /etc/machine-info"
 
     sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-a "debug systemd i18n" \
+	-a "debug systemd i18n qemu" \
 	${EXTRA_MACHINE:+-I "$EXTRA_MACHINE"} \
-        -o "dash network plymouth lvm mdraid resume crypt caps dm terminfo usrmount kernel-network-modules" \
+        -o "dash network plymouth lvm mdraid resume crypt caps dm terminfo usrmount kernel-network-modules rngd" \
 	-d "piix ide-gd_mod ata_piix btrfs sd_mod i6300esb ib700wdt" \
         --no-hostonly-cmdline -N \
 	-f $TESTDIR/initramfs.testing $KVERSION || return 1

@@ -53,7 +53,7 @@ default_kernel_images() {
     local regex kernel_image kernel_version version_version initrd_image
     local qf='%{NAME}-%{VERSION}-%{RELEASE}\n'
 
-    case "$(uname -m)" in
+    case "${DRACUT_ARCH:-$(uname -m)}" in
         s390|s390x)
             regex='image'
             ;;
@@ -66,7 +66,7 @@ default_kernel_images() {
         arm*)
             regex='[uz]Image'
             ;;
-        aarch64)
+        aarch64|riscv64)
             regex='Image'
             ;;
         *)  regex='vmlinu.'

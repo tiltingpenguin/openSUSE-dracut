@@ -17,10 +17,10 @@ test_run() {
     $testdir/run-qemu \
 	-drive format=raw,index=0,media=disk,file=$TESTDIR/root.ext2 \
 	-drive format=raw,index=1,media=disk,file=$TESTDIR/check-success.img \
-	-m 512M  -smp 2 -nographic \
+	-m 1024M  -smp 2 -nographic \
 	-net none \
         -no-reboot \
-	-append "panic=1 root=/dev/dracut/root rw rd.auto rd.retry=20 console=ttyS0,115200n81 selinux=0 rd.debug rootwait $LUKSARGS rd.shell=0 $DEBUGFAIL" \
+	-append "panic=1 systemd.crash_reboot root=/dev/dracut/root rw rd.auto rd.retry=20 console=ttyS0,115200n81 selinux=0 rd.debug rootwait $LUKSARGS rd.shell=0 $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
     grep -F -m 1 -q dracut-root-block-success $TESTDIR/check-success.img || return 1
     echo "CLIENT TEST END: [OK]"
@@ -31,10 +31,10 @@ test_run() {
     $testdir/run-qemu \
 	-drive format=raw,index=0,media=disk,file=$TESTDIR/root.ext2 \
 	-drive format=raw,index=1,media=disk,file=$TESTDIR/check-success.img \
-	-m 512M  -smp 2 -nographic \
+	-m 1024M  -smp 2 -nographic \
 	-net none \
         -no-reboot \
-	-append "panic=1 root=/dev/dracut/root rw quiet rd.auto rd.retry=20 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $DEBUGFAIL" \
+	-append "panic=1 systemd.crash_reboot root=/dev/dracut/root rw quiet rd.auto rd.retry=20 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $DEBUGFAIL" \
 	-initrd $TESTDIR/initramfs.testing
     grep -F -m 1 -q dracut-root-block-success $TESTDIR/check-success.img || return 1
     echo "CLIENT TEST END: [OK]"
@@ -45,10 +45,10 @@ test_run() {
     $testdir/run-qemu \
 	-drive format=raw,index=0,media=disk,file=$TESTDIR/root.ext2 \
 	-drive format=raw,index=1,media=disk,file=$TESTDIR/check-success.img \
-	-m 512M  -smp 2 -nographic \
+	-m 1024M  -smp 2 -nographic \
 	-net none \
         -no-reboot \
-	-append "panic=1 root=/dev/dracut/root rw quiet rd.auto rd.retry=10 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $DEBUGFAIL rd.luks.uuid=failme" \
+	-append "panic=1 systemd.crash_reboot root=/dev/dracut/root rw quiet rd.auto rd.retry=10 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $DEBUGFAIL rd.luks.uuid=failme" \
 	-initrd $TESTDIR/initramfs.testing
     grep -F -m 1 -q dracut-root-block-success $TESTDIR/check-success.img && return 1
     echo "CLIENT TEST END: [OK]"
@@ -59,7 +59,7 @@ test_run() {
 test_setup() {
     # Create the blank file to use as a root filesystem
     rm -f -- $TESTDIR/root.ext2
-    dd if=/dev/null of=$TESTDIR/root.ext2 bs=1M seek=80
+    dd if=/dev/null of=$TESTDIR/root.ext2 bs=1M seek=134
 
     kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay
@@ -105,7 +105,7 @@ test_setup() {
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-	-m "dash crypt lvm mdraid udev-rules base rootfs-block fs-lib kernel-modules" \
+	-m "dash crypt lvm mdraid udev-rules base rootfs-block fs-lib kernel-modules qemu" \
 	-d "piix ide-gd_mod ata_piix ext2 sd_mod" \
         --no-hostonly-cmdline -N \
 	-f $TESTDIR/initramfs.makeroot $KVERSION || return 1
