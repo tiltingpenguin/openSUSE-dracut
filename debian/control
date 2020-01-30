@@ -24,7 +24,7 @@ Package: dracut-core
 Architecture: any
 Multi-Arch: foreign
 Recommends: cryptsetup, dmsetup, dmraid, lvm2, mdadm, console-setup, binutils, systemd
-Depends: bash, cpio, kmod, udev, kpartx, util-linux (>= 2.20), pkg-config, libkmod2, e2fsprogs, ${shlibs:Depends}, ${misc:Depends}
+Depends: bash (>= 4), cpio, kmod, udev, kpartx, util-linux (>= 2.20), pkg-config, libkmod2, e2fsprogs, ${shlibs:Depends}, ${misc:Depends}
 Breaks: dracut-network (<< 043-2), dracut (<< 044+3-2~)
 Replaces: dracut-network (<< 043-2), dracut (<< 044+3-2~)
 Description: dracut is an event driven initramfs infrastructure (core tools)
