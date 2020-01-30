@@ -19,6 +19,7 @@ override_dh_fixperms-indep:
 	dh_fixperms
 	find debian/ -name "*.sh" | grep modules.d | xargs chmod 755
 	rm -f debian/*/usr/lib/dracut/modules.d/98dracut-systemd/*.asc
+	rm -f debian/*/usr/lib/dracut/modules.d/98dracut-systemd/*.8
 
 override_dh_auto_test:
 
