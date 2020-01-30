@@ -1,7 +1,6 @@
 usr/lib/dracut/modules.d/35network-manager
 usr/lib/dracut/modules.d/35network-legacy
 usr/lib/dracut/modules.d/40network
-usr/lib/dracut/modules.d/90livenet
 usr/lib/dracut/modules.d/90overlay-root
 usr/lib/dracut/modules.d/95fcoe
 usr/lib/dracut/modules.d/95iscsi

@@ -7,7 +7,6 @@ modules.d/45url-lib	usr/lib/dracut/modules.d
 modules.d/45ifcfg       usr/lib/dracut/modules.d
 modules.d/80cms         usr/lib/dracut/modules.d
 modules.d/90kernel-network-modules usr/lib/dracut/modules.d
-modules.d/90livenet	usr/lib/dracut/modules.d
 modules.d/90qemu-net    usr/lib/dracut/modules.d
 modules.d/95cifs        usr/lib/dracut/modules.d
 modules.d/95znet	usr/lib/dracut/modules.d
