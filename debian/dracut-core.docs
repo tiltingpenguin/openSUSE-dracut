@@ -1,7 +1,8 @@
 AUTHORS
 HACKING
 NEWS
-README
+README.md
+README.cross
 README.generic
 README.kernel
 README.modules
