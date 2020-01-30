@@ -1,5 +1,6 @@
 usr/bin/dracut
 usr/bin/dracut-catimages
+usr/bin/mkinitrd
 usr/bin/lsinitrd
 usr/lib/dracut/dracut-functions
 usr/lib/dracut/dracut-functions.sh
