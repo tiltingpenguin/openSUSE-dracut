@@ -35,7 +35,6 @@ modules.d/50plymouth		usr/lib/dracut/modules.d
 modules.d/90btrfs		usr/lib/dracut/modules.d
 modules.d/90crypt		usr/lib/dracut/modules.d
 modules.d/90dmraid		usr/lib/dracut/modules.d
-modules.d/90dmsquash-live	usr/lib/dracut/modules.d
 modules.d/90dm			usr/lib/dracut/modules.d
 modules.d/90kernel-modules	usr/lib/dracut/modules.d
 modules.d/90kernel-modules-extra	usr/lib/dracut/modules.d
