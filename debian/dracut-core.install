@@ -28,6 +28,7 @@ modules.d/03modsign		usr/lib/dracut/modules.d
 modules.d/03rescue		usr/lib/dracut/modules.d
 modules.d/04watchdog		usr/lib/dracut/modules.d
 modules.d/05busybox		usr/lib/dracut/modules.d
+modules.d/06rngd		usr/lib/dracut/modules.d
 modules.d/30convertfs		usr/lib/dracut/modules.d
 modules.d/50drm			usr/lib/dracut/modules.d
 modules.d/50gensplash		usr/lib/dracut/modules.d
