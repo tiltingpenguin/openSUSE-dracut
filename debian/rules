@@ -23,3 +23,4 @@ override_dh_auto_test:
 
 override_dh_clean:
 	dh_clean dracut.pc Makefile.inc dracut-version.sh
+	git st|grep modified: | awk '/.asc/ {print $$2}' | xargs -r git checkout
