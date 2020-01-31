@@ -1,4 +1,4 @@
-dracut (049+213-1~beta2) unstable; urgency=low
+dracut (049+213-1~beta4) unstable; urgency=low
 
   [ Thomas Lange ]
   * new upstream version, Closes: #948135, #945596
@@ -9,11 +9,12 @@ dracut (049+213-1~beta2) unstable; urgency=low
   * remove 90aufs, only supported until 3.X
   * add dracut module 06rngd
   * add README.cross, rename README -> README.md
+  * fix dpkg triggers
 
   [ Ondřej Nový ]
   * d/copyright: Change Format URL to correct one
 
- -- Thomas Lange <lange@debian.org>  Thu, 30 Jan 2020 20:52:22 +0100
+ -- Thomas Lange <lange@debian.org>  Fri, 31 Jan 2020 16:20:35 +0100
 
 dracut (048+80-2) unstable; urgency=medium
 
