@@ -29,13 +29,21 @@ run_server() {
         -append "panic=1 systemd.crash_reboot root=/dev/sda rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0 $SERVER_DEBUG" \
         -initrd $TESTDIR/initramfs.server \
         -pidfile $TESTDIR/server.pid -daemonize || return 1
-    sudo chmod 644 $TESTDIR/server.pid || return 1
+    chmod 644 $TESTDIR/server.pid || return 1
 
     # Cleanup the terminal if we have one
     tty -s && stty sane
 
-    echo Sleeping 20 seconds to give the server a head start
-    sleep 20
+    if ! [[ $SERIAL ]]; then
+        echo "Waiting for the server to startup"
+        while : ; do
+            grep Serving "$TESTDIR"/server.log && break
+            sleep 1
+        done
+    else
+        echo Sleeping 10 seconds to give the server a head start
+        sleep 10
+    fi
 }
 
 run_client() {
@@ -54,8 +62,8 @@ run_client() {
         -append "panic=1 systemd.crash_reboot rw rd.auto rd.retry=50 console=ttyS0,115200n81 selinux=0 rd.debug=0 rd.shell=0 $DEBUGFAIL $*" \
         -initrd $TESTDIR/initramfs.testing
     if ! grep -F -m 1 -q iscsi-OK $TESTDIR/client.img; then
-	echo "CLIENT TEST END: $test_name [FAILED - BAD EXIT]"
-	return 1
+        echo "CLIENT TEST END: $test_name [FAILED - BAD EXIT]"
+        return 1
     fi
 
     echo "CLIENT TEST END: $test_name [OK]"
@@ -118,7 +126,7 @@ test_run() {
     do_test_run
     ret=$?
     if [[ -s $TESTDIR/server.pid ]]; then
-        sudo kill -TERM $(cat $TESTDIR/server.pid)
+        kill -TERM $(cat $TESTDIR/server.pid)
         rm -f -- $TESTDIR/server.pid
     fi
     return $ret
@@ -150,7 +158,7 @@ test_setup() {
             mkdir -p -- var/lib/nfs/rpc_pipefs
         )
         inst_multiple sh shutdown poweroff stty cat ps ln ip \
-            mount dmesg mkdir cp ping grep setsid
+                      mount dmesg mkdir cp ping grep setsid
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
             [ -f ${_terminfodir}/l/linux ] && break
         done
@@ -158,7 +166,7 @@ test_setup() {
         inst_simple /etc/os-release
         inst ./client-init.sh /sbin/init
         cp -a /etc/ld.so.conf* $initdir/etc
-        sudo ldconfig -r "$initdir"
+        ldconfig -r "$initdir"
     )
 
     # second, install the files needed to make the root filesystem
@@ -175,10 +183,10 @@ test_setup() {
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-        -m "dash crypt lvm mdraid udev-rules base rootfs-block fs-lib kernel-modules qemu" \
-        -d "piix ide-gd_mod ata_piix ext3 sd_mod" \
-        --no-hostonly-cmdline -N \
-        -f $TESTDIR/initramfs.makeroot $KVERSION || return 1
+                       -m "dash crypt lvm mdraid udev-rules base rootfs-block fs-lib kernel-modules qemu" \
+                       -d "piix ide-gd_mod ata_piix ext3 sd_mod" \
+                       --no-hostonly-cmdline -N \
+                       -f $TESTDIR/initramfs.makeroot $KVERSION || return 1
     rm -rf -- $TESTDIR/overlay
 
 
@@ -193,7 +201,7 @@ test_setup() {
         -drive format=raw,index=1,media=disk,file=$TESTDIR/client.img \
         -drive format=raw,index=2,media=disk,file=$TESTDIR/iscsidisk2.img \
         -drive format=raw,index=3,media=disk,file=$TESTDIR/iscsidisk3.img \
-         -smp 2 -m 512M -nographic -net none \
+        -smp 2 -m 512M -nographic -net none \
         -append "root=/dev/fakeroot rw rootfstype=ext3 quiet console=ttyS0,115200n81 selinux=0" \
         -initrd $TESTDIR/initramfs.makeroot  || return 1
     grep -F -m 1 -q dracut-root-block-created $TESTDIR/client.img || return 1
@@ -206,18 +214,18 @@ test_setup() {
         inst_hook emergency 000 ./hard-off.sh
         inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
-    sudo $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-        -o "dash plymouth dmraid nfs" \
-        -a "debug" \
-        -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod" \
-        --no-hostonly-cmdline -N \
-        -f $TESTDIR/initramfs.testing $KVERSION || return 1
+    $basedir/dracut.sh -l -i $TESTDIR/overlay / \
+         -o "dash plymouth dmraid nfs" \
+         -a "debug" \
+         -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod" \
+         --no-hostonly-cmdline -N \
+         -f $TESTDIR/initramfs.testing $KVERSION || return 1
 
     # Make server root
     dd if=/dev/null of=$TESTDIR/server.ext3 bs=1M seek=60
     mkfs.ext3 -j -F $TESTDIR/server.ext3
     mkdir $TESTDIR/mnt
-    sudo mount -o loop $TESTDIR/server.ext3 $TESTDIR/mnt
+    mount -o loop $TESTDIR/server.ext3 $TESTDIR/mnt
 
     kernel=$KVERSION
     (
@@ -229,9 +237,9 @@ test_setup() {
         )
         inst /etc/passwd /etc/passwd
         inst_multiple sh ls shutdown poweroff stty cat ps ln ip \
-            dmesg mkdir cp ping \
-            modprobe tcpdump setsid \
-            /etc/services sleep mount chmod
+                      dmesg mkdir cp ping \
+                      modprobe tcpdump setsid \
+                      /etc/services sleep mount chmod
         inst_multiple tgtd tgtadm
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
             [ -f ${_terminfodir}/l/linux ] && break
@@ -249,25 +257,25 @@ test_setup() {
         inst /etc/group /etc/group
 
         cp -a /etc/ld.so.conf* $initdir/etc
-        sudo ldconfig -r "$initdir"
+        ldconfig -r "$initdir"
         dracut_kernel_post
     )
 
-    sudo umount $TESTDIR/mnt
+    umount $TESTDIR/mnt
     rm -fr -- $TESTDIR/mnt
 
     # Make server's dracut image
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-        -a "dash udev-rules base rootfs-block fs-lib debug kernel-modules" \
-        -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod e1000 drbg" \
-        --no-hostonly-cmdline -N \
-        -f $TESTDIR/initramfs.server $KVERSION || return 1
+                       -a "dash udev-rules base rootfs-block fs-lib debug kernel-modules" \
+                       -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod e1000 drbg" \
+                       --no-hostonly-cmdline -N \
+                       -f $TESTDIR/initramfs.server $KVERSION || return 1
 
 }
 
 test_cleanup() {
     if [[ -s $TESTDIR/server.pid ]]; then
-        sudo kill -TERM $(cat $TESTDIR/server.pid)
+        kill -TERM $(cat $TESTDIR/server.pid)
         rm -f -- $TESTDIR/server.pid
     fi
 }
