@@ -5,6 +5,7 @@ dracut (050-1) unstable; urgency=low
   * additional packages dracut-live and dracut-squash were added by
     upstream
   * fix dpkg triggers, Closes: #720081
+  * kernel/postinst.d/dracut: avoid running multiple times
   * update standards version
   * control: use debhelper-compat, upgrade to 12
   * add patch systemd-vconsole-setup.service
@@ -16,7 +17,7 @@ dracut (050-1) unstable; urgency=low
   [ Ondřej Nový ]
   * d/copyright: Change Format URL to correct one
 
- -- Thomas Lange <lange@debian.org>  Fri, 06 Mar 2020 13:20:33 +0100
+ -- Thomas Lange <lange@debian.org>  Fri, 06 Mar 2020 13:30:46 +0100
 
 dracut (048+80-2) unstable; urgency=medium
 
