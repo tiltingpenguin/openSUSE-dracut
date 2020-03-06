@@ -17,16 +17,13 @@ if [ -n "$2" ]; then
 	bootdir=$(dirname "$2")
 fi
 
-case "$DPKG_MAINTSCRIPT_PACKAGE" in
-    dracut)  ;; # do create the initrd
-
-    # trigger will be activated by linux-image-*
-    *) if dpkg-trigger --no-await update-initramfs; then
-            echo "update-initramfs: deferring update (trigger activated)"
-            exit 0
-       fi
-       ;;
-esac
+# avoid running multiple times
+if [ -n "$DEB_MAINT_PARAMS" ]; then
+        eval set -- "$DEB_MAINT_PARAMS"
+        if [ -z "$1" ] || [ "$1" != "configure" ]; then
+                exit 0
+        fi
+fi
 
 # check if modules.dep already exists. If not create it
 # maybe this problem could also be solved via Debian triggers
