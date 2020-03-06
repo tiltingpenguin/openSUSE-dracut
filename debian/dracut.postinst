@@ -14,19 +14,14 @@ mk_initrd() {
     fi
 }
 
-
-if [ "$1" = triggered ]; then
-    # check if any kernel is available
-    # do not call dracut if no kernel was found
+if [ "x$1" != xtriggered ]; then
+    # activate trigger
+    if dpkg-trigger --no-await update-initramfs; then
+        echo "update-initramfs: deferring update (trigger activated)"
+        exit 0
+    fi
+else
     mk_initrd
 fi
-
-if [ "$1" = configure ]; then
-     if dpkg-trigger --no-await update-initramfs; then
-            echo "update-initramfs: deferring update (trigger activated)"
-            exit 0
-       fi
-fi
-
 
 #DEBHELPER#
