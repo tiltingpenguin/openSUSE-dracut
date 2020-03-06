@@ -1,10 +1,10 @@
-dracut (049+213-1) unstable; urgency=low
+dracut (050-1) unstable; urgency=low
 
   - dracut has two new packages:
     dracut-live includes modules for building live images
     dracut-squash includes support for squashfs
 
- -- Thomas Lange <lange@debian.org>  Thu, 30 Jan 2020 18:38:54 +0100
+ -- Thomas Lange <lange@debian.org>  Fri, 06 Mar 2020 13:20:21 +0100
 
 dracut (043-1) unstable; urgency=low
 

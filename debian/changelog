@@ -1,20 +1,22 @@
-dracut (049+213-1~beta4) unstable; urgency=low
+dracut (050-1) unstable; urgency=low
 
   [ Thomas Lange ]
-  * new upstream version, Closes: #948135, #945596
+  * new upstream version, Closes: #948135, #945596, #952820
   * additional packages dracut-live and dracut-squash were added by
     upstream
+  * fix dpkg triggers, Closes: #720081
   * update standards version
+  * control: use debhelper-compat, upgrade to 12
   * add patch systemd-vconsole-setup.service
   * remove 90aufs, only supported until 3.X
   * add dracut module 06rngd
   * add README.cross, rename README -> README.md
-  * fix dpkg triggers
+  * add mkinitrd script
 
   [ Ondřej Nový ]
   * d/copyright: Change Format URL to correct one
 
- -- Thomas Lange <lange@debian.org>  Fri, 31 Jan 2020 16:20:35 +0100
+ -- Thomas Lange <lange@debian.org>  Fri, 06 Mar 2020 13:20:33 +0100
 
 dracut (048+80-2) unstable; urgency=medium
 
