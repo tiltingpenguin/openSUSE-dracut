@@ -1,3 +1,10 @@
+dracut (050+31-1) unstable; urgency=low
+
+  * new upstream: Closes: #954019
+  * add module 90nvdimm
+
+ -- Thomas Lange <lange@debian.org>  Thu, 19 Mar 2020 23:01:22 +0100
+
 dracut (050-1) unstable; urgency=low
 
   [ Thomas Lange ]
