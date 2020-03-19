@@ -44,6 +44,7 @@ modules.d/81cio_ignore		usr/lib/dracut/modules.d
 modules.d/90lvm			usr/lib/dracut/modules.d
 modules.d/90mdraid		usr/lib/dracut/modules.d
 modules.d/90multipath		usr/lib/dracut/modules.d
+modules.d/90nvdimm		usr/lib/dracut/modules.d
 modules.d/90qemu                usr/lib/dracut/modules.d
 modules.d/91crypt-gpg		usr/lib/dracut/modules.d
 modules.d/91crypt-loop          usr/lib/dracut/modules.d
