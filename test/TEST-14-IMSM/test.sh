@@ -9,21 +9,22 @@ KVERSION=${KVERSION-$(uname -r)}
 
 client_run() {
     echo "CLIENT TEST START: $@"
+
+    rm -f -- $TESTDIR/marker.img
+    dd if=/dev/zero of=$TESTDIR/marker.img bs=1M count=1
+
     $testdir/run-qemu \
-        -drive format=raw,index=0,media=disk,file=$TESTDIR/root.ext2 \
+        -drive format=raw,index=0,media=disk,file=$TESTDIR/marker.img \
         -drive format=raw,index=1,media=disk,file=$TESTDIR/disk1 \
         -drive format=raw,index=2,media=disk,file=$TESTDIR/disk2 \
-        -m 512M  -smp 2 -nographic \
-        -net none \
-        -no-reboot \
         -append "panic=1 systemd.crash_reboot $* root=LABEL=root rw debug rd.retry=5 rd.debug console=ttyS0,115200n81 selinux=0 rd.info rd.shell=0 $DEBUGFAIL" \
         -initrd $TESTDIR/initramfs.testing
-    if ! grep -F -m 1 -q dracut-root-block-success $TESTDIR/root.ext2; then
+
+    if ! grep -F -m 1 -q dracut-root-block-success $TESTDIR/marker.img; then
         echo "CLIENT TEST END: $@ [FAIL]"
         return 1;
     fi
 
-    sed -i -e 's#dracut-root-block-success#dracut-root-block-xxxxxxx#' $TESTDIR/root.ext2
     echo "CLIENT TEST END: $@ [OK]"
     return 0
 }
@@ -49,12 +50,12 @@ test_run() {
 test_setup() {
 
     # Create the blank file to use as a root filesystem
-    rm -f -- $TESTDIR/root.ext2
+    rm -f -- $TESTDIR/marker.img
     rm -f -- $TESTDIR/disk1
     rm -f -- $TESTDIR/disk2
-    dd if=/dev/null of=$TESTDIR/root.ext2 bs=1M seek=1
-    dd if=/dev/null of=$TESTDIR/disk1 bs=1M seek=104
-    dd if=/dev/null of=$TESTDIR/disk2 bs=1M seek=104
+    dd if=/dev/zero of=$TESTDIR/marker.img bs=1M count=1
+    dd if=/dev/zero of=$TESTDIR/disk1 bs=1M count=104
+    dd if=/dev/zero of=$TESTDIR/disk2 bs=1M count=104
 
     kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay
@@ -70,7 +71,7 @@ test_setup() {
             done
         )
         inst_multiple sh df free ls shutdown poweroff stty cat ps ln ip \
-                      mount dmesg dhclient mkdir cp ping dhclient
+                      mount dmesg dhclient mkdir cp ping dhclient dd
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
             [ -f ${_terminfodir}/l/linux ] && break
         done
@@ -90,7 +91,7 @@ test_setup() {
     (
         export initdir=$TESTDIR/overlay
         . $basedir/dracut-init.sh
-        inst_multiple sfdisk mke2fs poweroff cp umount grep
+        inst_multiple sfdisk mke2fs poweroff cp umount grep dd
         inst_hook initqueue 01 ./create-root.sh
         inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
@@ -106,14 +107,13 @@ test_setup() {
     rm -rf -- $TESTDIR/overlay
     # Invoke KVM and/or QEMU to actually create the target filesystem.
     $testdir/run-qemu \
-        -drive format=raw,index=0,media=disk,file=$TESTDIR/root.ext2 \
+        -drive format=raw,index=0,media=disk,file=$TESTDIR/marker.img \
         -drive format=raw,index=1,media=disk,file=$TESTDIR/disk1 \
         -drive format=raw,index=2,media=disk,file=$TESTDIR/disk2 \
-        -m 512M -nographic -net none \
         -append "root=/dev/dracut/root rw rootfstype=ext2 quiet console=ttyS0,115200n81 selinux=0" \
         -initrd $TESTDIR/initramfs.makeroot  || return 1
-    grep -F -m 1 -q dracut-root-block-created $TESTDIR/root.ext2 || return 1
-    eval $(grep -F --binary-files=text -m 1 MD_UUID $TESTDIR/root.ext2)
+    grep -F -m 1 -q dracut-root-block-created $TESTDIR/marker.img || return 1
+    eval $(grep -F --binary-files=text -m 1 MD_UUID $TESTDIR/marker.img)
 
     if [[ -z $MD_UUID ]]; then
         echo "Setup failed"

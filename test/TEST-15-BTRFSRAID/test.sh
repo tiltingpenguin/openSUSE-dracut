@@ -12,9 +12,6 @@ test_run() {
     $testdir/run-qemu \
         -drive format=raw,index=0,media=disk,file=$MARKER_DISKIMAGE \
         -drive format=raw,index=1,media=disk,file=$DISKIMAGE \
-        -m 512M -smp 2 -nographic \
-        -net none \
-        -no-reboot \
         -append "panic=1 systemd.crash_reboot root=LABEL=root rw rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.shell=0 $DEBUGFAIL" \
         -initrd $TESTDIR/initramfs.testing
     grep -F -m 1 -q dracut-root-block-success $MARKER_DISKIMAGE || return 1
@@ -24,7 +21,7 @@ test_setup() {
     # Create the blank file to use as a root filesystem
     DISKIMAGE=$TESTDIR/TEST-15-BTRFSRAID-root.img
     rm -f -- $DISKIMAGE
-    dd if=/dev/null of=$DISKIMAGE bs=1M seek=1024
+    dd if=/dev/zero of=$DISKIMAGE bs=1M count=1024
 
     kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay
@@ -41,7 +38,7 @@ test_setup() {
             mkdir -p -- var/lib/nfs/rpc_pipefs
         )
         inst_multiple sh df free ls shutdown poweroff stty cat ps ln ip \
-                      mount dmesg dhclient mkdir cp ping dhclient sync
+                      mount dmesg dhclient mkdir cp ping dhclient sync dd
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
             [ -f ${_terminfodir}/l/linux ] && break
         done
@@ -60,7 +57,7 @@ test_setup() {
     (
         export initdir=$TESTDIR/overlay
         . $basedir/dracut-init.sh
-        inst_multiple sfdisk mkfs.btrfs poweroff cp umount
+        inst_multiple sfdisk mkfs.btrfs poweroff cp umount dd
         inst_hook initqueue 01 ./create-root.sh
         inst_hook initqueue/finished 01 ./finished-false.sh
         inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
@@ -81,7 +78,6 @@ test_setup() {
     # Invoke KVM and/or QEMU to actually create the target filesystem.
     $testdir/run-qemu \
         -drive format=raw,index=0,media=disk,file=$DISKIMAGE \
-        -m 512M   -smp 2 -nographic -net none \
         -append "root=/dev/fakeroot rw quiet console=ttyS0,115200n81 selinux=0" \
         -initrd $TESTDIR/initramfs.makeroot  || return 1
 

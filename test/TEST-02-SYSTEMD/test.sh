@@ -8,9 +8,6 @@ KVERSION="${KVERSION-$(uname -r)}"
 test_run() {
     $testdir/run-qemu \
         -drive format=raw,index=0,media=disk,file=$TESTDIR/root.ext3 \
-        -m 512M  -smp 2 -nographic \
-        -net none \
-        -no-reboot \
         -append "panic=1 systemd.crash_reboot root=LABEL=dracut rw loglevel=77 systemd.log_level=debug systemd.log_target=console rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 init=/sbin/init rd.shell=0 $DEBUGFAIL" \
         -initrd $TESTDIR/initramfs.testing
     grep -F -m 1 -q dracut-root-block-success $TESTDIR/root.ext3 || return 1
@@ -19,7 +16,7 @@ test_run() {
 test_setup() {
     rm -f -- $TESTDIR/root.ext3
     # Create the blank file to use as a root filesystem
-    dd if=/dev/null of=$TESTDIR/root.ext3 bs=1M seek=80
+    dd if=/dev/zero of=$TESTDIR/root.ext3 bs=1M count=80
 
     kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay
@@ -38,7 +35,7 @@ test_setup() {
         )
         inst_multiple sh df free ls shutdown poweroff stty cat ps ln ip \
                       mount dmesg dhclient mkdir cp ping dhclient \
-                      umount strace less setsid systemd-analyze
+                      umount strace less setsid systemd-analyze dd
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
             [ -f ${_terminfodir}/l/linux ] && break
         done
@@ -57,7 +54,7 @@ test_setup() {
     (
         export initdir=$TESTDIR/overlay
         . $basedir/dracut-init.sh
-        inst_multiple sfdisk mkfs.ext3 poweroff cp umount
+        inst_multiple sfdisk mkfs.ext3 poweroff cp umount dd
         inst_hook initqueue 01 ./create-root.sh
         inst_hook initqueue/finished 01 ./finished-false.sh
         inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
@@ -77,7 +74,6 @@ test_setup() {
 
     $testdir/run-qemu \
         -drive format=raw,index=0,media=disk,file=$TESTDIR/root.ext3 \
-        -m 512M  -smp 2 -nographic -net none \
         -append "root=/dev/fakeroot rw rootfstype=ext3 quiet console=ttyS0,115200n81 selinux=0" \
         -initrd $TESTDIR/initramfs.makeroot  || return 1
     grep -F -m 1 -q dracut-root-block-created $TESTDIR/root.ext3 || return 1
@@ -86,7 +82,7 @@ test_setup() {
     (
         export initdir=$TESTDIR/overlay
         . $basedir/dracut-init.sh
-        inst_multiple poweroff shutdown
+        inst_multiple poweroff shutdown dd
         inst_hook shutdown-emergency 000 ./hard-off.sh
         inst_hook pre-pivot 000 ./systemd-analyze.sh
         inst_hook emergency 000 ./hard-off.sh

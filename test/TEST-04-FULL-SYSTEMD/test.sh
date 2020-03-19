@@ -20,16 +20,8 @@ client_run() {
         -drive format=raw,index=0,media=disk,file=$TESTDIR/root.btrfs \
         -drive format=raw,index=1,media=disk,file=$TESTDIR/usr.btrfs \
         -drive format=raw,index=2,media=disk,file=$TESTDIR/result \
-        -m 512M  -smp 2 -nographic \
-        -net none \
-        -no-reboot \
         -append "panic=1 systemd.crash_reboot root=LABEL=dracut $client_opts rd.retry=3 console=ttyS0,115200n81 selinux=0 $DEBUGOUT rd.shell=0 $DEBUGFAIL" \
         -initrd $TESTDIR/initramfs.testing
-
-    if (($? != 0)); then
-        echo "CLIENT TEST END: $test_name [FAILED - BAD EXIT]"
-        return 1
-    fi
 
     if ! grep -F -m 1 -q dracut-root-block-success $TESTDIR/result; then
         echo "CLIENT TEST END: $test_name [FAILED]"
@@ -50,8 +42,8 @@ test_setup() {
     rm -f -- $TESTDIR/root.btrfs
     rm -f -- $TESTDIR/usr.btrfs
     # Create the blank file to use as a root filesystem
-    dd if=/dev/null of=$TESTDIR/root.btrfs bs=1M seek=320
-    dd if=/dev/null of=$TESTDIR/usr.btrfs bs=1M seek=320
+    dd if=/dev/zero of=$TESTDIR/root.btrfs bs=1M count=320
+    dd if=/dev/zero of=$TESTDIR/usr.btrfs bs=1M count=320
 
     export kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay
@@ -72,7 +64,7 @@ test_setup() {
         ln -sfn /run/lock "$initdir/var/lock"
 
         inst_multiple sh df free ls shutdown poweroff stty cat ps ln ip \
-                      mount dmesg mkdir cp ping \
+                      mount dmesg mkdir cp ping dd \
                       umount strace less setsid tree systemctl reset
 
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
@@ -230,7 +222,7 @@ EOF
     (
         export initdir=$TESTDIR/overlay
         . $basedir/dracut-init.sh
-        inst_multiple sfdisk mkfs.btrfs btrfs poweroff cp umount sync
+        inst_multiple sfdisk mkfs.btrfs btrfs poweroff cp umount sync dd
         inst_hook initqueue 01 ./create-root.sh
         inst_hook initqueue/finished 01 ./finished-false.sh
         inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
@@ -250,13 +242,14 @@ EOF
     # Invoke KVM and/or QEMU to actually create the target filesystem.
     rm -rf -- $TESTDIR/overlay
 
+    dd if=/dev/zero of=$TESTDIR/result bs=1M count=1
     $testdir/run-qemu \
         -drive format=raw,index=0,media=disk,file=$TESTDIR/root.btrfs \
         -drive format=raw,index=1,media=disk,file=$TESTDIR/usr.btrfs \
-        -m 512M  -smp 2 -nographic -net none \
+        -drive format=raw,index=2,media=disk,file=$TESTDIR/result \
         -append "root=/dev/fakeroot rw rootfstype=btrfs quiet console=ttyS0,115200n81 selinux=0" \
         -initrd $TESTDIR/initramfs.makeroot  || return 1
-    if ! grep -F -m 1 -q dracut-root-block-created $TESTDIR/root.btrfs; then
+    if ! grep -F -m 1 -q dracut-root-block-created $TESTDIR/result; then
         echo "Could not create root filesystem"
         return 1
     fi
@@ -264,7 +257,7 @@ EOF
     (
         export initdir=$TESTDIR/overlay
         . $basedir/dracut-init.sh
-        inst_multiple poweroff shutdown
+        inst_multiple poweroff shutdown dd
         inst_hook shutdown-emergency 000 ./hard-off.sh
         inst_hook emergency 000 ./hard-off.sh
         inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules

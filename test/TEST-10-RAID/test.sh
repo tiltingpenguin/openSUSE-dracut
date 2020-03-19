@@ -10,9 +10,6 @@ test_run() {
     DISKIMAGE=$TESTDIR/TEST-10-RAID-root.img
     $testdir/run-qemu \
         -drive format=raw,index=0,media=disk,file=$DISKIMAGE \
-        -m 512M  -smp 2 -nographic \
-        -net none \
-        -no-reboot \
         -append "panic=1 systemd.crash_reboot root=/dev/dracut/root rd.auto rw rd.retry=10 console=ttyS0,115200n81 selinux=0 rd.shell=0 $DEBUGFAIL" \
         -initrd $TESTDIR/initramfs.testing
     grep -F -m 1 -q dracut-root-block-success $DISKIMAGE || return 1
@@ -22,7 +19,7 @@ test_setup() {
     DISKIMAGE=$TESTDIR/TEST-10-RAID-root.img
     # Create the blank file to use as a root filesystem
     rm -f -- $DISKIMAGE
-    dd if=/dev/null of=$DISKIMAGE bs=1M seek=128
+    dd if=/dev/zero of=$DISKIMAGE bs=1M count=128
 
     kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay
@@ -38,7 +35,7 @@ test_setup() {
             done
         )
         inst_multiple sh df free ls shutdown poweroff stty cat ps ln ip \
-                      mount dmesg dhclient mkdir cp ping dhclient
+                      mount dmesg dhclient mkdir cp ping dhclient dd
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
             [ -f ${_terminfodir}/l/linux ] && break
         done
@@ -58,7 +55,7 @@ test_setup() {
     (
         export initdir=$TESTDIR/overlay
         . $basedir/dracut-init.sh
-        inst_multiple sfdisk mke2fs poweroff cp umount
+        inst_multiple sfdisk mke2fs poweroff cp umount dd
         inst_hook initqueue 01 ./create-root.sh
         inst_hook initqueue/finished 01 ./finished-false.sh
         inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
@@ -77,7 +74,6 @@ test_setup() {
     # Invoke KVM and/or QEMU to actually create the target filesystem.
     $testdir/run-qemu \
         -drive format=raw,index=0,media=disk,file=$DISKIMAGE \
-        -m 512M  -smp 2 -nographic -net none \
         -append "root=/dev/cannotreach rw rootfstype=ext2 console=ttyS0,115200n81 selinux=0" \
         -initrd $TESTDIR/initramfs.makeroot  || return 1
     grep -F -m 1 -q dracut-root-block-created $DISKIMAGE || return 1
@@ -86,7 +82,7 @@ test_setup() {
     (
         export initdir=$TESTDIR/overlay
         . $basedir/dracut-init.sh
-        inst_multiple poweroff shutdown
+        inst_multiple poweroff shutdown dd
         inst_hook shutdown-emergency 000 ./hard-off.sh
         inst_hook emergency 000 ./hard-off.sh
         inst ./cryptroot-ask.sh /sbin/cryptroot-ask

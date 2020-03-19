@@ -1,5 +1,14 @@
 #!/bin/bash
-TEST_DESCRIPTION="root filesystem on NFS"
+
+if [[ $NM ]]; then
+    USE_NETWORK="network-manager"
+    OMIT_NETWORK="network-legacy"
+else
+    USE_NETWORK="network-legacy"
+    OMIT_NETWORK="network-manager"
+fi
+
+TEST_DESCRIPTION="root filesystem on NFS with $USE_NETWORK"
 
 KVERSION=${KVERSION-$(uname -r)}
 
@@ -17,14 +26,11 @@ run_server() {
     fsck -a $TESTDIR/server.ext3 || return 1
     $testdir/run-qemu \
         -drive format=raw,index=0,media=disk,file=$TESTDIR/server.ext3 \
-        -m 512M  -smp 2 \
-        -display none \
         -net socket,listen=127.0.0.1:12320 \
         -net nic,macaddr=52:54:00:12:34:56,model=e1000 \
         ${SERIAL:+-serial "$SERIAL"} \
         ${SERIAL:--serial file:"$TESTDIR"/server.log} \
         -watchdog i6300esb -watchdog-action poweroff \
-        -no-reboot \
         -append "panic=1 quiet root=/dev/sda rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0" \
         -initrd $TESTDIR/initramfs.server \
         -pidfile $TESTDIR/server.pid -daemonize || return 1
@@ -34,9 +40,9 @@ run_server() {
     tty -s && stty sane
 
     if ! [[ $SERIAL ]]; then
-        echo "Waiting for the server to startup"
         while : ; do
             grep Serving "$TESTDIR"/server.log && break
+            echo "Waiting for the server to startup"
             sleep 1
         done
     else
@@ -56,19 +62,17 @@ client_test() {
     echo "CLIENT TEST START: $test_name"
 
     # Need this so kvm-qemu will boot (needs non-/dev/zero local disk)
-    if ! dd if=/dev/zero of=$TESTDIR/client.img bs=1M count=1; then
+    if ! dd if=/dev/zero of=$TESTDIR/client.img bs=1M count=1 &>/dev/null; then
         echo "Unable to make client sda image" 1>&2
         return 1
     fi
 
     $testdir/run-qemu \
         -drive format=raw,index=0,media=disk,file=$TESTDIR/client.img \
-        -m 512M  -smp 2 -nographic \
         -net nic,macaddr=$mac,model=e1000 \
         -net socket,connect=127.0.0.1:12320 \
         -watchdog i6300esb -watchdog-action poweroff \
-        -no-reboot \
-        -append "panic=1 systemd.crash_reboot rd.shell=0 $cmdline $DEBUGFAIL rd.retry=10 quiet  ro console=ttyS0,115200n81 selinux=0" \
+        -append "rd.net.timeout.dhcp=3 panic=1 systemd.crash_reboot rd.shell=0 $cmdline $DEBUGFAIL rd.retry=10 quiet ro console=ttyS0,115200n81 selinux=0" \
         -initrd $TESTDIR/initramfs.testing
 
     if [[ $? -ne 0 ]] || ! grep -F -m 1 -q nfs-OK $TESTDIR/client.img; then
@@ -163,7 +167,7 @@ test_nfsv3() {
                 52:54:00:12:34:05 "root=dhcp" 192.168.50.1 wsize=4096 || return 1
 
     client_test "NFSv3 Bridge Customized root=dhcp DHCP path,options" \
-                52:54:00:12:34:05 "root=dhcp bridge=foobr0:ens3" 192.168.50.1 wsize=4096 || return 1
+                52:54:00:12:34:05 "root=dhcp bridge=foobr0:ens2" 192.168.50.1 wsize=4096 || return 1
 
     client_test "NFSv3 root=dhcp DHCP IP:path,options" \
                 52:54:00:12:34:06 "root=dhcp" 192.168.50.2 wsize=4096 || return 1
@@ -221,7 +225,7 @@ test_run() {
 
 test_setup() {
     # Make server root
-    dd if=/dev/null of=$TESTDIR/server.ext3 bs=1M seek=120
+    dd if=/dev/zero of=$TESTDIR/server.ext3 bs=1M count=120
     mke2fs -j -F $TESTDIR/server.ext3
     mkdir $TESTDIR/mnt
     mount -o loop $TESTDIR/server.ext3 $TESTDIR/mnt
@@ -301,7 +305,7 @@ test_setup() {
         export initdir=$TESTDIR/mnt/nfs/client
         . $basedir/dracut-init.sh
 
-        inst_multiple sh shutdown poweroff stty cat ps ln ip \
+        inst_multiple sh shutdown poweroff stty cat ps ln ip dd \
                       mount dmesg mkdir cp ping grep setsid ls vi /etc/virc less cat
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
             [ -f ${_terminfodir}/l/linux ] && break
@@ -365,8 +369,8 @@ test_setup() {
 
     # Make client's dracut image
     $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-                       -o "plymouth dash" \
-                       -a "debug watchdog" \
+                       -o "plymouth dash ${OMIT_NETWORK}" \
+                       -a "debug watchdog ${USE_NETWORK}" \
                        -d "af_packet piix ide-gd_mod ata_piix sd_mod e1000 nfs sunrpc i6300esb" \
                        --no-hostonly-cmdline -N \
                        -f $TESTDIR/initramfs.testing $KVERSION || return 1
