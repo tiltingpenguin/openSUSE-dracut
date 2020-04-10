@@ -3,18 +3,22 @@ Upstream-Name: dracut
 Upstream-contact: Harald Hoyer <harald@redhat.com>
 Source: http://www.kernel.org/pub/linux/utils/boot/dracut/
 
-Copyright: 2009, Harald Hoyer <harald@redhat.com>
+Files: *
+Copyright:
+  2008-2012, Red Hat, Inc.
+  2012, Harald Hoyer <harald@redhat.com>
+  2008, Jeremy Katz <katzj@redhat.com>
 License: GPL-2+
 
 Files: debian/*
-Copyright: 2009, Philippe Seewer <philippe.seewer@bfh.ch>
+Copyright:
+  2009, Philippe Seewer <philippe.seewer@bfh.ch>
+  2011-2020 Thomas Lange <lange@informatik.uni-koeln.de>
 License: GPL-2+
 
-Files: debian/*
-Copyright: 2011-2020 Thomas Lange <lange@informatik.uni-koeln.de>
-License: GPL-2+
-
-Files: install/hashmap.* install/log.* install/macro.h install/util.*
+Files:
+  install/hashmap.* install/log.*
+  install/macro.h install/util.*
 Copyright: 2010 Lennart Poettering
 License: LGPL-2.1+
 
