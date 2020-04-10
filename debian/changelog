@@ -1,3 +1,10 @@
+dracut (050+35-1) unstable; urgency=low
+
+  * new upstream
+  * debian/copyright: fix entries, Closes: #956288
+
+ -- Thomas Lange <lange@debian.org>  Fri, 10 Apr 2020 21:57:03 +0200
+
 dracut (050+31-1) unstable; urgency=low
 
   * new upstream: Closes: #954019
