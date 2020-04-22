@@ -1,3 +1,9 @@
+dracut (050+35-3) unstable; urgency=high
+
+  * fix microcode loading, Closes: #958191
+
+ -- Thomas Lange <lange@debian.org>  Wed, 22 Apr 2020 22:09:22 +0200
+
 dracut (050+35-2) unstable; urgency=low
 
   * source only upload needed, after 050+35-1 went through new queue
