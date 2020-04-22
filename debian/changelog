@@ -1,3 +1,9 @@
+dracut (050+35-4) unstable; urgency=high
+
+  * add git tag, so dracut shows correct version
+
+ -- Thomas Lange <lange@debian.org>  Wed, 22 Apr 2020 22:43:28 +0200
+
 dracut (050+35-3) unstable; urgency=high
 
   * fix microcode loading, Closes: #958191
