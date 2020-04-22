@@ -1,6 +1,6 @@
+microcode
 vconsole
 crc32c
-systemd-udev
 plymouth
 multipath
 initramfs-restore
