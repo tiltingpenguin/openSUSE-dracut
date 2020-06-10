@@ -1865,6 +1865,19 @@ if dracut_module_included "squash"; then
     fi
 fi
 
+if [[ $kernel_only != yes ]]; then
+    # FIPS workaround for Fedora/RHEL: libcrypto needs libssl when FIPS is enabled
+    if [[ $DRACUT_FIPS_MODE ]]; then
+      for _dir in $libdirs; do
+          for _f in "$dracutsysrootdir$_dir/libcrypto.so"*; do
+              [[ -e "$_f" ]] || continue
+              inst_libdir_file -o "libssl.so*"
+              break 2
+          done
+      done
+    fi
+fi
+
 if [[ $uefi = yes ]]; then
     readonly uefi_outdir="$DRACUT_TMPDIR/uefi"
     mkdir "$uefi_outdir"
