@@ -1952,6 +1952,17 @@ if dracut_module_included "squash"; then
     dinfo "*** Squashing the files inside the initramfs ***"
     mksquashfs $squash_dir $squash_img -no-xattrs -no-exports -noappend -always-use-fragments -comp xz -Xdict-size 100% -no-progress 1> /dev/null
 
+    # FIPS workaround for Fedora/RHEL: libcrypto needs libssl when FIPS is enabled
+    if [[ $DRACUT_FIPS_MODE ]]; then
+      for _dir in $libdirs; do
+          for _f in "$dracutsysrootdir$_dir/libcrypto.so"*; do
+              [[ -e "$_f" ]] || continue
+              inst_libdir_file -o "libssl.so*"
+              break 2
+          done
+      done
+    fi
+
     if [[ $? != 0 ]]; then
         dfatal "dracut: Failed making squash image"
         exit 1
