@@ -41,31 +41,36 @@ str_ends() { [ "${1%*"$2"}" != "$1" ]; }
 # search in the usual places to find the binary.
 find_binary() {
     local _delim
+    local _path
     local l
     local p
     [[ -z ${1##/*} ]] || _delim="/"
 
     if [[ "$1" == *.so* ]]; then
         for l in libdirs ; do
-            if { $DRACUT_LDD "$dracutsysrootdir$l$_delim$1" &>/dev/null; };  then
-                printf "%s\n" "$1"
+            _path="${l}${_delim}${1}"
+            if { $DRACUT_LDD "${dracutsysrootdir}${_path}" &>/dev/null; };  then
+                printf "%s\n" "${_path}"
                 return 0
             fi
         done
-        if { $DRACUT_LDD "$dracutsysrootdir$_delim$1" &>/dev/null; }; then
-            printf "%s\n" "$1"
+        _path="${_delim}${1}"
+        if { $DRACUT_LDD "${dracutsysrootdir}${_path}" &>/dev/null; }; then
+            printf "%s\n" "${_path}"
             return 0
         fi
     fi
     if [[ "$1" == */* ]]; then
-        if [[ -L $dracutsysrootdir$_delim$1 ]] || [[ -x $dracutsysrootdir$_delim$1 ]]; then
-            printf "%s\n" "$1"
+        _path="${_delim}${1}"
+        if [[ -L ${dracutsysrootdir}${_path} ]] || [[ -x ${dracutsysrootdir}${_path} ]]; then
+            printf "%s\n" "${_path}"
             return 0
         fi
     fi
     for p in $DRACUT_PATH ; do
-        if [[ -L $dracutsysrootdir$p$_delim$1 ]] || [[ -x $dracutsysrootdir$p$_delim$1 ]];  then
-            printf "%s\n" "$1"
+        _path="${p}${_delim}${1}"
+        if [[ -L ${dracutsysrootdir}${_path} ]] || [[ -x ${dracutsysrootdir}${_path} ]];  then
+            printf "%s\n" "${_path}"
             return 0
         fi
     done
@@ -836,4 +841,48 @@ ip_params_for_remote_addr() {
                "${local_addr}" "${peer}" "${gateway}" "${netmask}" "${ifname}"
     fi
 
+}
+
+# block_is_nbd <maj:min>
+# Check whether $1 is an nbd device
+block_is_nbd() {
+    [[ -b /dev/block/$1 && $1 == 43:* ]]
+}
+
+# block_is_iscsi <maj:min>
+# Check whether $1 is an nbd device
+block_is_iscsi() {
+    local _dir
+    local _dev=$1
+    [[ -L "/sys/dev/block/$_dev" ]] || return
+    _dir="$(readlink -f "/sys/dev/block/$_dev")" || return
+    until [[ -d "$_dir/sys" || -d "$_dir/iscsi_session" ]]; do
+        _dir="$_dir/.."
+    done
+    [[ -d "$_dir/iscsi_session" ]]
+}
+
+# block_is_fcoe <maj:min>
+# Check whether $1 is an FCoE device
+# Will not work for HBAs that hide the ethernet aspect
+# completely and present a pure FC device
+block_is_fcoe() {
+    local _dir
+    local _dev=$1
+    [[ -L "/sys/dev/block/$_dev" ]] || return
+    _dir="$(readlink -f "/sys/dev/block/$_dev")"
+    until [[ -d "$_dir/sys" ]]; do
+        _dir="$_dir/.."
+        if [[ -d "$_dir/subsystem" ]]; then
+            subsystem=$(basename $(readlink $_dir/subsystem))
+            [[ $subsystem == "fcoe" ]] && return 0
+        fi
+    done
+    return 1
+}
+
+# block_is_netdevice <maj:min>
+# Check whether $1 is a net device
+block_is_netdevice() {
+    block_is_nbd "$1" || block_is_iscsi "$1" || block_is_fcoe "$1"
 }

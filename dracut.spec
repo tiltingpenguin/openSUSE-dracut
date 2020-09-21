@@ -77,6 +77,7 @@ Requires: xz
 Requires: gzip
 
 %if 0%{?fedora} || 0%{?rhel}
+Recommends: memstrack
 Recommends: hardlink
 Recommends: pigz
 Recommends: kpartx
@@ -98,7 +99,7 @@ Requires: libkcapi-hmaccalc
 
 %description
 dracut contains tools to create bootable initramfses for the Linux
-kernel. Unlike previous implementations, dracut hard-codes as little
+kernel. Unlike other implementations, dracut hard-codes as little
 as possible into the initramfs. dracut contains various modules which
 are driven by the event-based udev. Having root on MD, DM, LVM2, LUKS
 is supported as well as NFS, iSCSI, NBD, FCoE with the dracut-network
@@ -278,8 +279,7 @@ rm -f -- $RPM_BUILD_ROOT%{_mandir}/man1/lsinitrd.1*
 echo 'hostonly="no"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/02-generic-image.conf
 echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/02-rescue.conf
 
-%if 0%{?fedora} || 0%{?rhel}
-# FIXME: remove after F30
+%if 0%{?fedora} <= 30 || 0%{?rhel} <= 8
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/kernel/postinst.d
 install -m 0755 51-dracut-rescue-postinst.sh $RPM_BUILD_ROOT%{_sysconfdir}/kernel/postinst.d/51-dracut-rescue-postinst.sh
 %endif
@@ -365,7 +365,7 @@ install -m 0755 51-dracut-rescue-postinst.sh $RPM_BUILD_ROOT%{_sysconfdir}/kerne
 %{dracutlibdir}/modules.d/90lvm
 %{dracutlibdir}/modules.d/90mdraid
 %{dracutlibdir}/modules.d/90multipath
-%{dracutlibdir}/modules.d/90stratis
+%{dracutlibdir}/modules.d/90nvdimm
 %{dracutlibdir}/modules.d/90ppcmac
 %{dracutlibdir}/modules.d/90qemu
 %{dracutlibdir}/modules.d/91crypt-gpg
@@ -373,6 +373,7 @@ install -m 0755 51-dracut-rescue-postinst.sh $RPM_BUILD_ROOT%{_sysconfdir}/kerne
 %{dracutlibdir}/modules.d/95debug
 %{dracutlibdir}/modules.d/95fstab-sys
 %{dracutlibdir}/modules.d/95lunmask
+%{dracutlibdir}/modules.d/95nvmf
 %{dracutlibdir}/modules.d/95resume
 %{dracutlibdir}/modules.d/95rootfs-block
 %{dracutlibdir}/modules.d/95terminfo
@@ -403,6 +404,7 @@ install -m 0755 51-dracut-rescue-postinst.sh $RPM_BUILD_ROOT%{_sysconfdir}/kerne
 %{dracutlibdir}/modules.d/98syslog
 %{dracutlibdir}/modules.d/98usrmount
 %{dracutlibdir}/modules.d/99base
+%{dracutlibdir}/modules.d/99memstrack
 %{dracutlibdir}/modules.d/99fs-lib
 %{dracutlibdir}/modules.d/99shutdown
 %attr(0644,root,root) %ghost %config(missingok,noreplace) %{_localstatedir}/log/dracut.log
@@ -475,7 +477,7 @@ install -m 0755 51-dracut-rescue-postinst.sh $RPM_BUILD_ROOT%{_sysconfdir}/kerne
 %files config-rescue
 %{dracutlibdir}/dracut.conf.d/02-rescue.conf
 %{_prefix}/lib/kernel/install.d/51-dracut-rescue.install
-%if 0%{?fedora} || 0%{?rhel}
+%if 0%{?fedora} <= 30 || 0%{?rhel} <= 8
 # FIXME: remove after F30
 %{_sysconfdir}/kernel/postinst.d/51-dracut-rescue-postinst.sh
 %endif
