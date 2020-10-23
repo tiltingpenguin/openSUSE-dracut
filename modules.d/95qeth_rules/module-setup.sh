@@ -5,7 +5,6 @@ check() {
     local _arch=$(uname -m)
     local _online=0
     [ "$_arch" = "s390" -o "$_arch" = "s390x" ] || return 1
-    require_binaries /usr/lib/udev/collect || return 1
     dracut_module_included network || return 1
 
     [[ $hostonly ]] && {
@@ -55,5 +54,5 @@ install() {
         [ -n "$id" ] && inst_rules_qeth $id
     done
 
-    inst_simple /usr/lib/udev/collect
+    [[ -f /usr/lib/udev/collect ]] && inst_simple /usr/lib/udev/collect
 }
