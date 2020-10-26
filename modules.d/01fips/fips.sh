@@ -1,5 +1,17 @@
 #!/bin/bash
 
+# systemd lets stdout go to journal only, but the system
+# has to halt when the integrity check fails to satisfy FIPS.
+if [ -z "$DRACUT_SYSTEMD" ]; then
+    fips_info() {
+        info "$*"
+    }
+else
+    fips_info() {
+        echo "$*" >&2
+    }
+fi
+
 # find fipscheck, prefer kernel-based version
 fipscheck()
 {
@@ -58,7 +70,7 @@ mount_boot()
         [ -e "$boot" ] || return 1
 
         mkdir /boot
-        info "Mounting $boot as /boot"
+        fips_info "Mounting $boot as /boot"
         mount -oro "$boot" /boot || return 1
     elif [ -d "$NEWROOT/boot" ]; then
         rm -fr -- /boot
@@ -79,7 +91,7 @@ do_rhevh_check()
         return 1
     fi
 
-    info "rhevh_check OK"
+    fips_info "rhevh_check OK"
     return 0
 }
 
@@ -121,7 +133,7 @@ fips_load_crypto()
 
     FIPSMODULES=$(cat /etc/fipsmodules)
 
-    info "Loading and integrity checking all crypto modules"
+    fips_info "Loading and integrity checking all crypto modules"
     mv /etc/modprobe.d/fips.conf /etc/modprobe.d/fips.conf.bak
     for _module in $FIPSMODULES; do
         if [ "$_module" != "tcrypt" ]; then
@@ -159,7 +171,7 @@ fips_load_crypto()
     done
     mv /etc/modprobe.d/fips.conf.bak /etc/modprobe.d/fips.conf
 
-    info "Self testing crypto algorithms"
+    fips_info "Self testing crypto algorithms"
     modprobe tcrypt || return 1
     rmmod tcrypt
 }
@@ -168,7 +180,7 @@ do_fips()
 {
     KERNEL=$(uname -r)
 
-    info "Checking integrity of kernel"
+    fips_info "Checking integrity of kernel"
     if [ -e "/run/initramfs/live/vmlinuz0" ]; then
         do_rhevh_check /run/initramfs/live/vmlinuz0 || return 1
     elif [ -e "/run/initramfs/live/isolinux/vmlinuz0" ]; then
@@ -218,7 +230,7 @@ do_fips()
         fi
     fi
 
-    info "All initrd crypto checks done"
+    fips_info "All initrd crypto checks done"
 
     > /tmp/fipsdone
 
