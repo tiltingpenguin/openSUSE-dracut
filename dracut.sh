@@ -1546,6 +1546,11 @@ if [[ $kernel_only != yes ]]; then
         dinfo "*** Resolving executable dependencies done***"
     fi
 
+    # libcrypto does FIPS check for both libcrypto and libssl, and fails when libssl is missing
+    for _dir in $libdirs; do
+        [[ -e $initdir/$_dir/libcrypto.so.1.1 ]] && inst_library $_dir/libssl.so.1.1
+    done
+
     # libpthread workaround: pthread_cancel wants to dlopen libgcc_s.so
     for _dir in $libdirs; do
         for _f in "$_dir/libpthread.so"*; do
