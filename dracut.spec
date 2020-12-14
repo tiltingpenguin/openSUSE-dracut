@@ -278,11 +278,6 @@ rm -f -- $RPM_BUILD_ROOT%{_mandir}/man1/lsinitrd.1*
 echo 'hostonly="no"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/02-generic-image.conf
 echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/02-rescue.conf
 
-%if 0%{?rhel} > 0 && 0%{?rhel} <= 8
-mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/kernel/postinst.d
-install -m 0755 51-dracut-rescue-postinst.sh $RPM_BUILD_ROOT%{_sysconfdir}/kernel/postinst.d/51-dracut-rescue-postinst.sh
-%endif
-
 %files
 %if %{with doc}
 %doc README.md HACKING TODO AUTHORS NEWS dracut.html dracut.png dracut.svg
@@ -349,6 +344,7 @@ install -m 0755 51-dracut-rescue-postinst.sh $RPM_BUILD_ROOT%{_sysconfdir}/kerne
 %{dracutlibdir}/modules.d/04watchdog
 %{dracutlibdir}/modules.d/04watchdog-modules
 %{dracutlibdir}/modules.d/05busybox
+%{dracutlibdir}/modules.d/06dbus
 %{dracutlibdir}/modules.d/06rngd
 %{dracutlibdir}/modules.d/10i18n
 %{dracutlibdir}/modules.d/30convertfs
@@ -433,6 +429,7 @@ install -m 0755 51-dracut-rescue-postinst.sh $RPM_BUILD_ROOT%{_sysconfdir}/kerne
 %{dracutlibdir}/modules.d/02systemd-networkd
 %{dracutlibdir}/modules.d/35network-manager
 %{dracutlibdir}/modules.d/35network-legacy
+%{dracutlibdir}/modules.d/35network-wicked
 %{dracutlibdir}/modules.d/40network
 %{dracutlibdir}/modules.d/45ifcfg
 %{dracutlibdir}/modules.d/90kernel-network-modules
@@ -477,8 +474,5 @@ install -m 0755 51-dracut-rescue-postinst.sh $RPM_BUILD_ROOT%{_sysconfdir}/kerne
 %files config-rescue
 %{dracutlibdir}/dracut.conf.d/02-rescue.conf
 %{_prefix}/lib/kernel/install.d/51-dracut-rescue.install
-%if 0%{?rhel} > 0 && 0%{?rhel} <= 8
-%{_sysconfdir}/kernel/postinst.d/51-dracut-rescue-postinst.sh
-%endif
 
 %changelog
