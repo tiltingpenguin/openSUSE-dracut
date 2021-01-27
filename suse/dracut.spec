@@ -148,10 +148,12 @@ rm %{buildroot}%{_bindir}/mkinitrd
 install -D -m 0755 mkinitrd-suse.sh %{buildroot}/%{_sbindir}/mkinitrd
 install -D -m 0755 suse/dracut-installkernel %{buildroot}/%{_sbindir}/installkernel
 
+%if !0%{?usrmerged}
 # moved to /usr/sbin, maintain /sbin compat symlinks
 mkdir -p %{buildroot}/sbin
 ln -s %{_sbindir}/mkinitrd %{buildroot}/sbin/mkinitrd
 ln -s %{_sbindir}/installkernel %{buildroot}/sbin/installkernel
+%endif
 
 mv %{buildroot}%{_mandir}/man8/mkinitrd-suse.8 %{buildroot}%{_mandir}/man8/mkinitrd.8
 
@@ -267,8 +269,10 @@ fi
 %{_bindir}/lsinitrd
 %{_sbindir}/installkernel
 %{_sbindir}/mkinitrd
+%if !0%{?usrmerged}
 /sbin/installkernel
 /sbin/mkinitrd
+%endif
 %{_datarootdir}/bash-completion/completions/lsinitrd
 %{_datadir}/pkgconfig/dracut.pc
 
