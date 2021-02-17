@@ -21,7 +21,7 @@ install() {
     call_splash_geninitramfs() {
         local _out _ret
 
-        _out=$(splash_geninitramfs -c "$1" ${@:2} 2>&1)
+        _out=$(splash_geninitramfs -c "$1" "${@:2}" 2>&1)
         _ret=$?
 
         if [[ ${_out} ]]; then
@@ -40,7 +40,7 @@ install() {
         return ${_ret}
     }
 
-    type -P splash_geninitramfs >/dev/null || return 1
+    find_binary splash_geninitramfs >/dev/null || return 1
 
     _opts=''
     if [[ ${DRACUT_GENSPLASH_THEME} ]]; then
@@ -52,7 +52,7 @@ install() {
         _splash_res=${DRACUT_GENSPLASH_RES}
     elif [[ ${hostonly} ]]; then
         # Settings from config only in hostonly
-        [[ -e $dracutsysrootdir/etc/conf.d/splash ]] && source $dracutsysrootdir/etc/conf.d/splash
+        [[ -e $dracutsysrootdir/etc/conf.d/splash ]] && source "$dracutsysrootdir"/etc/conf.d/splash
         [[ ! ${_splash_theme} ]] && _splash_theme=default
         [[ ${_splash_res} ]] && _opts+=" -r ${_splash_res}"
     else

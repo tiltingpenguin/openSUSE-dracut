@@ -79,11 +79,13 @@ installkernel() {
                 "=drivers/hwmon" \
                 "=drivers/hwspinlock" \
                 "=drivers/i2c/busses" \
+                "=drivers/memory" \
                 "=drivers/mfd" \
                 "=drivers/mmc/core" \
                 "=drivers/phy" \
                 "=drivers/power" \
                 "=drivers/regulator" \
+                "=drivers/reset" \
                 "=drivers/rpmsg" \
                 "=drivers/rtc" \
                 "=drivers/soc" \
@@ -131,14 +133,15 @@ installkernel() {
         [[ $arch == x86_64 ]] && arch=x86
         [[ $arch == s390x ]] && arch=s390
         [[ $arch == aarch64 ]] && arch=arm64
-        instmods "=crypto" "=arch/$arch/crypto" "=drivers/crypto"
+        hostonly='' instmods "=crypto"
+        instmods "=arch/$arch/crypto" "=drivers/crypto"
     fi
     :
 }
 
 # called by dracut
 install() {
-    inst_multiple -o /lib/modprobe.d/*.conf
+    inst_multiple -o "/lib/modprobe.d/*.conf"
     [[ $hostonly ]] && inst_multiple -H -o /etc/modprobe.d/*.conf /etc/modprobe.conf
     if ! dracut_module_included "systemd"; then
         inst_hook cmdline 01 "$moddir/parse-kernel.sh"

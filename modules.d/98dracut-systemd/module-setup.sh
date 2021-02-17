@@ -4,11 +4,6 @@
 check() {
     [[ $mount_needs ]] && return 1
 
-    if ! dracut_module_included "systemd-initrd"; then
-        derror "dracut-systemd needs systemd-initrd in the initramfs"
-        return 1
-    fi
-
     return 0
 }
 
@@ -54,7 +49,7 @@ install() {
         dracut-pre-udev.service \
         ; do
         inst_simple "$moddir/${i}" "$systemdsystemunitdir/${i}"
-        systemctl -q --root "$initdir" add-wants initrd.target "$i"
+        $SYSTEMCTL -q --root "$initdir" add-wants initrd.target "$i"
     done
 
     inst_simple "$moddir/dracut-tmpfiles.conf" "$tmpfilesdir/dracut-tmpfiles.conf"

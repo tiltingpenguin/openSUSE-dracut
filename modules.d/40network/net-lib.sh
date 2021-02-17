@@ -1,5 +1,7 @@
 #!/bin/sh
 
+IFNETFILE="/tmp/bootnetif"
+
 is_ip() {
     echo "$1" | {
         IFS=. read a b c d
@@ -371,7 +373,8 @@ parse_iscsi_root()
     case "$v" in
         [[]*[]]:*)
             iscsi_target_ip=${v#[[]}
-                iscsi_target_ip=${iscsi_target_ip%%[]]*}
+            iscsi_target_ip=${iscsi_target_ip%%[]]*}
+            # shellcheck disable=SC1087
             v=${v#[[]$iscsi_target_ip[]]:}
             ;;
         *)
@@ -460,7 +463,7 @@ ip_to_var() {
     fi
 
     if [ $# -eq 1 ]; then
-        # format: ip={dhcp|on|any|dhcp6|auto6|either6}
+        # format: ip={dhcp|on|any|dhcp6|auto6|either6|single-dhcp}
         # or
         #         ip=<ipv4-address> means anaconda-style static config argument cluster
         autoconf="$1"

@@ -36,7 +36,7 @@ read_arg() {
     else
 	for ((i=3; $i <= $#; i++)); do
             # Only read next arg if it not an arg itself.
-            if [[ ${@:$i:1} = -* ]];then
+            if [[ ${*:$i:1} = -* ]];then
 		break
             fi
             result="$result ${@:$i:1}"
@@ -153,7 +153,6 @@ while (($# > 0)); do
         --loopopts*) ;;
         --looppath*) ;;
         --dsdt*) ;;
-        --bootchart) ;;
 	-s) ;;
 	--quiet|-q) quiet=1;;
 	-b) read_arg boot_dir "$@" || shift $?

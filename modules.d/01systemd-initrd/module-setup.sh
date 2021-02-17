@@ -4,11 +4,6 @@
 check() {
     [[ $mount_needs ]] && return 1
 
-    if ! dracut_module_included "systemd"; then
-        derror "systemd-initrd needs systemd in the initramfs"
-        return 1
-    fi
-
     return 0
 }
 
@@ -36,5 +31,5 @@ install() {
         $systemdsystemunitdir/initrd-udevadm-cleanup-db.service \
         $systemdsystemunitdir/initrd-parse-etc.service
 
-    systemctl -q --root "$initdir" set-default initrd.target
+    $SYSTEMCTL -q --root "$initdir" set-default initrd.target
 }

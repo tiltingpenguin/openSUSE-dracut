@@ -6,16 +6,13 @@ on:
   push:
     branches:
       - 'master'
-    tags:
-      - '*'
-  pull_request:
 
 jobs:
   test:
     runs-on: ubuntu-latest
     container:
       image: quay.io/haraldh/dracut-fedora:32
-      options: "--privileged"
+      options: "-v /dev/kvm:/dev/kvm"
     timeout-minutes: 45
     strategy:
       matrix:
@@ -39,11 +36,6 @@ jobs:
           "36",
           "40",
           "41",
-          "50",
-          "51",
-          "60",
-          "61",
-          "99",
         ]
       fail-fast: false
     steps:
