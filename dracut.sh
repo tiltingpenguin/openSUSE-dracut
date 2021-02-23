@@ -612,8 +612,6 @@ while :; do
                        persistent_policy_l="$2";       PARMS_TO_STORE+=" '$2'"; shift;;
         --fstab)       use_fstab_l="yes" ;;
         -h|--help)     long_usage; exit 1 ;;
-        -i|--include)  include_src+=("$2");          PARMS_TO_STORE+=" '$2'";
-                       shift;;
         --bzip2)       compress_l="bzip2";;
         --lzma)        compress_l="lzma";;
         --xz)          compress_l="xz";;
@@ -774,8 +772,6 @@ export SYSTEMCTL=${SYSTEMCTL:-systemctl}
 (( ${#force_add_dracutmodules_l[@]} )) && force_add_dracutmodules+=" ${force_add_dracutmodules_l[*]} "
 (( ${#fscks_l[@]} )) && fscks+=" ${fscks_l[*]} "
 (( ${#add_fstab_l[@]} )) && add_fstab+=" ${add_fstab_l[*]} "
-# shellcheck disable=SC2154
-(( ${#fstab_lines_l[@]} )) && fstab_lines+=( "${fstab_lines_l[@]}" )
 (( ${#install_items_l[@]} )) && install_items+=" ${install_items_l[*]} "
 (( ${#install_optional_items_l[@]} )) && install_optional_items+=" ${install_optional_items_l[*]} "
 (( ${#hostonly_nics_l[@]} )) && hostonly_nics+=" ${hostonly_nics_l[*]} "
@@ -1014,6 +1010,9 @@ readonly DRACUT_TMPDIR="$(mktemp -p "$TMPDIR/" -d -t dracut.XXXXXX)"
 trap '
     ret=$?;
     [[ $keep ]] && echo "Not removing $DRACUT_TMPDIR." >&2 || { [[ $DRACUT_TMPDIR ]] && rm -rf -- "$DRACUT_TMPDIR"; };
+    if [[ ${FSFROZEN} ]]; then
+      fsfreeze -u "${FSFROZEN}"
+    fi
     exit $ret;
     ' EXIT
 
@@ -2309,9 +2308,11 @@ if [[ -d $dracutsysrootdir/run/systemd/system ]]; then
 
     # use fsfreeze only if we're not writing to /
     if [[ "$(stat -c %m -- "$outfile")" != "/" ]] && freeze_ok_for_fstype "$outfile"; then
-        if ! (fsfreeze -f "$(dirname "$outfile")" 2>/dev/null && fsfreeze -u "$(dirname "$outfile")" 2>/dev/null); then
+        FSFROZEN="$(dirname "$outfile")"
+        if ! (fsfreeze -f "${FSFROZEN}" 2>/dev/null && fsfreeze -u "${FSFROZEN}" 2>/dev/null); then
             dinfo "dracut: warning: could not fsfreeze $(dirname "$outfile")"
         fi
+        unset FSFROZEN
     fi
 fi
 
