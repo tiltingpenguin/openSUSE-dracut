@@ -717,6 +717,7 @@ unset NPATH
 
 # these options add to the stuff in the config file
 (( ${#add_dracutmodules_l[@]} )) && add_dracutmodules+=" ${add_dracutmodules_l[@]} "
+(( ${#omit_dracutmodules_l[@]})) && omit_dracutmodules+=" ${omit_dracutmodules_l[*]} "
 (( ${#force_add_dracutmodules_l[@]} )) && force_add_dracutmodules+=" ${force_add_dracutmodules_l[@]} "
 (( ${#fscks_l[@]} )) && fscks+=" ${fscks_l[@]} "
 (( ${#add_fstab_l[@]} )) && add_fstab+=" ${add_fstab_l[@]} "
@@ -726,7 +727,6 @@ unset NPATH
 
 # these options override the stuff in the config file
 (( ${#dracutmodules_l[@]} )) && dracutmodules="${dracutmodules_l[@]}"
-(( ${#omit_dracutmodules_l[@]} )) && omit_dracutmodules="${omit_dracutmodules_l[@]}"
 (( ${#filesystems_l[@]} )) && filesystems="${filesystems_l[@]}"
 (( ${#fw_dir_l[@]} )) && fw_dir="${fw_dir_l[@]}"
 (( ${#libdirs_l[@]} ))&& libdirs="${libdirs_l[@]}"
