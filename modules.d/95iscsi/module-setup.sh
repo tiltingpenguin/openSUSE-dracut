@@ -224,20 +224,13 @@ install() {
         inst "$moddir/mount-lun.sh" "/bin/mount-lun.sh"
     else
         inst_multiple -o \
-                      $systemdsystemunitdir/iscsi.service \
-                      $systemdsystemunitdir/iscsid.service \
-                      $systemdsystemunitdir/iscsid.socket \
-                      $systemdsystemunitdir/iscsiuio.service \
-                      $systemdsystemunitdir/iscsiuio.socket \
-                      iscsiadm iscsid
-
-        mkdir -p "${initdir}/$systemdsystemunitdir/sockets.target.wants"
-        for i in \
-                iscsid.socket \
-                iscsiuio.socket \
-            ; do
-            ln_r "$systemdsystemunitdir/${i}" "$systemdsystemunitdir/sockets.target.wants/${i}"
-        done
+            "$systemdsystemunitdir"/iscsi.service \
+            "$systemdsystemunitdir"/iscsi-init.service \
+            "$systemdsystemunitdir"/iscsid.service \
+            "$systemdsystemunitdir"/iscsid.socket \
+            "$systemdsystemunitdir"/iscsiuio.service \
+            "$systemdsystemunitdir"/iscsiuio.socket \
+            iscsiadm iscsid
 
         mkdir -p "${initdir}/$systemdsystemunitdir/basic.target.wants"
         for i in \
@@ -249,29 +242,58 @@ install() {
 
         # Make sure iscsid is started after dracut-cmdline and ready for the initqueue
         mkdir -p "${initdir}/$systemdsystemunitdir/iscsid.service.d"
-        (
+        {
             echo "[Unit]"
-            echo "After=dracut-cmdline.service"
-            echo "Before=dracut-initqueue.service"
-        ) > "${initdir}/$systemdsystemunitdir/iscsid.service.d/dracut.conf"
+            echo "DefaultDependencies=no"
+            echo "Conflicts=shutdown.target"
+            echo "Before=shutdown.target"
+        } > "${initdir}/$systemdsystemunitdir/iscsid.service.d/dracut.conf"
 
         # The iscsi deamon does not need to wait for any storage inside initrd
         mkdir -p "${initdir}/$systemdsystemunitdir/iscsid.socket.d"
-        (
+        {
             echo "[Unit]"
             echo "DefaultDependencies=no"
             echo "Conflicts=shutdown.target"
             echo "Before=shutdown.target sockets.target"
-        ) > "${initdir}/$systemdsystemunitdir/iscsid.socket.d/dracut.conf"
-        mkdir -p "${initdir}/$systemdsystemunitdir/iscsiuio.socket.d"
-        (
-            echo "[Unit]"
-            echo "DefaultDependencies=no"
-            echo "Conflicts=shutdown.target"
-            echo "Before=shutdown.target sockets.target"
-        ) > "${initdir}/$systemdsystemunitdir/iscsiuio.socket.d/dracut.conf"
+        } > "${initdir}/$systemdsystemunitdir/iscsid.socket.d/dracut.conf"
 
+        mkdir -p "${initdir}/$systemdsystemunitdir/iscsiuio.service.d"
+        {
+            echo "[Unit]"
+            echo "DefaultDependencies=no"
+            echo "Conflicts=shutdown.target"
+            echo "Before=shutdown.target"
+        } > "${initdir}/$systemdsystemunitdir/iscsiuio.service.d/dracut.conf"
+
+        mkdir -p "${initdir}/$systemdsystemunitdir/iscsiuio.socket.d"
+        {
+            echo "[Unit]"
+            echo "DefaultDependencies=no"
+            echo "Conflicts=shutdown.target"
+            echo "Before=shutdown.target sockets.target"
+        } > "${initdir}/$systemdsystemunitdir/iscsiuio.socket.d/dracut.conf"
+
+        # Fedora 34 iscsid requires iscsi-shutdown.service
+        # which would terminate all iSCSI connections on switch root
+        cat > "${initdir}/$systemdsystemunitdir/iscsi-shutdown.service" << EOF
+[Unit]
+Description=Dummy iscsi-shutdown.service for the initrd
+Documentation=man:iscsid(8) man:iscsiadm(8)
+DefaultDependencies=no
+Conflicts=shutdown.target
+After=systemd-remount-fs.service network.target iscsid.service iscsiuio.service
+Before=remote-fs-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=false
+ExecStart=-/usr/bin/true
+EOF
     fi
     inst_dir /var/lib/iscsi
+    mkdir -p "${initdir}/var/lib/iscsi/nodes"
+    # Fedora 34 iscsid wants a non-empty /var/lib/iscsi/nodes directory
+    : > "${initdir}/var/lib/iscsi/nodes/.dracut"
     dracut_need_initqueue
 }
