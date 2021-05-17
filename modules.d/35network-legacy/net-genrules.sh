@@ -7,7 +7,7 @@ if [ -z "$netroot" ] && [ ! -e "/tmp/net.ifaces" ] && [ "$NEEDNET" != "1" ]; the
     return
 fi
 
-command -v fix_bootif >/dev/null || . /lib/net-lib.sh
+command -v fix_bootif > /dev/null || . /lib/net-lib.sh
 
 # Write udev rules
 {
@@ -16,6 +16,7 @@ command -v fix_bootif >/dev/null || . /lib/net-lib.sh
         [ -e "$i" ] || continue
         unset bridgeslaves
         unset bridgename
+        # shellcheck disable=SC1090
         . "$i"
         RAW_IFACES="$RAW_IFACES $bridgeslaves"
         MASTER_IFACES="$MASTER_IFACES $bridgename"
@@ -26,6 +27,7 @@ command -v fix_bootif >/dev/null || . /lib/net-lib.sh
         [ -e "$i" ] || continue
         unset bondslaves
         unset bondname
+        # shellcheck disable=SC1090
         . "$i"
         # It is enough to fire up only one
         RAW_IFACES="$RAW_IFACES $bondslaves"
@@ -36,6 +38,7 @@ command -v fix_bootif >/dev/null || . /lib/net-lib.sh
         [ -e "$i" ] || continue
         unset teamslaves
         unset teammaster
+        # shellcheck disable=SC1090
         . "$i"
         RAW_IFACES="$RAW_IFACES ${teamslaves}"
         MASTER_IFACES="$MASTER_IFACES ${teammaster}"
@@ -44,11 +47,13 @@ command -v fix_bootif >/dev/null || . /lib/net-lib.sh
     for i in /tmp/vlan.*.phy; do
         [ -e "$i" ] || continue
         unset phydevice
+        # shellcheck disable=SC1090
         . "$i"
         RAW_IFACES="$RAW_IFACES $phydevice"
-        for j in /tmp/vlan.*.${phydevice}; do
+        for j in /tmp/vlan.*".${phydevice}"; do
             [ -e "$j" ] || continue
             unset vlanname
+            # shellcheck disable=SC1090
             . "$j"
             MASTER_IFACES="$MASTER_IFACES ${vlanname}"
         done
@@ -58,13 +63,14 @@ command -v fix_bootif >/dev/null || . /lib/net-lib.sh
     RAW_IFACES="$(trim "$RAW_IFACES")"
 
     if [ -z "$IFACES" ]; then
-        [ -e /tmp/net.ifaces ] && read IFACES < /tmp/net.ifaces
+        [ -e /tmp/net.ifaces ] && read -r IFACES < /tmp/net.ifaces
     fi
 
     if [ -e /tmp/net.bootdev ]; then
         bootdev=$(cat /tmp/net.bootdev)
     fi
 
+    # shellcheck disable=SC2016
     ifup='/sbin/ifup $name'
 
     runcmd="RUN+=\"/sbin/initqueue --name ifup-\$name --unique --onetime $ifup\""
@@ -75,15 +81,15 @@ command -v fix_bootif >/dev/null || . /lib/net-lib.sh
         echo 'ACTION!="add|change|move", GOTO="net_end"'
         for iface in $IFACES $RAW_IFACES; do
             case "$iface" in
-                ??:??:??:??:??:??)  # MAC address
+                ??:??:??:??:??:??) # MAC address
                     cond="ATTR{address}==\"$iface\""
                     echo "$cond, $runcmd, GOTO=\"net_end\""
                     ;;
-                ??-??-??-??-??-??)  # MAC address in BOOTIF form
-                    cond="ATTR{address}==\"$(fix_bootif $iface)\""
+                ??-??-??-??-??-??) # MAC address in BOOTIF form
+                    cond="ATTR{address}==\"$(fix_bootif "$iface")\""
                     echo "$cond, $runcmd, GOTO=\"net_end\""
                     ;;
-                *)                  # an interface name
+                *) # an interface name
                     cond="ENV{INTERFACE}==\"$iface\""
                     echo "$cond, $runcmd, GOTO=\"net_end\""
                     cond="NAME==\"$iface\""
@@ -96,11 +102,11 @@ command -v fix_bootif >/dev/null || . /lib/net-lib.sh
 
         for iface in $IFACES; do
             if [ "$bootdev" = "$iface" ] || [ "$NEEDNET" = "1" ]; then
-		if [ -n "$netroot" ] && [ -n "$DRACUT_SYSTEMD" ]; then
+                if [ -n "$netroot" ] && [ -n "$DRACUT_SYSTEMD" ]; then
                     echo "systemctl is-active initrd-root-device.target || [ -f /tmp/net.${iface}.did-setup ]"
-		else
+                else
                     echo "[ -f /tmp/net.${iface}.did-setup ]"
-		fi >$hookdir/initqueue/finished/wait-$iface.sh
+                fi > "$hookdir"/initqueue/finished/wait-"$iface".sh
             fi
         done
     # Default: We don't know the interface to use, handle all
@@ -110,9 +116,10 @@ command -v fix_bootif >/dev/null || . /lib/net-lib.sh
         # if you change the name of "91-default-net.rules", also change modules.d/80cms/cmssetup.sh
         echo "$cond, $runcmd" > /etc/udev/rules.d/91-default-net.rules
         if [ "$NEEDNET" = "1" ]; then
-            echo 'for i in /tmp/net.*.did-setup; do [ -f "$i" ]  && exit 0; done; exit 1' >$hookdir/initqueue/finished/wait-network.sh
+            # shellcheck disable=SC2016
+            echo 'for i in /tmp/net.*.did-setup; do [ -f "$i" ]  && exit 0; done; exit 1' > "$hookdir"/initqueue/finished/wait-network.sh
         fi
     fi
 
-# if you change the name of "90-net.rules", also change modules.d/80cms/cmssetup.sh
+    # if you change the name of "90-net.rules", also change modules.d/80cms/cmssetup.sh
 } > /etc/udev/rules.d/90-net.rules

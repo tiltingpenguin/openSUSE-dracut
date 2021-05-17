@@ -10,9 +10,10 @@ ACTION="$1"
 # and that it can actually be used. When console=null is used,
 # echo will fail. We do the check in a subshell, because otherwise
 # the process will be killed when when running as PID 1.
-[ -w /dev/console ] && \
-    ( echo </dev/console &>/dev/null ) && \
-    exec </dev/console >>/dev/console 2>>/dev/console
+# shellcheck disable=SC2217
+[ -w /dev/console ] \
+    && (echo < /dev/console > /dev/null 2> /dev/null) \
+    && exec < /dev/console >> /dev/console 2>> /dev/console
 
 export TERM=linux
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -22,17 +23,17 @@ if [ "$(stat -c '%T' -f /)" = "tmpfs" ]; then
     mount -o remount,rw /
 fi
 
-mkdir /oldsys
+mkdir -p /oldsys
 for i in sys proc run dev; do
-    mkdir /oldsys/$i
+    mkdir -p /oldsys/$i
     mount --move /oldroot/$i /oldsys/$i
 done
 
 # if "kexec" was installed after creating the initramfs, we try to copy it from the real root
 # libz normally is pulled in via kmod/modprobe and udevadm
-if [ "$ACTION" = "kexec" ] && ! command -v kexec >/dev/null 2>&1; then
+if [ "$ACTION" = "kexec" ] && ! command -v kexec > /dev/null 2>&1; then
     for p in /usr/sbin /usr/bin /sbin /bin; do
-        cp -a /oldroot/${p}/kexec $p >/dev/null 2>&1 && break
+        cp -a /oldroot/${p}/kexec $p > /dev/null 2>&1 && break
     done
     hash kexec
 fi
@@ -54,14 +55,15 @@ _timed_out_umounts=""
 umount_a() {
     local _verbose="n"
     if [ "$1" = "-v" ]; then
-        _verbose="y"; shift
+        _verbose="y"
+        shift
         exec 7>&2
     else
-        exec 7>/dev/null
+        exec 7> /dev/null
     fi
 
     local _did_umount="n"
-    while read a mp a || [ -n "$mp" ]; do
+    while read -r _ mp _ || [ -n "$mp" ]; do
         strstr "$mp" oldroot || continue
         strstr "$_timed_out_umounts" " $mp " && continue
 
@@ -69,7 +71,10 @@ umount_a() {
         # indefinitely if this is e.g. a stuck NFS mount. The command is
         # invoked in a subshell to silence also the "Killed" message that might
         # be produced by the shell.
-        (set +m; timeout --signal=KILL "$_umount_timeout" umount "$mp") 2>&7
+        (
+            set +m
+            timeout --signal=KILL "$_umount_timeout" umount "$mp"
+        ) 2>&7
         local ret=$?
         if [ $ret -eq 0 ]; then
             _did_umount="y"
@@ -80,7 +85,7 @@ umount_a() {
         elif [ "$_verbose" = "y" ]; then
             warn "Unmounting $mp failed with status $ret."
         fi
-    done </proc/mounts
+    done < /proc/mounts
 
     losetup -D 2>&7
 
@@ -92,7 +97,7 @@ umount_a() {
 _cnt=0
 while [ $_cnt -le 40 ]; do
     umount_a || break
-    _cnt=$(($_cnt+1))
+    _cnt=$((_cnt + 1))
 done
 
 [ $_cnt -ge 40 ] && umount_a -v
@@ -102,20 +107,22 @@ if strstr "$(cat /proc/mounts)" "/oldroot"; then
     for _pid in /proc/*; do
         _pid=${_pid##/proc/}
         case $_pid in
-            *[!0-9]*) continue;;
+            *[!0-9]*) continue ;;
         esac
-        [ $_pid -eq $$ ] && continue
+        [ "$_pid" -eq $$ ] && continue
 
         [ -e "/proc/$_pid/exe" ] || continue
         [ -e "/proc/$_pid/root" ] || continue
 
-        if strstr "$(ls -l /proc/$_pid /proc/$_pid/fd 2>/dev/null)" "oldroot"; then
-            warn "Blocking umount of /oldroot [$_pid] $(cat /proc/$_pid/cmdline)"
+        if strstr "$(ls -l /proc/"$_pid" /proc/"$_pid"/fd 2> /dev/null)" "oldroot"; then
+            warn "Blocking umount of /oldroot [$_pid] $(cat /proc/"$_pid"/cmdline)"
         else
-            warn "Still running [$_pid] $(cat /proc/$_pid/cmdline)"
+            warn "Still running [$_pid] $(cat /proc/"$_pid"/cmdline)"
         fi
 
+        # shellcheck disable=SC2012
         ls -l "/proc/$_pid/exe" 2>&1 | vwarn
+        # shellcheck disable=SC2012
         ls -l "/proc/$_pid/fd" 2>&1 | vwarn
     done
 fi
@@ -123,11 +130,11 @@ fi
 _check_shutdown() {
     local __f
     local __s=0
-    for __f in $hookdir/shutdown/*.sh; do
+    for __f in "$hookdir"/shutdown/*.sh; do
         [ -e "$__f" ] || continue
-        ( . "$__f" $1 )
-        if [ $? -eq 0 ]; then
-            rm -f -- $__f
+        # shellcheck disable=SC1090 disable=SC2240
+        if (final="$1" . "$__f" "$1"); then
+            rm -f -- "$__f"
         else
             __s=1
         fi
@@ -138,14 +145,14 @@ _check_shutdown() {
 _cnt=0
 while [ $_cnt -le 40 ]; do
     _check_shutdown && break
-    _cnt=$(($_cnt+1))
+    _cnt=$((_cnt + 1))
 done
 [ $_cnt -ge 40 ] && _check_shutdown final
 
 getarg 'rd.break=shutdown' && emergency_shell --shutdown shutdown "Break before shutdown"
 
 case "$ACTION" in
-    reboot|poweroff|halt)
+    reboot | poweroff | halt)
         $ACTION -f -n
         warn "$ACTION failed!"
         ;;

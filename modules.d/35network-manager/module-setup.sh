@@ -2,8 +2,6 @@
 
 # called by dracut
 check() {
-    local _program
-
     require_binaries sed grep || return 1
 
     # do not add this module by default
@@ -12,6 +10,7 @@ check() {
 
 # called by dracut
 depends() {
+    echo dbus
     return 0
 }
 
@@ -31,12 +30,26 @@ install() {
     inst_multiple ip sed grep
 
     inst NetworkManager
-    inst /usr/libexec/nm-initrd-generator
+    inst_multiple -o /usr/{lib,libexec}/nm-initrd-generator
     inst_multiple -o teamd dhclient
     inst_hook cmdline 99 "$moddir/nm-config.sh"
     if dracut_module_included "systemd"; then
-        inst_simple "${moddir}/nm-run.service" "${systemdsystemunitdir}/nm-run.service"
-        $SYSTEMCTL -q --root "$initdir" enable nm-run.service
+
+        inst "$dbussystem"/org.freedesktop.NetworkManager.conf
+        inst_multiple nmcli nm-online
+
+        # Install a configuration snippet to prevent the automatic creation of
+        # "Wired connection #" DHCP connections for Ethernet interfaces
+        inst_simple "$moddir"/initrd-no-auto-default.conf /usr/lib/NetworkManager/conf.d/
+
+        inst_simple "$moddir"/nm-initrd.service "$systemdsystemunitdir"/nm-initrd.service
+        inst_simple "$moddir"/nm-wait-online-initrd.service "$systemdsystemunitdir"/nm-wait-online-initrd.service
+
+        # Adding default link
+        inst_multiple -o "${systemdutildir}/network/99-default.link"
+        [[ $hostonly ]] && inst_multiple -H -o "${systemdsystemconfdir}/network/*.link"
+
+        $SYSTEMCTL -q --root "$initdir" enable nm-initrd.service
     fi
 
     inst_hook initqueue/settled 99 "$moddir/nm-run.sh"
@@ -46,7 +59,7 @@ install() {
     inst_simple "$moddir/nm-lib.sh" "/lib/nm-lib.sh"
 
     if [[ -x "$initdir/usr/sbin/dhclient" ]]; then
-        inst /usr/libexec/nm-dhcp-helper
+        inst_multiple -o /usr/{lib,libexec}/nm-dhcp-helper
     elif ! [[ -e "$initdir/etc/machine-id" ]]; then
         # The internal DHCP client silently fails if we
         # have no machine-id

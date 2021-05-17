@@ -2,13 +2,13 @@
 
 export DRACUT_SYSTEMD=1
 if [ -f /dracut-state.sh ]; then
-    . /dracut-state.sh 2>/dev/null
+    . /dracut-state.sh 2> /dev/null
 fi
-type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
+type getarg > /dev/null 2>&1 || . /lib/dracut-lib.sh
 
 source_conf /etc/conf.d
 
-type plymouth >/dev/null 2>&1 && plymouth quit
+type plymouth > /dev/null 2>&1 && plymouth quit
 
 export _rdshell_name="dracut" action="Boot" hook="emergency"
 _emergency_action=$(getarg rd.emergency)
@@ -17,10 +17,10 @@ if getargbool 1 rd.shell -d -y rdshell || getarg rd.break -d rdbreak; then
     FSTXT="/run/dracut/fsck/fsck_help_$fstype.txt"
     RDSOSREPORT="$(rdsosreport)"
     source_hook "$hook"
-    while read _tty rest; do
+    while read -r _tty rest; do
         (
             echo
-            echo $RDSOSREPORT
+            echo "$RDSOSREPORT"
             echo
             echo
             echo 'Entering emergency mode. Exit the shell to continue.'
@@ -30,7 +30,7 @@ if getargbool 1 rd.shell -d -y rdshell || getarg rd.break -d rdbreak; then
             echo
             echo
             [ -f "$FSTXT" ] && cat "$FSTXT"
-        ) > /dev/$_tty
+        ) > /dev/"$_tty"
     done < /proc/consoles
     [ -f /etc/profile ] && . /etc/profile
     [ -z "$PS1" ] && export PS1="$_name:\${PWD}# "
@@ -46,11 +46,14 @@ fi
 
 case "$_emergency_action" in
     reboot)
-        reboot || exit 1;;
+        reboot || exit 1
+        ;;
     poweroff)
-        poweroff || exit 1;;
+        poweroff || exit 1
+        ;;
     halt)
-        halt || exit 1;;
+        halt || exit 1
+        ;;
 esac
 
 exit 0

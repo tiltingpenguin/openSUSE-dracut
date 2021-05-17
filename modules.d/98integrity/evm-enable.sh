@@ -11,22 +11,31 @@ EVMCONFIG="${NEWROOT}/etc/sysconfig/evm"
 EVMKEYDESC="evm-key"
 EVMKEYTYPE="encrypted"
 EVMKEYID=""
+EVM_ACTIVATION_BITS=0
 
-load_evm_key()
-{
+# The following variables can be set in /etc/sysconfig/evm:
+# EVMKEY: path to the symmetric key; defaults to /etc/keys/evm-trusted.blob
+# EVMKEYDESC: Description of the symmetric key; default is 'evm-key'
+# EVMKEYTYPE: Type of the symmetric key; default is 'encrypted'
+# EMX509: path to x509 cert; default is /etc/keys/x509_evm.der
+# EVM_ACTIVATION_BITS: additional EVM activation bits, such as
+#                      EVM_SETUP_COMPLETE; default is 0
+
+load_evm_key() {
     # read the configuration from the config file
-    [ -f "${EVMCONFIG}" ] && \
-        . ${EVMCONFIG}
+    # shellcheck disable=SC1090
+    [ -f "${EVMCONFIG}" ] \
+        && . "${EVMCONFIG}"
 
     # override the EVM key path name from the 'evmkey=' parameter in the kernel
     # command line
-    EVMKEYARG=$(getarg evmkey=)
-    [ $? -eq 0 ] && \
+    if EVMKEYARG=$(getarg evmkey=); then
         EVMKEY=${EVMKEYARG}
+    fi
 
     # set the default value
-    [ -z "${EVMKEY}" ] && \
-        EVMKEY="/etc/keys/evm-trusted.blob";
+    [ -z "${EVMKEY}" ] \
+        && EVMKEY="/etc/keys/evm-trusted.blob"
 
     # set the EVM key path name
     EVMKEYPATH="${NEWROOT}${EVMKEY}"
@@ -40,30 +49,28 @@ load_evm_key()
     fi
 
     # read the EVM encrypted key blob
-    KEYBLOB=$(cat ${EVMKEYPATH})
+    KEYBLOB=$(cat "${EVMKEYPATH}")
 
     # load the EVM encrypted key
-    EVMKEYID=$(keyctl add ${EVMKEYTYPE} ${EVMKEYDESC} "load ${KEYBLOB}" @u)
-    [ $? -eq 0 ] || {
-        info "integrity: failed to load the EVM encrypted key: ${EVMKEYDESC}";
-        return 1;
-    }
+    if ! EVMKEYID=$(keyctl add ${EVMKEYTYPE} ${EVMKEYDESC} "load ${KEYBLOB}" @u); then
+        info "integrity: failed to load the EVM encrypted key: ${EVMKEYDESC}"
+        return 1
+    fi
     return 0
 }
 
-load_evm_x509()
-{
+load_evm_x509() {
     info "Load EVM IMA X509"
 
     # override the EVM key path name from the 'evmx509=' parameter in
     # the kernel command line
-    EVMX509ARG=$(getarg evmx509=)
-    [ $? -eq 0 ] && \
+    if EVMX509ARG=$(getarg evmx509=); then
         EVMX509=${EVMX509ARG}
+    fi
 
     # set the default value
-    [ -z "${EVMX509}" ] && \
-        EVMX509="/etc/keys/x509_evm.der";
+    [ -z "${EVMX509}" ] \
+        && EVMX509="/etc/keys/x509_evm.der"
 
     # set the EVM public key path name
     EVMX509PATH="${NEWROOT}${EVMX509}"
@@ -77,25 +84,25 @@ load_evm_x509()
     fi
 
     local evm_pubid line
-    line=$(keyctl describe %keyring:.evm)
-    if [ $? -eq 0 ]; then
+    if line=$(keyctl describe %keyring:.evm); then
         # the kernel already setup a trusted .evm keyring so use that one
         evm_pubid=${line%%:*}
     else
         # look for an existing regular keyring
-        evm_pubid=`keyctl search @u keyring _evm`
+        evm_pubid=$(keyctl search @u keyring _evm)
         if [ -z "${evm_pubid}" ]; then
             # create a new regular _evm keyring
-            evm_pubid=`keyctl newring _evm @u`
+            evm_pubid=$(keyctl newring _evm @u)
         fi
     fi
 
     # load the EVM public key onto the EVM keyring
-    EVMX509ID=$(evmctl import ${EVMX509PATH} ${evm_pubid})
-    [ $? -eq 0 ] || {
-        info "integrity: failed to load the EVM X509 cert ${EVMX509PATH}";
-        return 1;
-    }
+    # FIXME: EVMX509ID unused?
+    # shellcheck disable=SC2034
+    if ! EVMX509ID=$(evmctl import "${EVMX509PATH}" "${evm_pubid}"); then
+        info "integrity: failed to load the EVM X509 cert ${EVMX509PATH}"
+        return 1
+    fi
 
     if [ "${RD_DEBUG}" = "yes" ]; then
         keyctl show @u
@@ -104,19 +111,17 @@ load_evm_x509()
     return 0
 }
 
-unload_evm_key()
-{
+unload_evm_key() {
     # unlink the EVM encrypted key
-    keyctl unlink ${EVMKEYID} @u || {
-        info "integrity: failed to unlink the EVM encrypted key: ${EVMKEYDESC}";
-        return 1;
+    keyctl unlink "${EVMKEYID}" @u || {
+        info "integrity: failed to unlink the EVM encrypted key: ${EVMKEYDESC}"
+        return 1
     }
 
     return 0
 }
 
-enable_evm()
-{
+enable_evm() {
     # check kernel support for EVM
     if [ ! -e "${EVMSECFILE}" ]; then
         if [ "${RD_DEBUG}" = "yes" ]; then
@@ -125,25 +130,35 @@ enable_evm()
         return 0
     fi
 
-    local evm_configured
+    local evm_configured=0
+    local EVM_INIT_HMAC=1 EVM_INIT_X509=2 EVM_ALLOW_METADATA_WRITES=4
 
     # try to load the EVM encrypted key
-    load_evm_key && evm_configured=1
+    load_evm_key && evm_configured=${EVM_INIT_HMAC}
 
     # try to load the EVM public key
-    load_evm_x509 && evm_configured=1
+    load_evm_x509 && evm_configured=$((evm_configured | EVM_INIT_X509))
 
     # only enable EVM if a key or x509 certificate could be loaded
-    if [ -z "$evm_configured" ]; then
+    if [ $evm_configured -eq 0 ]; then
         return 1
     fi
 
     # initialize EVM
     info "Enabling EVM"
-    echo 1 > ${EVMSECFILE}
+    if [ "$((evm_configured & EVM_INIT_X509))" -ne 0 ]; then
+        # Older kernels did not support EVM_ALLOW_METADATA_WRITES, try for
+        # newer ones first that need it when an x509 is used
+        echo $((evm_configured | EVM_ALLOW_METADATA_WRITES | EVM_ACTIVATION_BITS)) > "${EVMSECFILE}" \
+            || echo $((evm_configured | EVM_ACTIVATION_BITS)) > "${EVMSECFILE}"
+    else
+        echo $((evm_configured | EVM_ACTIVATION_BITS)) > "${EVMSECFILE}"
+    fi
 
-    # unload the EVM encrypted key
-    unload_evm_key || return 1
+    if [ "$((evm_configured & EVM_INIT_HMAC))" -ne 0 ]; then
+        # unload the EVM encrypted key
+        unload_evm_key || return 1
+    fi
 
     return 0
 }

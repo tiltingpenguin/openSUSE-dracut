@@ -3,7 +3,7 @@
 # called by dracut
 check() {
     is_fcoe() {
-        block_is_fcoe $1 || return 1
+        block_is_fcoe "$1" || return 1
     }
 
     [[ $hostonly ]] || [[ $mount_needs ]] && {
@@ -17,7 +17,7 @@ check() {
 
 # called by dracut
 depends() {
-    echo fcoe uefi-lib
+    echo fcoe uefi-lib bash
     return 0
 }
 

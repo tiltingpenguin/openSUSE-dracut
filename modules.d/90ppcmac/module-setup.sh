@@ -19,7 +19,7 @@
 check() {
     local _arch=${DRACUT_ARCH:-$(uname -m)}
     # only for PowerPC Macs
-    [[ "$_arch" == ppc* && "$_arch" != ppc64le ]] || return 1
+    [[ $_arch == ppc* && $_arch != ppc64le ]] || return 1
     return 0
 }
 
@@ -31,12 +31,13 @@ depends() {
 # called by dracut
 installkernel() {
     pmac_model() {
-        local pm_model="$(grep model /proc/cpuinfo)"
+        local pm_model
+        pm_model="$(grep model /proc/cpuinfo)"
         echo "${pm_model##*: }"
     }
 
     # only PowerMac3,6 has a module, special case
-    if [[ "${DRACUT_ARCH:-$(uname -m)}" != ppc64* ]]; then
+    if [[ ${DRACUT_ARCH:-$(uname -m)} != ppc64* ]]; then
         if ! [[ $hostonly ]] || [[ "$(pmac_model)" == "PowerMac3,6" ]]; then
             instmods therm_windtunnel
         fi
@@ -52,12 +53,12 @@ installkernel() {
         else
             # guess model specific module, then install the rest
             case "$(pmac_model)" in
-                PowerMac7,2|PowerMac7,3) instmods windfarm_pm72  ;;
-                PowerMac8,1|PowerMac8,2) instmods windfarm_pm81  ;;
-                PowerMac9,1)             instmods windfarm_pm91  ;;
-                PowerMac11,2)            instmods windfarm_pm112 ;;
-                PowerMac12,1)            instmods windfarm_pm121 ;;
-                RackMac3,1)              instmods windfarm_rm31  ;;
+                PowerMac7,2 | PowerMac7,3) instmods windfarm_pm72 ;;
+                PowerMac8,1 | PowerMac8,2) instmods windfarm_pm81 ;;
+                PowerMac9,1) instmods windfarm_pm91 ;;
+                PowerMac11,2) instmods windfarm_pm112 ;;
+                PowerMac12,1) instmods windfarm_pm121 ;;
+                RackMac3,1) instmods windfarm_rm31 ;;
                 # no match, so skip installation of the rest
                 *) return 1 ;;
             esac
@@ -77,6 +78,6 @@ installkernel() {
 
 # called by dracut
 install() {
-    # this will attempt to load the appropriate modules 
+    # this will attempt to load the appropriate modules
     inst_hook pre-udev 99 "$moddir/load-thermal.sh"
 }

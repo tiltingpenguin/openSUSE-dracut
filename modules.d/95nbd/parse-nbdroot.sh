@@ -9,19 +9,6 @@
 # root= takes precedence over netroot= if root=nbd[...]
 #
 
-# Sadly there's no easy way to split ':' separated lines into variables
-netroot_to_var() {
-    local v=${1}:
-    set --
-    while [ -n "$v" ]; do
-        set -- "$@" "${v%%:*}"
-        v=${v#*:}
-    done
-
-    unset server port
-    server=$2; port=$3;
-}
-
 # This script is sourced, so root should be set. But let's be paranoid
 [ -z "$root" ] && root=$(getarg root=)
 
@@ -33,8 +20,8 @@ if [ -z "$netroot" ]; then
 fi
 
 # Root takes precedence over netroot
-if [ "${root%%:*}" = "nbd" ] ; then
-    if [ -n "$netroot" ] ; then
+if [ "${root%%:*}" = "nbd" ]; then
+    if [ -n "$netroot" ]; then
         warn "root takes precedence over netroot. Ignoring netroot"
 
     fi
@@ -45,14 +32,19 @@ fi
 # If it's not nbd we don't continue
 [ "${netroot%%:*}" = "nbd" ] || return
 
-
-#if [ -n "${DRACUT_SYSTEMD}" ] && [ "$root" = "dhcp" ]; then
-#    echo "root=$netroot" > /etc/cmdline.d/root.conf
-#    systemctl --no-block daemon-reload
-#fi
-
 # Check required arguments
-netroot_to_var $netroot
+nroot=${netroot#nbd:}
+server=${nroot%%:*}
+if [ "${server%"${server#?}"}" = "[" ]; then
+    server=${nroot#[}
+    server=${server%%]:*}\]
+    nroot=${nroot#*]:}
+else
+    nroot=${nroot#*:}
+fi
+port=${nroot%%:*}
+unset nroot
+
 [ -z "$server" ] && die "Argument server for nbdroot is missing"
 [ -z "$port" ] && die "Argument port for nbdroot is missing"
 
@@ -60,11 +52,13 @@ netroot_to_var $netroot
 incol2 /proc/devices nbd || modprobe nbd || die "nbdroot requested but kernel/initrd does not support nbd"
 
 # Done, all good!
+# shellcheck disable=SC2034
 rootok=1
 
 # Shut up init error check
 if [ -z "$root" ]; then
     root=block:/dev/root
-    wait_for_dev -n /dev/root
+    # the device is created and waited for in ./nbdroot.sh
 fi
 
+echo 'nbd-client -check /dev/nbd0 > /dev/null 2>&1' > "$hookdir"/initqueue/finished/nbdroot.sh

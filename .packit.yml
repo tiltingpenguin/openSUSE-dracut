@@ -4,14 +4,14 @@
 # The name of the upstream package
 upstream_package_name: dracut
 
-# The upstream tag versioning scheme 
+# The upstream tag versioning scheme
 upstream_tag_template: "{version}"
 
 # The URL of the upstream project
 upstream_project_url: https://github.com/dracutdevs/dracut
 
 # Relative path to a spec file within the upstream repository
-specfile_path: dracut.spec
+specfile_path: pkgbuild/dracut.spec
 
 # Name of the downstream package
 downstream_package_name: dracut
@@ -45,14 +45,11 @@ jobs:
   trigger: pull_request
   metadata:
     targets:
-      - fedora-rawhide
+      - fedora-development
 
 - job: copr_build
   trigger: commit
   metadata:
     targets:
-      - fedora-rawhide
-    branch: master
-    owner: "@dracut"
-    project: Dracut
-    preserve_project: True
+      - fedora-all
+      - fedora-development

@@ -16,7 +16,7 @@ install() {
         [[ -x $dracutsysrootdir$_i ]] || continue
         inst "$_i"
 
-        if ! [[ -f  ${initdir}${systemdutildir}/systemd-udevd ]]; then
+        if ! [[ -f ${initdir}${systemdutildir}/systemd-udevd ]]; then
             ln -fs "$_i" "${initdir}${systemdutildir}"/systemd-udevd
         fi
         break
@@ -38,18 +38,17 @@ install() {
         60-pcmcia.rules \
         60-persistent-storage.rules \
         61-persistent-storage-edd.rules \
+        64-btrfs.rules \
         70-uaccess.rules \
         70-persistent-net.rules \
         71-seat.rules \
         73-seat-late.rules \
         75-net-description.rules \
         80-drivers.rules 95-udev-late.rules \
-        80-net-name-slot.rules\
-        80-net-setup-link.rules \
+        80-net-name-slot.rules 80-net-setup-link.rules \
         95-late.rules \
         "$moddir/59-persistent-storage.rules" \
-        "$moddir/61-persistent-storage.rules" \
-        ${NULL}
+        "$moddir/61-persistent-storage.rules"
 
     prepare_udev_rules 59-persistent-storage.rules 61-persistent-storage.rules
     # debian udev rules
@@ -59,21 +58,16 @@ install() {
     # legacy persistent network device name rules
     [[ $hostonly ]] && inst_rules 70-persistent-net.rules
 
-    if dracut_module_included "systemd"; then
-        inst_multiple -o "${systemdutildir}/network/*.link"
-        [[ $hostonly ]] && inst_multiple -H -o "/etc/systemd/network/*.link"
-    fi
-
     {
         for i in cdrom tape dialout floppy; do
-            if ! grep -q "^$i:" "$initdir"/etc/group 2>/dev/null; then
-                if ! grep "^$i:" "$dracutsysrootdir"/etc/group 2>/dev/null; then
-                        case $i in
-                            cdrom)   echo "$i:x:11:";;
-                            dialout) echo "$i:x:18:";;
-                            floppy)  echo "$i:x:19:";;
-                            tape)    echo "$i:x:33:";;
-                        esac
+            if ! grep -q "^$i:" "$initdir"/etc/group 2> /dev/null; then
+                if ! grep "^$i:" "$dracutsysrootdir"/etc/group 2> /dev/null; then
+                    case $i in
+                        cdrom) echo "$i:x:11:" ;;
+                        dialout) echo "$i:x:18:" ;;
+                        floppy) echo "$i:x:19:" ;;
+                        tape) echo "$i:x:33:" ;;
+                    esac
                 fi
             fi
         done
@@ -99,10 +93,9 @@ install() {
 
     inst_multiple -o /etc/pcmcia/config.opts
 
-    [[ -f $dracutsysrootdir/etc/arch-release ]] && \
-        inst_script "$moddir/load-modules.sh" /lib/udev/load-modules.sh
+    [[ -f $dracutsysrootdir/etc/arch-release ]] \
+        && inst_script "$moddir/load-modules.sh" /lib/udev/load-modules.sh
 
     inst_libdir_file "libnss_files*"
 
 }
-

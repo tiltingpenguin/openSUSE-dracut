@@ -2,12 +2,12 @@
 
 ROOT="$1"
 
-if [[ ! -d "$ROOT" ]]; then
+if [[ ! -d $ROOT ]]; then
     echo "Usage: $0 <rootdir>"
     exit 1
 fi
 
-if [[ "$ROOT" -ef / ]]; then
+if [[ $ROOT -ef / ]]; then
     echo "Can't convert the running system."
     echo "Please boot with 'rd.convertfs' on the kernel command line,"
     echo "to update with the help of the initramfs,"
@@ -15,7 +15,7 @@ if [[ "$ROOT" -ef / ]]; then
     exit 1
 fi
 
-while [[ "$ROOT" != "${ROOT%/}" ]]; do
+while [[ $ROOT != "${ROOT%/}" ]]; do
     ROOT=${ROOT%/}
 done
 
@@ -37,20 +37,54 @@ if [ -n $VARDEV ] && [ -n $VARFS ]; then
     fi
 fi
 
-if [ ! -L $ROOT/var/run -a -e $ROOT/var/run ]; then
+if [ ! -L "$ROOT"/var/run -a -e "$ROOT"/var/run ]; then
+
     echo "Converting /var/run to symlink"
-    mv -f $ROOT/var/run $ROOT/var/run.runmove~
-    ln -sfn ../run $ROOT/var/run
+    mv -f "$ROOT"/var/run "$ROOT"/var/run.runmove~
+    ln -sfn ../run "$ROOT"/var/run
 fi
 
-if [ ! -L $ROOT/var/lock -a -e $ROOT/var/lock ]; then
+if [ ! -L "$ROOT"/var/lock -a -e "$ROOT"/var/lock ]; then
     echo "Converting /var/lock to symlink"
-    mv -f $ROOT/var/lock $ROOT/var/lock.lockmove~
-    ln -sfn ../run/lock $ROOT/var/lock
+    mv -f "$ROOT"/var/lock "$ROOT"/var/lock.lockmove~
+    ln -sfn ../run/lock "$ROOT"/var/lock
 fi
 
 [ -n $SUBVOLIDVAR ] && umount $ROOT/var
 [ -w $ROOT ] && mount -o remount,ro $ROOT
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 echo "Done."
 exit 0

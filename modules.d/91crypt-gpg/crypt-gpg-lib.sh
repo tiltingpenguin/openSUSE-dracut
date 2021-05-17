@@ -1,6 +1,6 @@
 #!/bin/sh
 
-command -v ask_for_password >/dev/null || . /lib/dracut-crypt-lib.sh
+command -v ask_for_password > /dev/null || . /lib/dracut-crypt-lib.sh
 
 # gpg_decrypt mnt_point keypath keydev device
 #
@@ -29,21 +29,24 @@ gpg_decrypt() {
     # program needed with GnuPG < 2.1), making for uncomplicated
     # integration with the existing codebase.
     local useSmartcard="0"
-    local gpgMajorVersion="$(gpg --version | sed -n 1p | sed -n -r -e 's|.* ([0-9]*).*|\1|p')"
-    local gpgMinorVersion="$(gpg --version | sed -n 1p | sed -n -r -e 's|.* [0-9]*\.([0-9]*).*|\1|p')"
+    local gpgMajorVersion
+    local gpgMinorVersion
+    gpgMajorVersion="$(gpg --version | sed -n 1p | sed -n -r -e 's|.* ([0-9]*).*|\1|p')"
+    gpgMinorVersion="$(gpg --version | sed -n 1p | sed -n -r -e 's|.* [0-9]*\.([0-9]*).*|\1|p')"
 
     if [ "${gpgMajorVersion}" -ge 2 ] && [ "${gpgMinorVersion}" -ge 1 ] \
-            && [ -f /root/crypt-public-key.gpg ] && getargbool 1 rd.luks.smartcard ; then
+        && [ -f /root/crypt-public-key.gpg ] && getargbool 1 rd.luks.smartcard; then
         useSmartcard="1"
         echo "allow-loopback-pinentry" >> "$gpghome/gpg-agent.conf"
         GNUPGHOME="$gpghome" gpg-agent --quiet --daemon
         GNUPGHOME="$gpghome" gpg --quiet --no-tty --import < /root/crypt-public-key.gpg
-        local smartcardSerialNumber="$(GNUPGHOME=$gpghome gpg --no-tty --card-status \
+        local smartcardSerialNumber
+        smartcardSerialNumber="$(GNUPGHOME=$gpghome gpg --no-tty --card-status \
             | sed -n -r -e 's|Serial number.*: ([0-9]*)|\1|p' | tr -d '\n')"
         if [ -n "${smartcardSerialNumber}" ]; then
             inputPrompt="PIN (OpenPGP card ${smartcardSerialNumber})"
         fi
-        GNUPGHOME="$gpghome" gpg-connect-agent 1>/dev/null learn /bye
+        GNUPGHOME="$gpghome" gpg-connect-agent 1> /dev/null learn /bye
         opts="$opts --pinentry-mode=loopback"
     fi
 
@@ -54,7 +57,7 @@ gpg_decrypt() {
 
     # Clean up the smartcard gpg-agent
     if [ "${useSmartcard}" = "1" ]; then
-        GNUPGHOME="$gpghome" gpg-connect-agent 1>/dev/null killagent /bye
+        GNUPGHOME="$gpghome" gpg-connect-agent 1> /dev/null killagent /bye
     fi
 
     rm -rf -- "$gpghome"

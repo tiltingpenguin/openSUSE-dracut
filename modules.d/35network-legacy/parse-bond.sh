@@ -23,12 +23,30 @@ parsebond() {
     done
 
     case $# in
-    0)  bondname=bond0; bondslaves="eth0 eth1" ;;
-    1)  bondname=$1; bondslaves="eth0 eth1" ;;
-    2)  bondname=$1; bondslaves=$(str_replace "$2" "," " ") ;;
-    3)  bondname=$1; bondslaves=$(str_replace "$2" "," " "); bondoptions=$(str_replace "$3" "," " ") ;;
-    4)  bondname=$1; bondslaves=$(str_replace "$2" "," " "); bondoptions=$(str_replace "$3" "," " "); bondmtu=$4;;
-    *)  die "bond= requires zero to four parameters" ;;
+        0)
+            bondname=bond0
+            bondslaves="eth0 eth1"
+            ;;
+        1)
+            bondname=$1
+            bondslaves="eth0 eth1"
+            ;;
+        2)
+            bondname=$1
+            bondslaves=$(str_replace "$2" "," " ")
+            ;;
+        3)
+            bondname=$1
+            bondslaves=$(str_replace "$2" "," " ")
+            bondoptions=$(str_replace "$3" "," " ")
+            ;;
+        4)
+            bondname=$1
+            bondslaves=$(str_replace "$2" "," " ")
+            bondoptions=$(str_replace "$3" "," " ")
+            bondmtu=$4
+            ;;
+        *) die "bond= requires zero to four parameters" ;;
     esac
 }
 
@@ -48,8 +66,11 @@ for bond in $(getargs bond=); do
     fi
     # Make it suitable for initscripts export
     bondoptions=$(str_replace "$bondoptions" ";" ",")
-    echo "bondname=$bondname" > /tmp/bond.${bondname}.info
-    echo "bondslaves=\"$bondslaves\"" >> /tmp/bond.${bondname}.info
-    echo "bondoptions=\"$bondoptions\"" >> /tmp/bond.${bondname}.info
-    echo "bondmtu=\"$bondmtu\"" >> /tmp/bond.${bondname}.info
+
+    {
+        echo "bondname=$bondname"
+        echo "bondslaves=\"$bondslaves\""
+        echo "bondoptions=\"$bondoptions\""
+        echo "bondmtu=\"$bondmtu\""
+    } > "/tmp/bond.${bondname}.info"
 done

@@ -13,6 +13,8 @@ fipscheck()
     echo $FIPSCHECK
 }
 
+type getarg > /dev/null 2>&1 || . /lib/dracut-lib.sh
+
 # systemd lets stdout go to journal only, but the system
 # has to halt when the integrity check fails to satisfy FIPS.
 if [ -z "$DRACUT_SYSTEMD" ]; then
@@ -25,67 +27,57 @@ else
     }
 fi
 
-mount_boot()
-{
+mount_boot() {
+
     boot=$(getarg boot=)
 
     if [ -n "$boot" ]; then
         case "$boot" in
-        LABEL=*)
-            boot="$(echo $boot | sed 's,/,\\x2f,g')"
-            boot="/dev/disk/by-label/${boot#LABEL=}"
-            ;;
-        UUID=*)
-            boot="/dev/disk/by-uuid/${boot#UUID=}"
-            ;;
-        PARTUUID=*)
-            boot="/dev/disk/by-partuuid/${boot#PARTUUID=}"
-            ;;
-        PARTLABEL=*)
-            boot="/dev/disk/by-partlabel/${boot#PARTLABEL=}"
-            ;;
-        /dev/*)
-            ;;
-        *)
-            die "You have to specify boot=<boot device> as a boot option for fips=1" ;;
+            LABEL=* | UUID=* | PARTUUID=* | PARTLABEL=*)
+                boot="$(label_uuid_to_dev "$boot")"
+
+                ;;
+            /dev/*) ;;
+
+            *)
+                die "You have to specify boot=<boot device> as a boot option for fips=1"
+                ;;
         esac
 
         if ! [ -e "$boot" ]; then
-            udevadm trigger --action=add >/dev/null 2>&1
-            [ -z "$UDEVVERSION" ] && UDEVVERSION=$(udevadm --version)
+            udevadm trigger --action=add > /dev/null 2>&1
+
             i=0
-            while ! [ -e $boot ]; do
-                if [ $UDEVVERSION -ge 143 ]; then
-                    udevadm settle --exit-if-exists=$boot
-                else
-                    udevadm settle --timeout=30
-                fi
-                [ -e $boot ] && break
+            while ! [ -e "$boot" ]; do
+                udevadm settle --exit-if-exists="$boot"
+                [ -e "$boot" ] && break
+
                 sleep 0.5
-                i=$(($i+1))
+                i=$((i + 1))
                 [ $i -gt 40 ] && break
             done
         fi
 
         [ -e "$boot" ] || return 1
 
-        mkdir /boot
+        mkdir -p /boot
         fips_info "Mounting $boot as /boot"
         mount -oro "$boot" /boot || return 1
     elif [ -d "$NEWROOT/boot" ]; then
+        # shellcheck disable=SC2114
         rm -fr -- /boot
         ln -sf "$NEWROOT/boot" /boot
     fi
 }
 
-do_rhevh_check()
-{
+do_rhevh_check() {
+
     KERNEL=$(uname -r)
     kpath=${1}
 
     # If we're on RHEV-H, the kernel is in /run/initramfs/live/vmlinuz0
-    HMAC_SUM_ORIG=$(cat $NEWROOT/boot/.vmlinuz-${KERNEL}.hmac | while read a b || [ -n "$a" ]; do printf "%s\n" $a; done)
-    HMAC_SUM_CALC=$(sha512hmac $kpath | while read a b || [ -n "$a" ]; do printf "%s\n" $a; done || return 1)
+    HMAC_SUM_ORIG=$(while read -r a _ || [ -n "$a" ]; do printf "%s\n" "$a"; done < "$NEWROOT/boot/.vmlinuz-${KERNEL}.hmac")
+    HMAC_SUM_CALC=$(sha512hmac "$kpath" | while read -r a _ || [ -n "$a" ]; do printf "%s\n" "$a"; done || return 1)
     if [ -z "$HMAC_SUM_ORIG" ] || [ -z "$HMAC_SUM_CALC" ] || [ "${HMAC_SUM_ORIG}" != "${HMAC_SUM_CALC}" ]; then
         warn "HMAC sum mismatch"
         return 1
@@ -94,18 +86,16 @@ do_rhevh_check()
     return 0
 }
 
-nonfatal_modprobe()
-{
-    modprobe $1 2>&1 > /dev/stdout |
-        while read -r line || [ -n "$line" ]; do
+nonfatal_modprobe() {
+    modprobe "$1" 2>&1 > /dev/stdout \
+        | while read -r line || [ -n "$line" ]; do
+
             echo "${line#modprobe: FATAL: }" >&2
         done
 }
 
-fips_load_crypto()
-{
+fips_load_crypto() {
     local _k
-    local _s
     local _v
     local _module
     local _vmname
@@ -136,15 +126,15 @@ fips_load_crypto()
     mv /etc/modprobe.d/fips.conf /etc/modprobe.d/fips.conf.bak
     for _module in $FIPSMODULES; do
         if [ "$_module" != "tcrypt" ]; then
-            if ! nonfatal_modprobe "${_module}" 2>/tmp/fips.modprobe_err; then
+            if ! nonfatal_modprobe "${_module}" 2> /tmp/fips.modprobe_err; then
                 # check if kernel provides generic algo
                 _found=0
-                while read _k _s _v || [ -n "$_k" ]; do
+                while read -r _k _ _v || [ -n "$_k" ]; do
                     [ "$_k" != "name" -a "$_k" != "driver" ] && continue
                     [ "$_v" != "$_module" ] && continue
                     _found=1
                     break
-                done </proc/crypto
+                done < /proc/crypto
                 # If we find some hardware specific modules and cannot load them
                 # it is not a problem, proceed.
                 if [ "$_found" = "0" ]; then
@@ -175,8 +165,10 @@ fips_load_crypto()
     rmmod tcrypt
 }
 
-do_fips()
-{
+do_fips() {
+    local _v
+    local _module
+
     KERNEL=$(uname -r)
 
     fips_info "Checking integrity of kernel"
@@ -231,9 +223,9 @@ do_fips()
 
     fips_info "All initrd crypto checks done"
 
-    > /tmp/fipsdone
+    : > /tmp/fipsdone
 
-    umount /boot >/dev/null 2>&1
+    umount /boot > /dev/null 2>&1
 
     return 0
 }

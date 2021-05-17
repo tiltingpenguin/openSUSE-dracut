@@ -5,8 +5,8 @@ check() {
     if [[ ! $hostonly ]]; then
         return 0
     fi
-    [[ $DRACUT_KERNEL_MODALIASES && -f "$DRACUT_KERNEL_MODALIASES" ]] && \
-        grep -q libnvdimm "$DRACUT_KERNEL_MODALIASES" && return 0
+    [[ $DRACUT_KERNEL_MODALIASES && -f $DRACUT_KERNEL_MODALIASES ]] \
+        && grep -q libnvdimm "$DRACUT_KERNEL_MODALIASES" && return 0
     return 255
 }
 
@@ -19,10 +19,11 @@ depends() {
 installkernel() {
     # Directories to search for NVDIMM "providers" (firmware drivers)
     # These modules call "nvdimm_bus_register()".
-    local _provider_dirs='=drivers/nvdimm =drivers/acpi =arch/powerpc'
-
     #instmods() will take care of hostonly
-    dracut_instmods -o -s nvdimm_bus_register $_provider_dirs
+    dracut_instmods -o -s nvdimm_bus_register \
+        '=drivers/nvdimm' \
+        '=drivers/acpi' \
+        '=arch/powerpc'
 }
 
 # called by dracut

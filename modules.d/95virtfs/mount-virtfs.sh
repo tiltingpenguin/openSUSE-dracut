@@ -1,31 +1,31 @@
 #!/bin/sh
 
-type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
+type getarg > /dev/null 2>&1 || . /lib/dracut-lib.sh
 
 filter_rootopts() {
     rootopts=$1
     # strip ro and rw options
     local OLDIFS="$IFS"
     IFS=,
+    # shellcheck disable=SC2086
     set -- $rootopts
     IFS="$OLDIFS"
     local v
     while [ $# -gt 0 ]; do
         case $1 in
-            rw|ro);;
-            defaults);;
+            rw | ro) ;;
+            defaults) ;;
             *)
-                v="$v,${1}";;
+                v="$v,${1}"
+                ;;
         esac
         shift
     done
     rootopts=${v#,}
-    echo $rootopts
+    echo "$rootopts"
 }
 
 mount_root() {
-    local _ret
-
     rootfs="9p"
     rflags="trans=virtio,version=9p2000.L"
 
@@ -42,7 +42,7 @@ mount_root() {
         # the root filesystem,
         # remount it with the proper options
         rootopts="defaults"
-        while read dev mp fs opts rest || [ -n "$dev" ]; do
+        while read -r dev mp _ opts rest || [ -n "$dev" ]; do
             # skip comments
             [ "${dev%%#*}" != "$dev" ] && continue
 
@@ -52,7 +52,7 @@ mount_root() {
             fi
         done < "$NEWROOT/etc/fstab"
 
-        rootopts=$(filter_rootopts $rootopts)
+        rootopts=$(filter_rootopts "$rootopts")
     fi
 
     # we want rootflags (rflags) to take precedence so prepend rootopts to
@@ -64,8 +64,8 @@ mount_root() {
     info "Remounting ${root#virtfs:} with -o ${rflags}"
     mount -t ${rootfs} -o "$rflags" "${root#virtfs:}" "$NEWROOT" 2>&1 | vinfo
 
-    [ -f "$NEWROOT"/forcefsck ] && rm -f -- "$NEWROOT"/forcefsck 2>/dev/null
-    [ -f "$NEWROOT"/.autofsck ] && rm -f -- "$NEWROOT"/.autofsck 2>/dev/null
+    [ -f "$NEWROOT"/forcefsck ] && rm -f -- "$NEWROOT"/forcefsck 2> /dev/null
+    [ -f "$NEWROOT"/.autofsck ] && rm -f -- "$NEWROOT"/.autofsck 2> /dev/null
 }
 
 if [ -n "$root" -a -z "${root%%virtfs:*}" ]; then

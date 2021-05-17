@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 #
 # sas_transport_lun_scan
 #
@@ -8,9 +8,9 @@
 #    PROGRAM="sas_transport_lun_scan lun"
 #
 
-[ -z $DEVPATH ] && exit 1
+[ -z "$DEVPATH" ] && exit 1
 
-if [ -n "$1" ] ; then
+if [ -n "$1" ]; then
     LUN=$1
 else
     LUN=-
@@ -19,8 +19,8 @@ ID=${DEVPATH##*/end_device-}
 HOST=${ID%%:*}
 CHANNEL=${ID%%-*}
 CHANNEL=${CHANNEL#*:}
-if [ -f /sys$DEVPATH/scsi_target_id ] ; then
-    TARGET=$(cat /sys$DEVPATH/scsi_target_id)
+if [ -f /sys"$DEVPATH"/scsi_target_id ]; then
+    TARGET=$(cat /sys"$DEVPATH"/scsi_target_id)
 fi
 [ -z "$TARGET" ] && exit 1
-echo 0 $TARGET $LUN > /sys/class/scsi_host/host$HOST/scan
+echo 0 "$TARGET" $LUN > /sys/class/scsi_host/host"$HOST"/scan

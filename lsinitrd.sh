@@ -17,8 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-usage()
-{
+usage() {
     {
         echo "Usage: ${0##*/} [options] [<initramfs file> [<filename> [<filename> [...] ]]]"
         echo "Usage: ${0##*/} [options] -k <kernel version>"
@@ -37,7 +36,6 @@ usage()
         echo
     } >&2
 }
-
 
 [[ $dracutbasedir ]] || dracutbasedir=/usr/lib/dracut
 
@@ -59,7 +57,8 @@ TEMP=$(getopt \
     --long verbose \
     -- "$@")
 
-if (( $? != 0 )); then
+# shellcheck disable=SC2181
+if (($? != 0)); then
     usage
     exit 1
 fi
@@ -68,16 +67,31 @@ eval set -- "$TEMP"
 
 while (($# > 0)); do
     case $1 in
-        -k|--kver)     KERNEL_VERSION="$2"; shift;;
-        -f|--file)     filenames[${2#/}]=1; shift;;
-        -s|--size)     sorted=1;;
-        -h|--help)     usage; exit 0;;
-        -m|--mod)      modules=1;;
-        -v|--verbose)  verbose="--verbose";;
-        --unpack)      unpack=1;;
-        --unpackearly) unpackearly=1;;
-        --)            shift;break;;
-        *)             usage; exit 1;;
+        -k | --kver)
+            KERNEL_VERSION="$2"
+            shift
+            ;;
+        -f | --file)
+            filenames[${2#/}]=1
+            shift
+            ;;
+        -s | --size) sorted=1 ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        -m | --mod) modules=1 ;;
+        -v | --verbose) verbose="--verbose" ;;
+        --unpack) unpack=1 ;;
+        --unpackearly) unpackearly=1 ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            usage
+            exit 1
+            ;;
     esac
     shift
 done
@@ -86,7 +100,7 @@ done
 
 if [[ $1 ]]; then
     image="$1"
-    if ! [[ -f "$image" ]]; then
+    if ! [[ -f $image ]]; then
         {
             echo "$image does not exist"
             echo
@@ -95,15 +109,15 @@ if [[ $1 ]]; then
         exit 1
     fi
 else
-    [[ -f /etc/machine-id ]] && read MACHINE_ID < /etc/machine-id
+    [[ -f /etc/machine-id ]] && read -r MACHINE_ID < /etc/machine-id
 
     if [[ -d /efi/loader/entries || -L /efi/loader/entries ]] \
         && [[ $MACHINE_ID ]] \
-        && [[ -d /efi/${MACHINE_ID} || -L /efi/${MACHINE_ID} ]] ; then
+        && [[ -d /efi/${MACHINE_ID} || -L /efi/${MACHINE_ID} ]]; then
         image="/efi/${MACHINE_ID}/${KERNEL_VERSION}/initrd"
     elif [[ -d /boot/loader/entries || -L /boot/loader/entries ]] \
         && [[ $MACHINE_ID ]] \
-        && [[ -d /boot/${MACHINE_ID} || -L /boot/${MACHINE_ID} ]] ; then
+        && [[ -d /boot/${MACHINE_ID} || -L /boot/${MACHINE_ID} ]]; then
         image="/boot/${MACHINE_ID}/${KERNEL_VERSION}/initrd"
     else
         image="/boot/initrd-${KERNEL_VERSION}"
@@ -112,11 +126,11 @@ fi
 
 shift
 while (($# > 0)); do
-    filenames[${1#/}]=1;
+    filenames[${1#/}]=1
     shift
 done
 
-if ! [[ -f "$image" ]]; then
+if ! [[ -f $image ]]; then
     {
         echo "No <initramfs file> specified and the default image '$image' cannot be accessed!"
         echo
@@ -126,6 +140,7 @@ if ! [[ -f "$image" ]]; then
 fi
 
 TMPDIR="$(mktemp -d -t lsinitrd.XXXXXX)"
+# shellcheck disable=SC2064
 trap "rm -rf '$TMPDIR'" EXIT
 
 dracutlibdirs() {
@@ -134,46 +149,43 @@ dracutlibdirs() {
     done
 }
 
-extract_files()
-{
-    (( ${#filenames[@]} == 1 )) && nofileinfo=1
+extract_files() {
+    ((${#filenames[@]} == 1)) && nofileinfo=1
     for f in "${!filenames[@]}"; do
         [[ $nofileinfo ]] || echo "initramfs:/$f"
         [[ $nofileinfo ]] || echo "========================================================================"
-        $CAT "$image" 2>/dev/null | cpio --extract --verbose --quiet --to-stdout "$f" 2>/dev/null
-        ((ret+=$?))
+        $CAT "$image" 2> /dev/null | cpio --extract --verbose --quiet --to-stdout "$f" 2> /dev/null
+        ((ret += $?))
         [[ $nofileinfo ]] || echo "========================================================================"
         [[ $nofileinfo ]] || echo
     done
 }
 
-list_modules()
-{
+list_modules() {
     echo "dracut modules:"
+    # shellcheck disable=SC2046
     $CAT "$image" | cpio --extract --verbose --quiet --to-stdout -- \
-        $(dracutlibdirs modules.txt) 2>/dev/null
-    ((ret+=$?))
+        $(dracutlibdirs modules.txt) 2> /dev/null
+    ((ret += $?))
 }
 
-list_files()
-{
+list_files() {
     echo "========================================================================"
     if [ "$sorted" -eq 1 ]; then
-        $CAT "$image" 2>/dev/null | cpio --extract --verbose --quiet --list | sort -n -k5
+        $CAT "$image" 2> /dev/null | cpio --extract --verbose --quiet --list | sort -n -k5
     else
-        $CAT "$image" 2>/dev/null | cpio --extract --verbose --quiet --list | sort -k9
+        $CAT "$image" 2> /dev/null | cpio --extract --verbose --quiet --list | sort -k9
     fi
-    ((ret+=$?))
+    ((ret += $?))
     echo "========================================================================"
 }
 
-list_squash_content()
-{
-    SQUASH_IMG="squash/root.img"
+list_squash_content() {
+    SQUASH_IMG="squash-root.img"
     SQUASH_TMPFILE="$TMPDIR/initrd.root.sqsh"
 
-    $CAT "$image" 2>/dev/null | cpio --extract --verbose --quiet --to-stdout -- \
-        $SQUASH_IMG > "$SQUASH_TMPFILE" 2>/dev/null
+    $CAT "$image" 2> /dev/null | cpio --extract --verbose --quiet --to-stdout -- \
+        $SQUASH_IMG > "$SQUASH_TMPFILE" 2> /dev/null
     if [[ -s $SQUASH_TMPFILE ]]; then
         echo "Squashed content ($SQUASH_IMG):"
         echo "========================================================================"
@@ -182,22 +194,24 @@ list_squash_content()
     fi
 }
 
-unpack_files()
-{
-    if (( ${#filenames[@]} > 0 )); then
+unpack_files() {
+    if ((${#filenames[@]} > 0)); then
         for f in "${!filenames[@]}"; do
-            $CAT "$image" 2>/dev/null | cpio -id --quiet $verbose $f
-            ((ret+=$?))
+            $CAT "$image" 2> /dev/null | cpio -id --quiet $verbose $f
+            ((ret += $?))
         done
     else
-        $CAT "$image" 2>/dev/null | cpio -id --quiet $verbose
-        ((ret+=$?))
+        $CAT "$image" 2> /dev/null | cpio -id --quiet $verbose
+        ((ret += $?))
     fi
 }
 
-read -N 2 bin < "$image"
+read -r -N 2 bin < "$image"
 if [ "$bin" = "MZ" ]; then
-    command -v objcopy > /dev/null || { echo "Need 'objcopy' to unpack an UEFI executable."; exit 1; }
+    command -v objcopy > /dev/null || {
+        echo "Need 'objcopy' to unpack an UEFI executable."
+        exit 1
+    }
     objcopy \
         --dump-section .linux="$TMPDIR/vmlinuz" \
         --dump-section .initrd="$TMPDIR/initrd.img" \
@@ -209,10 +223,10 @@ if [ "$bin" = "MZ" ]; then
     [ -f "$image" ] || exit 1
 fi
 
-if (( ${#filenames[@]} <= 0 )) && [[ -z "$unpack" ]] && [[ -z "$unpackearly" ]]; then
+if ((${#filenames[@]} <= 0)) && [[ -z $unpack ]] && [[ -z $unpackearly ]]; then
     if [ -n "$uefi" ]; then
         echo -n "initrd in UEFI: $uefi: "
-        du -h $image | while read a b || [ -n "$a" ]; do echo $a;done
+        du -h "$image" | while read -r a _ || [ -n "$a" ]; do echo "$a"; done
         if [ -f "$TMPDIR/osrel.txt" ]; then
             name=$(sed -En '/^PRETTY_NAME/ s/^\w+=["'"'"']?([^"'"'"'$]*)["'"'"']?/\1/p' "$TMPDIR/osrel.txt")
             id=$(sed -En '/^ID/ s/^\w+=["'"'"']?([^"'"'"'$]*)["'"'"']?/\1/p' "$TMPDIR/osrel.txt")
@@ -229,26 +243,26 @@ if (( ${#filenames[@]} <= 0 )) && [[ -z "$unpack" ]] && [[ -z "$unpackearly" ]];
         fi
     else
         echo -n "Image: $image: "
-        du -h $image | while read a b || [ -n "$a" ]; do echo $a;done
+        du -h "$image" | while read -r a _ || [ -n "$a" ]; do echo "$a"; done
     fi
 
     echo "========================================================================"
 fi
 
-read -N 6 bin < "$image"
+read -r -N 6 bin < "$image"
 case $bin in
-    $'\x71\xc7'*|070701)
+    $'\x71\xc7'* | 070701)
         CAT="cat --"
-        is_early=$(cpio --extract --verbose --quiet --to-stdout -- 'early_cpio' < "$image" 2>/dev/null)
+        is_early=$(cpio --extract --verbose --quiet --to-stdout -- 'early_cpio' < "$image" 2> /dev/null)
         # Debian mkinitramfs does not create the file 'early_cpio', so let's check if firmware files exist
-        [[ "$is_early" ]] || is_early=$(cpio --list --verbose --quiet --to-stdout -- 'kernel/*/microcode/*.bin' < "$image" 2>/dev/null)
+        [[ "$is_early" ]] || is_early=$(cpio --list --verbose --quiet --to-stdout -- 'kernel/*/microcode/*.bin' < "$image" 2> /dev/null)
         if [[ "$is_early" ]]; then
-            if [[ -n "$unpack" ]]; then
+            if [[ -n $unpack ]]; then
                 # should use --unpackearly for early CPIO
                 :
-            elif [[ -n "$unpackearly" ]]; then
+            elif [[ -n $unpackearly ]]; then
                 unpack_files
-            elif (( ${#filenames[@]} > 0 )); then
+            elif ((${#filenames[@]} > 0)); then
                 extract_files
             else
                 echo "Early CPIO image"
@@ -269,10 +283,10 @@ case $bin in
         ;;
 esac
 
-if [[ $SKIP ]] ; then
-    bin="$($SKIP "$image" | { read -N 6 bin && echo "$bin" ; })"
+if [[ $SKIP ]]; then
+    bin="$($SKIP "$image" | { read -r -N 6 bin && echo "$bin"; })"
 else
-    read -N 6 bin < "$image"
+    read -r -N 6 bin < "$image"
 fi
 case $bin in
     $'\x1f\x8b'*)
@@ -281,7 +295,7 @@ case $bin in
     BZh*)
         CAT="bzcat --"
         ;;
-    $'\x71\xc7'*|070701)
+    $'\x71\xc7'* | 070701)
         CAT="cat --"
         ;;
     $'\x02\x21'*)
@@ -294,7 +308,7 @@ case $bin in
         CAT="zstd -d -c"
         ;;
     *)
-        if echo "test"|xz|xzcat --single-stream >/dev/null 2>&1; then
+        if echo "test" | xz | xzcat --single-stream > /dev/null 2>&1; then
             CAT="xzcat --single-stream --"
         else
             CAT="xzcat --"
@@ -302,8 +316,7 @@ case $bin in
         ;;
 esac
 
-skipcpio()
-{
+skipcpio() {
     $SKIP "$@" | $ORIG_CAT
 }
 
@@ -312,26 +325,26 @@ if [[ $SKIP ]]; then
     CAT=skipcpio
 fi
 
-if (( ${#filenames[@]} > 1 )); then
+if ((${#filenames[@]} > 1)); then
     TMPFILE="$TMPDIR/initrd.cpio"
-    $CAT "$image" 2>/dev/null > $TMPFILE
-    pre_decompress()
-    {
-        cat $TMPFILE
+    $CAT "$image" 2> /dev/null > "$TMPFILE"
+    pre_decompress() {
+        cat "$TMPFILE"
     }
     CAT=pre_decompress
 fi
 
 ret=0
 
-if [[ -n "$unpack" ]]; then
+if [[ -n $unpack ]]; then
     unpack_files
-elif (( ${#filenames[@]} > 0 )); then
+elif ((${#filenames[@]} > 0)); then
     extract_files
 else
+    # shellcheck disable=SC2046
     version=$($CAT "$image" | cpio --extract --verbose --quiet --to-stdout -- \
-        $(dracutlibdirs 'dracut-*') 2>/dev/null)
-    ((ret+=$?))
+        $(dracutlibdirs 'dracut-*') 2> /dev/null)
+    ((ret += $?))
     echo "Version: $version"
     echo
     if [ "$modules" -eq 1 ]; then
@@ -339,8 +352,9 @@ else
         echo "========================================================================"
     else
         echo -n "Arguments: "
+        # shellcheck disable=SC2046
         $CAT "$image" | cpio --extract --verbose --quiet --to-stdout -- \
-            $(dracutlibdirs build-parameter.txt) 2>/dev/null
+            $(dracutlibdirs build-parameter.txt) 2> /dev/null
         echo
         list_modules
         list_files
@@ -348,4 +362,4 @@ else
     fi
 fi
 
-exit $ret
+exit "$ret"

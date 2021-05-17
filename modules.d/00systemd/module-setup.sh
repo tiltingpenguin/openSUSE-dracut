@@ -1,26 +1,14 @@
 #!/bin/bash
+# This file is part of dracut.
+# SPDX-License-Identifier: GPL-2.0-or-later
 
-getSystemdVersion() {
-    [ -z "$SYSTEMD_VERSION" ] && SYSTEMD_VERSION=$("$systemdutildir"/systemd --version | { read -r _ b _; echo "$b"; })
-    # Check if the systemd version is a valid number
-    if ! [[ $SYSTEMD_VERSION =~ ^[0-9]+$ ]]; then
-        dfatal "systemd version is not a number ($SYSTEMD_VERSION)"
-        exit 1
-    fi
-
-    echo "$SYSTEMD_VERSION"
-}
-
-# called by dracut
+# Prerequisite check(s) for module.
 check() {
     [[ $mount_needs ]] && return 1
-    if require_binaries "$systemdutildir"/systemd; then
-        SYSTEMD_VERSION=$(getSystemdVersion)
-        (( SYSTEMD_VERSION >= 198 )) && return 0
-       return 255
-    fi
-
-    return 1
+    # If the binary(s) requirements are not fulfilled the module can't be installed
+    require_binaries "$systemdutildir"/systemd || return 1
+    # Return 255 to only include the module, if another module requires it.
+    return 255
 }
 
 # called by dracut
@@ -37,15 +25,9 @@ installkernel() {
 install() {
     local _mods
 
-    if [[ "$prefix" == /run/* ]]; then
-        dfatal "systemd does not work with a prefix, which contains \"/run\"!!"
+    if [[ $prefix == /run/* ]]; then
+        dfatal 'systemd does not work with a prefix, which contains "/run"!!'
         exit 1
-    fi
-
-    if [[ $(getSystemdVersion) -ge 240 ]]; then
-    inst_multiple -o \
-        "$systemdutildir"/system-generators/systemd-debug-generator \
-        "$systemdsystemunitdir"/debug-shell.service
     fi
 
     inst_multiple -o \
@@ -61,9 +43,11 @@ install() {
         "$systemdutildir"/systemd-modules-load \
         "$systemdutildir"/systemd-vconsole-setup \
         "$systemdutildir"/systemd-volatile-root \
+        "$systemdutildir"/system-generators/systemd-debug-generator \
         "$systemdutildir"/system-generators/systemd-fstab-generator \
         "$systemdutildir"/system-generators/systemd-gpt-auto-generator \
         \
+        "$systemdsystemunitdir"/debug-shell.service \
         "$systemdsystemunitdir"/cryptsetup.target \
         "$systemdsystemunitdir"/cryptsetup-pre.target \
         "$systemdsystemunitdir"/remote-cryptsetup.target \
@@ -157,8 +141,7 @@ install() {
         systemd-run systemd-escape \
         systemd-cgls systemd-tmpfiles \
         systemd-ask-password systemd-tty-ask-password-agent \
-        /etc/udev/udev.hwdb \
-        ${NULL}
+        /etc/udev/udev.hwdb
 
     inst_multiple -o \
         /usr/lib/modules-load.d/*.conf \
@@ -170,18 +153,19 @@ install() {
             [[ -f $i ]] || continue
             while read -r _line || [ -n "$_line" ]; do
                 case $_line in
-                    \#*)
-                        ;;
-                    \;*)
-                        ;;
+                    \#*) ;;
+
+                    \;*) ;;
+
                     *)
                         echo "$_line"
+                        ;;
                 esac
             done < "$i"
         done
     }
 
-    mapfile -t _mods <<< $(modules_load_get /usr/lib/modules-load.d)
+    mapfile -t _mods < <(modules_load_get /usr/lib/modules-load.d)
     [[ ${#_mods[@]} -gt 0 ]] && hostonly='' instmods "${_mods[@]}"
 
     if [[ $hostonly ]]; then
@@ -190,7 +174,9 @@ install() {
             /etc/systemd/journald.conf.d/*.conf \
             /etc/systemd/system.conf \
             /etc/systemd/system.conf.d/*.conf \
+            /etc/hosts \
             /etc/hostname \
+            /etc/nsswitch.conf \
             /etc/machine-id \
             /etc/machine-info \
             /etc/vconsole.conf \
@@ -198,10 +184,9 @@ install() {
             /etc/modules-load.d/*.conf \
             /etc/sysctl.d/*.conf \
             /etc/sysctl.conf \
-            /etc/udev/udev.conf \
-            ${NULL}
+            /etc/udev/udev.conf
 
-        mapfile -t _mods <<< $(modules_load_get /etc/modules-load.d)
+        mapfile -t _mods < <(modules_load_get /etc/modules-load.d)
         [[ ${#_mods[@]} -gt 0 ]] && hostonly='' instmods "${_mods[@]}"
     fi
 
@@ -211,17 +196,22 @@ install() {
 
     # install adm user/group for journald
     inst_multiple nologin
-    grep '^systemd-journal:' "$dracutsysrootdir"/etc/passwd 2>/dev/null >> "$initdir/etc/passwd"
-    grep '^adm:' "$dracutsysrootdir"/etc/passwd 2>/dev/null >> "$initdir/etc/passwd"
-    grep '^systemd-journal:' "$dracutsysrootdir"/etc/group >> "$initdir/etc/group"
-    grep '^wheel:' "$dracutsysrootdir"/etc/group >> "$initdir/etc/group"
-    grep '^adm:' "$dracutsysrootdir"/etc/group >> "$initdir/etc/group"
-    grep '^utmp:' "$dracutsysrootdir"/etc/group >> "$initdir/etc/group"
-    grep '^root:' "$dracutsysrootdir"/etc/group >> "$initdir/etc/group"
+    {
+        grep '^systemd-journal:' "$dracutsysrootdir"/etc/passwd 2> /dev/null
+        grep '^adm:' "$dracutsysrootdir"/etc/passwd 2> /dev/null
+        # we don't use systemd-networkd, but the user is in systemd.conf tmpfiles snippet
+        grep '^systemd-network:' "$dracutsysrootdir"/etc/passwd 2> /dev/null
+    } >> "$initdir/etc/passwd"
 
-    # we don't use systemd-networkd, but the user is in systemd.conf tmpfiles snippet
-    grep '^systemd-network:' "$dracutsysrootdir"/etc/passwd 2>/dev/null >> "$initdir/etc/passwd"
-    grep '^systemd-network:' "$dracutsysrootdir"/etc/group >> "$initdir/etc/group"
+    {
+        grep '^systemd-journal:' "$dracutsysrootdir"/etc/group 2> /dev/null
+        grep '^wheel:' "$dracutsysrootdir"/etc/group 2> /dev/null
+        grep '^adm:' "$dracutsysrootdir"/etc/group 2> /dev/null
+        grep '^utmp:' "$dracutsysrootdir"/etc/group 2> /dev/null
+        grep '^root:' "$dracutsysrootdir"/etc/group 2> /dev/null
+        # we don't use systemd-networkd, but the user is in systemd.conf tmpfiles snippet
+        grep '^systemd-network:' "$dracutsysrootdir"/etc/group 2> /dev/null
+    } >> "$initdir/etc/group"
 
     ln_r "$systemdutildir"/systemd "/init"
     ln_r "$systemdutildir"/systemd "/sbin/init"
@@ -234,15 +224,13 @@ install() {
         71-seat.rules \
         73-seat-late.rules \
         90-vconsole.rules \
-        99-systemd.rules \
-        ${NULL}
+        99-systemd.rules
 
     for i in \
         emergency.target \
         rescue.target \
         systemd-ask-password-console.service \
-        systemd-ask-password-plymouth.service \
-        ; do
+        systemd-ask-password-plymouth.service; do
         [[ -f "$systemdsystemunitdir"/$i ]] || continue
         $SYSTEMCTL -q --root "$initdir" add-wants "$i" systemd-vconsole-setup.service
     done
@@ -257,4 +245,10 @@ install() {
     } >> "$initdir/etc/systemd/journald.conf"
 
     $SYSTEMCTL -q --root "$initdir" set-default multi-user.target
+
+    # Install library file(s)
+    _arch=${DRACUT_ARCH:-$(uname -m)}
+    inst_libdir_file \
+        {"tls/$_arch/",tls/,"$_arch/",}"libnss_*"
+
 }

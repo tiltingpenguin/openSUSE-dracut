@@ -4,20 +4,20 @@ SECURITYFSDIR="/sys/kernel/security"
 IMASECDIR="${SECURITYFSDIR}/ima"
 IMACONFIG="${NEWROOT}/etc/sysconfig/ima"
 
-load_x509_keys()
-{
+load_x509_keys() {
     KEYRING_ID=$1
 
     # override the default configuration
     if [ -f "${IMACONFIG}" ]; then
-        . ${IMACONFIG}
+        # shellcheck disable=SC1090
+        . "${IMACONFIG}"
     fi
 
     if [ -z "${IMAKEYSDIR}" ]; then
         IMAKEYSDIR="/etc/keys/ima"
     fi
 
-    PUBKEY_LIST=`ls ${NEWROOT}${IMAKEYSDIR}/*`
+    PUBKEY_LIST=$(ls "${NEWROOT}"${IMAKEYSDIR}/*)
     for PUBKEY in ${PUBKEY_LIST}; do
         # check for public key's existence
         if [ ! -f "${PUBKEY}" ]; then
@@ -27,14 +27,15 @@ load_x509_keys()
             continue
         fi
 
-        X509ID=$(evmctl import ${PUBKEY} ${KEYRING_ID})
-        if [ $? -ne 0 ]; then
+        # FIXME: X509ID unused?
+        # shellcheck disable=SC2034
+        if ! X509ID=$(evmctl import "${PUBKEY}" "${KEYRING_ID}"); then
             info "integrity: IMA x509 cert not loaded on keyring: ${PUBKEY}"
-        fi 
+        fi
     done
 
     if [ "${RD_DEBUG}" = "yes" ]; then
-        keyctl show  ${KEYRING_ID}
+        keyctl show "${KEYRING_ID}"
     fi
     return 0
 }
@@ -48,15 +49,15 @@ if [ ! -e "${IMASECDIR}" ]; then
 fi
 
 # get the IMA keyring id
-line=$(keyctl describe %keyring:.ima)
-if [ $? -eq 0 ]; then
+
+if line=$(keyctl describe %keyring:.ima); then
     _ima_id=${line%%:*}
 else
-    _ima_id=`keyctl search @u keyring _ima`
+    _ima_id=$(keyctl search @u keyring _ima)
     if [ -z "${_ima_id}" ]; then
-        _ima_id=`keyctl newring _ima @u`
+        _ima_id=$(keyctl newring _ima @u)
     fi
 fi
 
 # load the IMA public key(s)
-load_x509_keys ${_ima_id}
+load_x509_keys "${_ima_id}"

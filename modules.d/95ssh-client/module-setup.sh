@@ -7,7 +7,7 @@ check() {
     [[ $mount_needs ]] && return 1
 
     # If our prerequisites are not met, fail.
-    require_binaries ssh scp  || return 1
+    require_binaries ssh scp || return 1
 
     if [[ $sshkey ]]; then
         [[ ! -f $dracutsysrootdir$sshkey ]] && {
@@ -25,8 +25,7 @@ depends() {
     echo network
 }
 
-inst_sshenv()
-{
+inst_sshenv() {
     if [[ -d $dracutsysrootdir/root/.ssh ]]; then
         inst_dir /root/.ssh
         chmod 700 "${initdir}"/root/.ssh
@@ -50,6 +49,7 @@ inst_sshenv()
             # Copy customized UserKnowHostsFile
             elif [[ $key == "UserKnownHostsFile" ]]; then
                 # Make sure that ~/foo will be copied as /root/foo in kdump's initramfs
+                # shellcheck disable=SC2088
                 if str_starts "$val" "~/"; then
                     val="/root/${val#"~/"}"
                 fi
@@ -69,12 +69,12 @@ install() {
     inst_sshenv
 
     _nsslibs=$(
-        sed -e 's/#.*//; s/^[^:]*://; s/\[[^]]*\]//' \
-            "$dracutsysrootdir"/etc/nsswitch.conf \
-        |  tr -s '[:space:]' '\n' | sort -u | tr -s '[:space:]' '|')
+        cat "$dracutsysrootdir"/{,usr/}etc/nsswitch.conf 2> /dev/null \
+            | sed -e 's/#.*//; s/^[^:]*://; s/\[[^]]*\]//' \
+            | tr -s '[:space:]' '\n' | sort -u | tr -s '[:space:]' '|'
+    )
     _nsslibs=${_nsslibs#|}
     _nsslibs=${_nsslibs%|}
 
     inst_libdir_file -n "$_nsslibs" 'libnss_*.so*'
 }
-

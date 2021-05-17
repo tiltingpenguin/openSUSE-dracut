@@ -1,5 +1,6 @@
 #!/bin/sh
 
+# shellcheck disable=SC2034
 root=$(getarg root=)
 
 rflags="$(getarg rootflags=)"
@@ -11,4 +12,3 @@ fstype="$(getarg rootfstype=)"
 if [ -z "$fstype" ]; then
     fstype="auto"
 fi
-

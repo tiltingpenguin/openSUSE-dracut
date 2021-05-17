@@ -18,14 +18,14 @@ installkernel() {
     local _unwanted_drivers='/(wireless|isdn|uwb|net/ethernet|net/phy|net/team)/'
     local _net_drivers
 
-    if [[ "$_arch" = "s390" ]] || [[ "$_arch" = "s390x" ]]; then
+    if [[ $_arch == "s390" ]] || [[ $_arch == "s390x" ]]; then
         dracut_instmods -o -P ".*${_unwanted_drivers}.*" -s "$_net_symbols" "=drivers/s390/net"
     fi
 
     if [[ $hostonly_mode == 'strict' ]] && [[ $hostonly_nics ]]; then
         for _nic in $hostonly_nics; do
-            mapfile -t _net_drivers <<< "$(get_dev_module /sys/class/net/"$_nic")"
-            if (( ${#_net_drivers[@]} == 0 )); then
+            mapfile -t _net_drivers < <(get_dev_module /sys/class/net/"$_nic")
+            if ((${#_net_drivers[@]} == 0)); then
                 derror "--hostonly-nics contains invalid NIC '$_nic'"
                 continue
             fi
@@ -48,4 +48,3 @@ installkernel() {
 install() {
     return 0
 }
-

@@ -8,28 +8,31 @@ else
     OMIT_NETWORK="network-manager"
 fi
 
+# shellcheck disable=SC2034
 TEST_DESCRIPTION="root filesystem on NFS with multiple nics with $USE_NETWORK"
 
 KVERSION=${KVERSION-$(uname -r)}
 
 # Uncomment this to debug failures
-#DEBUGFAIL="rd.shell rd.break"
+#DEBUGFAIL="loglevel=7 rd.shell rd.break"
 #SERIAL="tcp:127.0.0.1:9999"
-
-
 
 run_server() {
     # Start server first
     echo "MULTINIC TEST SETUP: Starting DHCP/NFS server"
 
-    $testdir/run-qemu \
-        -drive format=raw,index=0,media=disk,file="$TESTDIR"/server.ext3 \
+    declare -a disk_args=()
+    # shellcheck disable=SC2034
+    declare -i disk_index=0
+    qemu_add_drive_args disk_index disk_args "$TESTDIR"/server.img root
+
+    "$testdir"/run-qemu \
+        "${disk_args[@]}" \
         -net socket,listen=127.0.0.1:12350 \
         -net nic,macaddr=52:54:01:12:34:56,model=e1000 \
-        ${SERIAL:+-serial "$SERIAL"} \
-        ${SERIAL:--serial file:"$TESTDIR"/server.log} \
+        -serial "${SERIAL:-"file:$TESTDIR/server.log"}" \
         -watchdog i6300esb -watchdog-action poweroff \
-        -append "panic=1 systemd.crash_reboot loglevel=7 root=LABEL=dracut rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0" \
+        -append "panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot root=LABEL=dracut rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0" \
         -initrd "$TESTDIR"/initramfs.server \
         -pidfile "$TESTDIR"/server.pid -daemonize || return 1
 
@@ -39,7 +42,7 @@ run_server() {
     tty -s && stty sane
 
     if ! [[ $SERIAL ]]; then
-        while : ; do
+        while :; do
             grep Serving "$TESTDIR"/server.log && break
             echo "Waiting for the server to startup"
             tail "$TESTDIR"/server.log
@@ -61,28 +64,37 @@ client_test() {
 
     echo "CLIENT TEST START: $test_name"
 
-    # Need this so kvm-qemu will boot (needs non-/dev/zero local disk)
-    if ! dd if=/dev/zero of="$TESTDIR"/client.img bs=1M count=1; then
-        echo "Unable to make client sda image" 1>&2
-        return 1
+    dd if=/dev/zero of="$TESTDIR"/marker.img bs=1MiB count=1
+    declare -a disk_args=()
+    # shellcheck disable=SC2034
+    declare -i disk_index=0
+    qemu_add_drive_args disk_index disk_args "$TESTDIR"/marker.img marker
+
+    if dhclient --help 2>&1 | grep -q -F -- '--timeout' 2> /dev/null; then
+        cmdline="$cmdline rd.net.timeout.dhcp=3"
     fi
 
-    $testdir/run-qemu -drive format=raw,index=0,media=disk,file="$TESTDIR"/client.img \
-                      -net socket,connect=127.0.0.1:12350 \
-                      -net nic,macaddr=52:54:00:12:34:$mac1,model=e1000 \
-                      -net nic,macaddr=52:54:00:12:34:$mac2,model=e1000 \
-                      -net nic,macaddr=52:54:00:12:34:$mac3,model=e1000 \
-                      -netdev hubport,id=n1,hubid=1 \
-                      -netdev hubport,id=n2,hubid=2 \
-                      -device e1000,netdev=n1,mac=52:54:00:12:34:98 \
-                      -device e1000,netdev=n2,mac=52:54:00:12:34:99 \
-                      -watchdog i6300esb -watchdog-action poweroff \
-                      -append "quiet rd.net.timeout.dhcp=3 panic=1 systemd.crash_reboot rd.shell=0 $cmdline $DEBUGFAIL rd.retry=5 ro console=ttyS0,115200n81 selinux=0 init=/sbin/init rd.debug systemd.log_target=console" \
-                      -initrd "$TESTDIR"/initramfs.testing
+    # Invoke KVM and/or QEMU to actually create the target filesystem.
+    "$testdir"/run-qemu \
+        "${disk_args[@]}" \
+        -net socket,connect=127.0.0.1:12350 \
+        -net nic,macaddr=52:54:00:12:34:"$mac1",model=e1000 \
+        -net nic,macaddr=52:54:00:12:34:"$mac2",model=e1000 \
+        -net nic,macaddr=52:54:00:12:34:"$mac3",model=e1000 \
+        -netdev hubport,id=n1,hubid=1 \
+        -netdev hubport,id=n2,hubid=2 \
+        -device e1000,netdev=n1,mac=52:54:00:12:34:98 \
+        -device e1000,netdev=n2,mac=52:54:00:12:34:99 \
+        -watchdog i6300esb -watchdog-action poweroff \
+        -append "quiet panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot rd.shell=0 $cmdline $DEBUGFAIL rd.retry=5 ro console=ttyS0,115200n81 selinux=0 init=/sbin/init rd.debug systemd.log_target=console" \
+        -initrd "$TESTDIR"/initramfs.testing || return 1
 
-    { read OK; read IFACES; } < "$TESTDIR"/client.img
+    {
+        read -r OK
+        read -r IFACES
+    } < "$TESTDIR"/marker.img
 
-    if [[ "$OK" != "OK" ]]; then
+    if [[ $OK != "OK" ]]; then
         echo "CLIENT TEST END: $test_name [FAILED - BAD EXIT]"
         return 1
     fi
@@ -107,7 +119,6 @@ client_test() {
     return 0
 }
 
-
 test_run() {
     if ! run_server; then
         echo "Failed to start server" 1>&2
@@ -126,225 +137,248 @@ test_client() {
 
     # PXE Style BOOTIF=
     client_test "MULTINIC root=nfs BOOTIF=" \
-                00 01 02 \
-                "root=nfs:192.168.50.1:/nfs/client BOOTIF=52-54-00-12-34-00" \
-                "ens2" || return 1
+        00 01 02 \
+        "root=nfs:192.168.50.1:/nfs/client BOOTIF=52-54-00-12-34-00" \
+        "enp0s1" || return 1
 
-    client_test "MULTINIC root=nfs BOOTIF= ip=ens4:dhcp" \
-                00 01 02 \
-                "root=nfs:192.168.50.1:/nfs/client BOOTIF=52-54-00-12-34-00 ip=ens3:dhcp" \
-                "ens2 ens3" || return 1
+    client_test "MULTINIC root=nfs BOOTIF= ip=enp0s3:dhcp" \
+        00 01 02 \
+        "root=nfs:192.168.50.1:/nfs/client BOOTIF=52-54-00-12-34-00 ip=enp0s2:dhcp" \
+        "enp0s1 enp0s2" || return 1
 
     # PXE Style BOOTIF= with dhcp root-path
     client_test "MULTINIC root=dhcp BOOTIF=" \
-                00 01 02 \
-                "root=dhcp BOOTIF=52-54-00-12-34-02" \
-                "ens4" || return 1
+        00 01 02 \
+        "root=dhcp BOOTIF=52-54-00-12-34-02" \
+        "enp0s3" || return 1
 
     # Multinic case, where only one nic works
     client_test "MULTINIC root=nfs ip=dhcp" \
-                FF 00 FE \
-                "root=nfs:192.168.50.1:/nfs/client ip=dhcp" \
-                "ens3" || return 1
+        FF 00 FE \
+        "root=nfs:192.168.50.1:/nfs/client ip=dhcp" \
+        "enp0s2" || return 1
 
     # Require two interfaces
-    client_test "MULTINIC root=nfs ip=ens3:dhcp ip=ens4:dhcp bootdev=ens3" \
-                00 01 02 \
-                "root=nfs:192.168.50.1:/nfs/client ip=ens3:dhcp ip=ens4:dhcp bootdev=ens3" \
-                "ens3 ens4" || return 1
+    client_test "MULTINIC root=nfs ip=enp0s2:dhcp ip=enp0s3:dhcp bootdev=enp0s2" \
+        00 01 02 \
+        "root=nfs:192.168.50.1:/nfs/client ip=enp0s2:dhcp ip=enp0s3:dhcp bootdev=enp0s2" \
+        "enp0s2 enp0s3" || return 1
 
     # Require three interfaces with dhcp root-path
-    client_test "MULTINIC root=dhcp ip=ens2:dhcp ip=ens3:dhcp ip=ens4:dhcp bootdev=ens4" \
-                00 01 02 \
-                "root=dhcp ip=ens2:dhcp ip=ens3:dhcp ip=ens4:dhcp bootdev=ens4" \
-                "ens2 ens3 ens4" || return 1
+    client_test "MULTINIC root=dhcp ip=enp0s1:dhcp ip=enp0s2:dhcp ip=enp0s3:dhcp bootdev=enp0s3" \
+        00 01 02 \
+        "root=dhcp ip=enp0s1:dhcp ip=enp0s2:dhcp ip=enp0s3:dhcp bootdev=enp0s3" \
+        "enp0s1 enp0s2 enp0s3" || return 1
 
     client_test "MULTINIC bonding" \
-                00 01 02 \
-                "root=nfs:192.168.50.1:/nfs/client ip=bond0:dhcp  bond=bond0:ens2,ens3,ens4:mode=balance-rr" \
-                "bond0" || return 1
+        00 01 02 \
+        "root=nfs:192.168.50.1:/nfs/client ip=bond0:dhcp  bond=bond0:enp0s1,enp0s2,enp0s3:mode=balance-rr" \
+        "bond0" || return 1
 
     # bridge, where only one interface is actually connected
     client_test "MULTINIC bridging" \
-                00 01 02 \
-                "root=nfs:192.168.50.1:/nfs/client ip=bridge0:dhcp  bridge=bridge0:ens2,ens6,ens7" \
-                "bridge0" || return 1
+        00 01 02 \
+        "root=nfs:192.168.50.1:/nfs/client ip=bridge0:dhcp  bridge=bridge0:enp0s1,enp0s5,enp0s6" \
+        "bridge0" || return 1
     return 0
 }
 
 test_setup() {
-    # Make server root
-    dd if=/dev/zero of="$TESTDIR"/server.ext3 bs=1M count=120
-
-    kernel=$KVERSION
+    export kernel=$KVERSION
+    export srcmods="/lib/modules/$kernel/"
+    rm -rf -- "$TESTDIR"/overlay
     (
-        mkdir -p $TESTDIR/overlay/source
+        mkdir -p "$TESTDIR"/overlay/source
+        # shellcheck disable=SC2030
         export initdir=$TESTDIR/overlay/source
-        . $basedir/dracut-init.sh
-
+        # shellcheck disable=SC1090
+        . "$basedir"/dracut-init.sh
 
         (
-            cd "$initdir";
-            mkdir -p -- dev sys proc run var/run etc tmp var/lib/{dhcpd,rpcbind}
-            mkdir -p -- var/lib/nfs/{v4recovery,rpc_pipefs}
-            chmod 777 -- var/lib/rpcbind var/lib/nfs
+            cd "$initdir" || exit
+            mkdir -p dev sys proc run etc var/run tmp var/lib/{dhcpd,rpcbind}
+            mkdir -p var/lib/nfs/{v4recovery,rpc_pipefs}
+            chmod 777 var/lib/rpcbind var/lib/nfs
         )
 
-        for _f in modules.builtin.bin modules.builtin; do
-            [[ $srcmods/$_f ]] && break
-        done || {
-            dfatal "No modules.builtin.bin and modules.builtin found!"
-            return 1
-        }
-
-        for _f in modules.builtin.bin modules.builtin modules.order; do
-            [[ $srcmods/$_f ]] && inst_simple "$srcmods/$_f" "/lib/modules/$kernel/$_f"
-        done
-
         inst_multiple sh ls shutdown poweroff stty cat ps ln ip \
-                      dmesg mkdir cp ping exportfs \
-                      modprobe rpc.nfsd rpc.mountd showmount tcpdump \
-                      /etc/services sleep mount chmod
+            dmesg mkdir cp ping exportfs \
+            modprobe rpc.nfsd rpc.mountd showmount tcpdump \
+            sleep mount chmod rm
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
-            [ -f "${_terminfodir}"/l/linux ] && break
+            if [ -f "${_terminfodir}"/l/linux ]; then
+                inst_multiple -o "${_terminfodir}"/l/linux
+                break
+            fi
         done
-        inst_multiple -o "${_terminfodir}"/l/linux
-        type -P portmap >/dev/null && inst_multiple portmap
-        type -P rpcbind >/dev/null && inst_multiple rpcbind
+        type -P portmap > /dev/null && inst_multiple portmap
+        type -P rpcbind > /dev/null && inst_multiple rpcbind
         [ -f /etc/netconfig ] && inst_multiple /etc/netconfig
-        type -P dhcpd >/dev/null && inst_multiple dhcpd
+        type -P dhcpd > /dev/null && inst_multiple dhcpd
         [ -x /usr/sbin/dhcpd3 ] && inst /usr/sbin/dhcpd3 /usr/sbin/dhcpd
         instmods nfsd sunrpc ipv6 lockd af_packet
-        inst_simple /etc/os-release
         inst ./server-init.sh /sbin/init
+        inst_simple /etc/os-release
         inst ./hosts /etc/hosts
         inst ./exports /etc/exports
         inst ./dhcpd.conf /etc/dhcpd.conf
-        inst_multiple /etc/nsswitch.conf /etc/rpc /etc/protocols
-
+        inst_multiple -o {,/usr}/etc/nsswitch.conf {,/usr}/etc/rpc \
+            {,/usr}/etc/protocols {,/usr}/etc/services
         inst_multiple rpc.idmapd /etc/idmapd.conf
 
         inst_libdir_file 'libnfsidmap_nsswitch.so*'
         inst_libdir_file 'libnfsidmap/*.so*'
         inst_libdir_file 'libnfsidmap*.so*'
 
-        _nsslibs=$(sed -e '/^#/d' -e 's/^.*://' -e 's/\[NOTFOUND=return\]//' /etc/nsswitch.conf \
-                       |  tr -s '[:space:]' '\n' | sort -u | tr -s '[:space:]' '|')
+        _nsslibs=$(
+            cat "$dracutsysrootdir"/{,usr/}etc/nsswitch.conf 2> /dev/null \
+                | sed -e '/^#/d' -e 's/^.*://' -e 's/\[NOTFOUND=return\]//' \
+                | tr -s '[:space:]' '\n' | sort -u | tr -s '[:space:]' '|'
+        )
         _nsslibs=${_nsslibs#|}
         _nsslibs=${_nsslibs%|}
-
         inst_libdir_file -n "$_nsslibs" 'libnss_*.so*'
 
-        inst /etc/nsswitch.conf /etc/nsswitch.conf
         inst /etc/passwd /etc/passwd
         inst /etc/group /etc/group
 
-        cp -a -- /etc/ld.so.conf* "$initdir"/etc
+        cp -a /etc/ld.so.conf* "$initdir"/etc
         ldconfig -r "$initdir"
         dracut_kernel_post
     )
 
     # Make client root inside server root
     (
+        # shellcheck disable=SC2030
+        # shellcheck disable=SC2031
         export initdir=$TESTDIR/overlay/source/nfs/client
-        . $basedir/dracut-init.sh
+        # shellcheck disable=SC1090
+        . "$basedir"/dracut-init.sh
+
         (
-            cd "$initdir"
-            mkdir -p dev sys proc etc run
-            mkdir -p var/lib/nfs/rpc_pipefs
-            mkdir -p root usr/bin usr/lib usr/lib64 usr/sbin
-            for i in bin sbin lib lib64; do
-                ln -sfnr usr/$i $i
-            done
+            cd "$initdir" || exit
+            mkdir -p dev sys proc etc run root usr var/lib/nfs/rpc_pipefs
         )
-        inst_multiple sh shutdown poweroff stty cat ps ln ip \
-                      mount dmesg mkdir cp ping grep ls dd
+
+        inst_multiple sh shutdown poweroff stty cat ps ln ip dd \
+            mount dmesg mkdir cp ping grep setsid ls vi less cat sync
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
-            [[ -f ${_terminfodir}/l/linux ]] && break
+            if [ -f "${_terminfodir}"/l/linux ]; then
+                inst_multiple -o "${_terminfodir}"/l/linux
+                break
+            fi
         done
-        inst_multiple -o "${_terminfodir}"/l/linux
-        inst_simple /etc/os-release
+
+        inst_simple "${basedir}/modules.d/99base/dracut-lib.sh" "/lib/dracut-lib.sh"
+        inst_binary "${basedir}/dracut-util" "/usr/bin/dracut-util"
+        ln -s dracut-util "${initdir}/usr/bin/dracut-getarg"
+        ln -s dracut-util "${initdir}/usr/bin/dracut-getargs"
+
         inst ./client-init.sh /sbin/init
-        inst /etc/nsswitch.conf /etc/nsswitch.conf
+        inst_simple /etc/os-release
+        inst_multiple -o {,/usr}/etc/nsswitch.conf
         inst /etc/passwd /etc/passwd
         inst /etc/group /etc/group
 
-        inst_multiple rpc.idmapd /etc/idmapd.conf
         inst_libdir_file 'libnfsidmap_nsswitch.so*'
         inst_libdir_file 'libnfsidmap/*.so*'
         inst_libdir_file 'libnfsidmap*.so*'
 
-        _nsslibs=$(sed -e '/^#/d' -e 's/^.*://' -e 's/\[NOTFOUND=return\]//' -- /etc/nsswitch.conf \
-                       |  tr -s '[:space:]' '\n' | sort -u | tr -s '[:space:]' '|')
+        _nsslibs=$(
+            cat "$dracutsysrootdir"/{,usr/}etc/nsswitch.conf 2> /dev/null \
+                | sed -e '/^#/d' -e 's/^.*://' -e 's/\[NOTFOUND=return\]//' \
+                | tr -s '[:space:]' '\n' | sort -u | tr -s '[:space:]' '|'
+        )
         _nsslibs=${_nsslibs#|}
         _nsslibs=${_nsslibs%|}
-
         inst_libdir_file -n "$_nsslibs" 'libnss_*.so*'
 
-        cp -a -- /etc/ld.so.conf* "$initdir"/etc
+        cp -a /etc/ld.so.conf* "$initdir"/etc
         ldconfig -r "$initdir"
     )
 
     # second, install the files needed to make the root filesystem
     (
+        # shellcheck disable=SC2030
+        # shellcheck disable=SC2031
         export initdir=$TESTDIR/overlay
-        . $basedir/dracut-init.sh
+        # shellcheck disable=SC1090
+        . "$basedir"/dracut-init.sh
         inst_multiple sfdisk mkfs.ext3 poweroff cp umount sync dd
         inst_hook initqueue 01 ./create-root.sh
         inst_hook initqueue/finished 01 ./finished-false.sh
-        inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
     )
 
     # create an initramfs that will create the target root filesystem.
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
-    $basedir/dracut.sh -l -i $TESTDIR/overlay / \
-                       -m "dash udev-rules base rootfs-block fs-lib kernel-modules fs-lib qemu" \
-                       -d "piix ide-gd_mod ata_piix ext3 sd_mod" \
-                       --nomdadmconf \
-                       --no-hostonly-cmdline -N \
-                       -f $TESTDIR/initramfs.makeroot $KVERSION || return 1
+    "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
+        -m "bash udev-rules base rootfs-block fs-lib kernel-modules fs-lib qemu" \
+        -d "piix ide-gd_mod ata_piix ext3 sd_mod" \
+        --nomdadmconf \
+        --no-hostonly-cmdline -N \
+        -f "$TESTDIR"/initramfs.makeroot "$KVERSION" || return 1
+    rm -rf -- "$TESTDIR"/overlay
+
+    dd if=/dev/zero of="$TESTDIR"/server.img bs=1MiB count=120
+    dd if=/dev/zero of="$TESTDIR"/marker.img bs=1MiB count=1
+    declare -a disk_args=()
+    # shellcheck disable=SC2034
+    declare -i disk_index=0
+    qemu_add_drive_args disk_index disk_args "$TESTDIR"/marker.img marker
+    qemu_add_drive_args disk_index disk_args "$TESTDIR"/server.img root
 
     # Invoke KVM and/or QEMU to actually create the target filesystem.
-    $testdir/run-qemu \
-        -drive format=raw,index=0,media=disk,file=$TESTDIR/server.ext3 \
+    "$testdir"/run-qemu \
+        "${disk_args[@]}" \
         -append "root=/dev/dracut/root rw rootfstype=ext3 quiet console=ttyS0,115200n81 selinux=0" \
-        -initrd $TESTDIR/initramfs.makeroot  || return 1
-    grep -U --binary-files=binary -F -m 1 -q dracut-root-block-created $TESTDIR/server.ext3 || return 1
-    rm -fr "$TESTDIR"/overlay
+        -initrd "$TESTDIR"/initramfs.makeroot || return 1
+    grep -U --binary-files=binary -F -m 1 -q dracut-root-block-created "$TESTDIR"/marker.img || return 1
 
     # Make an overlay with needed tools for the test harness
     (
+        # shellcheck disable=SC2031
+        # shellcheck disable=SC2030
         export initdir="$TESTDIR"/overlay
+        mkdir -p "$TESTDIR"/overlay
+        # shellcheck disable=SC1090
         . "$basedir"/dracut-init.sh
         inst_multiple poweroff shutdown
         inst_hook shutdown-emergency 000 ./hard-off.sh
         inst_hook emergency 000 ./hard-off.sh
-        inst_simple ./99-idesymlinks.rules /etc/udev/rules.d/99-idesymlinks.rules
-        inst_simple ./99-default.link /etc/systemd/network/99-default.link
-    )
+        inst_simple ./client.link /etc/systemd/network/01-client.link
 
+        inst_binary awk
+        inst_hook pre-pivot 85 "$basedir/modules.d/45ifcfg/write-ifcfg.sh"
+    )
+    # Make client's dracut image
+    "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
+        -o "ifcfg plymouth dash ${OMIT_NETWORK}" \
+        -a "debug watchdog ${USE_NETWORK}" \
+        --no-hostonly-cmdline -N \
+        -f "$TESTDIR"/initramfs.testing "$KVERSION" || return 1
+
+    (
+        # shellcheck disable=SC2031
+        export initdir="$TESTDIR"/overlay
+        # shellcheck disable=SC1090
+        . "$basedir"/dracut-init.sh
+        rm "$initdir"/etc/systemd/network/01-client.link
+        inst_simple ./server.link /etc/systemd/network/01-server.link
+        inst_hook pre-mount 99 ./wait-if-server.sh
+    )
     # Make server's dracut image
-    $basedir/dracut.sh \
-        -l -i "$TESTDIR"/overlay / \
-        -m "dash udev-rules base rootfs-block fs-lib debug kernel-modules watchdog qemu" \
+    "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
+        -m "dash udev-rules base rootfs-block fs-lib debug kernel-modules watchdog qemu network network-legacy" \
         -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod nfsv2 nfsv3 nfsv4 nfs_acl nfs_layout_nfsv41_files nfsd e1000 i6300esb ib700wdt" \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.server "$KVERSION" || return 1
 
-    # Make client's dracut image
-    $basedir/dracut.sh \
-        -l -i "$TESTDIR"/overlay / \
-        -o "plymouth ${OMIT_NETWORK}" \
-        -a "debug ${USE_NETWORK}" \
-        -d "af_packet piix sd_mod sr_mod ata_piix ide-gd_mod e1000 nfsv2 nfsv3 nfsv4 nfs_acl nfs_layout_nfsv41_files sunrpc i6300esb ib700wdt" \
-        --no-hostonly-cmdline -N \
-        -f "$TESTDIR"/initramfs.testing "$KVERSION" || return 1
 }
 
 kill_server() {
     if [[ -s "$TESTDIR"/server.pid ]]; then
-        kill -TERM -- $(cat "$TESTDIR"/server.pid)
+        kill -TERM -- "$(cat "$TESTDIR"/server.pid)"
         rm -f -- "$TESTDIR"/server.pid
     fi
 }
@@ -353,4 +387,5 @@ test_cleanup() {
     kill_server
 }
 
+# shellcheck disable=SC1090
 . "$testdir"/test-functions

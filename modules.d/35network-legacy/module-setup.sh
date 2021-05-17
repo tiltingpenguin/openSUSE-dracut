@@ -2,9 +2,8 @@
 
 # called by dracut
 check() {
-    local _program
+    require_binaries ip sed awk grep pgrep tr expr || return 1
 
-    require_binaries ip sed awk grep pgrep || return 1
     require_any_binary arping arping2 wicked || return 1
     require_any_binary dhclient wicked || return 1
 
@@ -23,9 +22,16 @@ installkernel() {
 
 # called by dracut
 install() {
-    local _arch _i _dir
-    inst_multiple ip sed awk grep pgrep
-    inst_multiple -o dhclient
+    local _arch
+
+    #Adding default link
+    if dracut_module_included "systemd"; then
+        inst_multiple -o "${systemdutildir}/network/99-default.link"
+        [[ $hostonly ]] && inst_multiple -H -o "${systemdsystemconfdir}/network/*.link"
+    fi
+
+    inst_multiple ip dhclient sed awk grep pgrep tr expr
+
     inst_multiple -o arping arping2
     strstr "$(arping 2>&1)" "ARPing 2" && mv "$initdir/bin/arping" "$initdir/bin/arping2"
     inst_multiple -o wicked
@@ -67,21 +73,22 @@ install() {
                 ;;
         esac
         (
+            # shellcheck disable=SC1090
             . "$i"
             if ! [ "${ONBOOT}" = "no" -o "${ONBOOT}" = "NO" ] \
-                    && [ -n "${TEAM_MASTER}${TEAM_CONFIG}${TEAM_PORT_CONFIG}" ]; then
+                && [ -n "${TEAM_MASTER}${TEAM_CONFIG}${TEAM_PORT_CONFIG}" ]; then
                 if [ -n "$TEAM_CONFIG" ] && [ -n "$DEVICE" ]; then
-                    mkdir -p $initdir/etc/teamd
+                    mkdir -p "$initdir"/etc/teamd
                     printf -- "%s" "$TEAM_CONFIG" > "$initdir/etc/teamd/${DEVICE}.conf"
                 elif [ -n "$TEAM_PORT_CONFIG" ]; then
                     inst_simple "$i"
 
-                    HWADDR="$(echo $HWADDR | sed 'y/ABCDEF/abcdef/')"
+                    HWADDR="$(echo "$HWADDR" | sed 'y/ABCDEF/abcdef/')"
                     if [ -n "$HWADDR" ]; then
                         ln_r "$i" "/etc/sysconfig/network-scripts/mac-${HWADDR}.conf"
                     fi
 
-                    SUBCHANNELS="$(echo $SUBCHANNELS | sed 'y/ABCDEF/abcdef/')"
+                    SUBCHANNELS="$(echo "$SUBCHANNELS" | sed 'y/ABCDEF/abcdef/')"
                     if [ -n "$SUBCHANNELS" ]; then
                         ln_r "$i" "/etc/sysconfig/network-scripts/ccw-${SUBCHANNELS}.conf"
                     fi
@@ -97,4 +104,3 @@ install() {
 
     dracut_need_initqueue
 }
-

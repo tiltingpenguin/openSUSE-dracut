@@ -2,18 +2,18 @@
 
 # FIXME: load selinux policy.  this should really be done after we switchroot
 
-rd_load_policy()
-{
+rd_load_policy() {
     # If SELinux is disabled exit now
     getarg "selinux=0" > /dev/null && return 0
 
     SELINUX="enforcing"
+    # shellcheck disable=SC1090
     [ -e "$NEWROOT/etc/selinux/config" ] && . "$NEWROOT/etc/selinux/config"
 
     # Check whether SELinux is in permissive mode
     permissive=0
-    getarg "enforcing=0" > /dev/null
-    if [ $? -eq 0 -o "$SELINUX" = "permissive" ]; then
+
+    if getarg "enforcing=0" > /dev/null || [ "$SELINUX" = "permissive" ]; then
         permissive=1
     fi
 
@@ -22,23 +22,23 @@ rd_load_policy()
         local ret=0
         local out
         info "Loading SELinux policy"
-        mount -o bind /sys $NEWROOT/sys
+        mount -o bind /sys "$NEWROOT"/sys
         # load_policy does mount /proc and /sys/fs/selinux in
         # libselinux,selinux_init_load_policy()
         if [ -x "$NEWROOT/sbin/load_policy" ]; then
             out=$(LANG=C chroot "$NEWROOT" /sbin/load_policy -i 2>&1)
             ret=$?
-            info $out
+            info "$out"
         else
             out=$(LANG=C chroot "$NEWROOT" /usr/sbin/load_policy -i 2>&1)
             ret=$?
-            info $out
+            info "$out"
         fi
-        umount $NEWROOT/sys/fs/selinux
-        umount $NEWROOT/sys
+        umount "$NEWROOT"/sys/fs/selinux
+        umount "$NEWROOT"/sys
 
         if [ "$SELINUX" = "disabled" ]; then
-            return 0;
+            return 0
         fi
 
         if [ $ret -eq 0 -o $ret -eq 2 ]; then

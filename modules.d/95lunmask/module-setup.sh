@@ -6,29 +6,32 @@
 cmdline() {
     get_lunmask() {
         local _dev=$1
-        local _devpath=$(cd -P /sys/dev/block/$_dev ; echo $PWD)
-        local _sdev _lun _rport _end_device _classdev _wwpn _sas_address
+        local _devpath _sdev _lun _rport _end_device _classdev _wwpn _sas_address
+        _devpath=$(
+            cd -P /sys/dev/block/"$_dev" || exit
+            echo "$PWD"
+        )
 
         [ "${_devpath#*/sd}" == "$_devpath" ] && return 1
         _sdev="${_devpath%%/block/*}"
         _lun="${_sdev##*:}"
         # Check for FibreChannel
         _rport="${_devpath##*/rport-}"
-        if [ "$_rport" != "$_devpath" ] ; then
+        if [ "$_rport" != "$_devpath" ]; then
             _rport="${_rport%%/*}"
             _classdev="/sys/class/fc_remote_ports/rport-${_rport}"
             [ -d "$_classdev" ] || return 1
-            _wwpn=$(cat ${_classdev}/port_name)
+            _wwpn=$(cat "${_classdev}"/port_name)
             echo "rd.lunmask=fc,${_wwpn},${_lun}"
             return 0
         fi
         # Check for SAS
         _end_device="${_devpath##*/end_device-}"
-        if [ "$_end_device" != "$_devpath" ] ; then
+        if [ "$_end_device" != "$_devpath" ]; then
             _end_device="${_end_device%%/*}"
             _classdev="/sys/class/sas_device/end_device-${_end_device}"
             [ -e "$_classdev" ] || return 1
-            _sas_address=$(cat ${_classdev}/sas_address)
+            _sas_address=$(cat "${_classdev}"/sas_address)
             echo "rd.lunmask=sas,${_sas_address},${_lun}"
             return 0
         fi
@@ -60,10 +63,10 @@ install() {
     inst_script "$moddir/fc_transport_scan_lun.sh" /usr/lib/udev/fc_transport_scan_lun.sh
     inst_script "$moddir/sas_transport_scan_lun.sh" /usr/lib/udev/sas_transport_scan_lun.sh
     inst_hook cmdline 30 "$moddir/parse-lunmask.sh"
-    if [[ $hostonly_cmdline == "yes" ]] ; then
+    if [[ $hostonly_cmdline == "yes" ]]; then
         local _lunmask
 
-        for _lunmask in $(cmdline) ; do
+        for _lunmask in $(cmdline); do
             printf "%s\n" "$_lunmask" >> "${initdir}/etc/cmdline.d/95lunmask.conf"
         done
     fi

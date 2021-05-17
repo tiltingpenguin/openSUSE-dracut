@@ -3,36 +3,31 @@
 # called by dracut
 installkernel() {
     local _blockfuncs='ahci_platform_get_resources|ata_scsi_ioctl|scsi_add_host|blk_cleanup_queue|register_mtd_blktrans|scsi_esp_register|register_virtio_device|usb_stor_disconnect|mmc_add_host|sdhci_add_host|scsi_add_host_with_dma'
-    local _hostonly_drvs
+    local -A _hostonly_drvs
 
-    find_kernel_modules_external () {
-        local _OLDIFS
-        local external_pattern="^/"
+    find_kernel_modules_external() {
+        local a
 
         [[ -f "$srcmods/modules.dep" ]] || return 0
 
-        _OLDIFS=$IFS
-        IFS=:
-        while read a rest; do
-            [[ $a =~ $external_pattern ]] || continue
-            printf "%s\n" "$a"
+        while IFS=: read -r a _ || [[ $a ]]; do
+            [[ $a =~ ^/ ]] && printf "%s\n" "$a"
         done < "$srcmods/modules.dep"
-        IFS=$_OLDIFS
     }
 
     record_block_dev_drv() {
-        for _mod in $(get_dev_module /dev/block/$1); do
-            [[ " $_hostonly_drvs " != *$_mod* ]] && _hostonly_drvs+=" $_mod"
+        for _mod in $(get_dev_module /dev/block/"$1"); do
+            _hostonly_drvs["$_mod"]="$_mod"
         done
-        [[ "$_hostonly_drvs" ]] && return 0
+        ((${#_hostonly_drvs[@]} > 0)) && return 0
         return 1
     }
 
-    install_block_modules_strict () {
-        hostonly='' instmods $_hostonly_drvs
+    install_block_modules_strict() {
+        hostonly='' instmods "${_hostonly_drvs[@]}"
     }
 
-    install_block_modules () {
+    install_block_modules() {
         instmods \
             scsi_dh_rdac scsi_dh_emc scsi_dh_alua \
             =drivers/usb/storage \
@@ -48,8 +43,7 @@ installkernel() {
             ehci-hcd ehci-pci ehci-platform \
             ohci-hcd ohci-pci \
             uhci-hcd \
-            xhci-hcd xhci-pci xhci-plat-hcd \
-            ${NULL}
+            xhci-hcd xhci-pci xhci-plat-hcd
 
         hostonly=$(optional_hostonly) instmods \
             "=drivers/hid" \
@@ -59,7 +53,7 @@ installkernel() {
             "=drivers/pci/host" \
             "=drivers/pci/controller" \
             "=drivers/pinctrl" \
-            ${NULL}
+            "=drivers/watchdog"
 
         instmods \
             yenta_socket \
@@ -67,7 +61,7 @@ installkernel() {
             virtio virtio_ring virtio_pci pci_hyperv \
             "=drivers/pcmcia"
 
-        if [[ "${DRACUT_ARCH:-$(uname -m)}" == arm* || "${DRACUT_ARCH:-$(uname -m)}" == aarch64 ]]; then
+        if [[ ${DRACUT_ARCH:-$(uname -m)} == arm* || ${DRACUT_ARCH:-$(uname -m)} == aarch64 ]]; then
             # arm/aarch64 specific modules
             _blockfuncs+='|dw_mc_probe|dw_mci_pltfm_register'
             instmods \
@@ -96,20 +90,18 @@ installkernel() {
                 "=drivers/usb/misc" \
                 "=drivers/usb/musb" \
                 "=drivers/usb/phy" \
-                "=drivers/scsi/hisi_sas" \
-                ${NULL}
+                "=drivers/scsi/hisi_sas"
         fi
 
         find_kernel_modules_external | instmods
 
         # if not on hostonly mode, or there are hostonly block device
         # install block drivers
-        if ! [[ $hostonly ]] || \
-            for_each_host_dev_and_slaves_all record_block_dev_drv;
-        then
+        if ! [[ $hostonly ]] \
+            || for_each_host_dev_and_slaves_all record_block_dev_drv; then
             hostonly='' instmods sg sr_mod sd_mod scsi_dh ata_piix
 
-            if [[ "$hostonly_mode" == "strict" ]]; then
+            if [[ $hostonly_mode == "strict" ]]; then
                 install_block_modules_strict
             else
                 install_block_modules
@@ -135,6 +127,11 @@ installkernel() {
         [[ $arch == aarch64 ]] && arch=arm64
         hostonly='' instmods "=crypto"
         instmods "=arch/$arch/crypto" "=drivers/crypto"
+    fi
+
+    inst_multiple -o "$depmodd/*.conf"
+    if [[ $hostonly ]]; then
+        inst_multiple -H -o "$depmodconfdir/*.conf"
     fi
     :
 }

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-type getargs >/dev/null 2>&1 || . /lib/dracut-lib.sh
+type getargs > /dev/null 2>&1 || . /lib/dracut-lib.sh
 
 _md_start() {
     local _udevinfo
@@ -31,7 +31,9 @@ _md_start() {
 _md_force_run() {
     local _md
     local _UUID
-    local _MD_UUID=$(getargs rd.md.uuid -d rd_MD_UUID=)
+    local _MD_UUID
+
+    _MD_UUID=$(getargs rd.md.uuid -d rd_MD_UUID=)
     [ -n "$_MD_UUID" ] || getargbool 0 rd.auto || return
 
     if [ -n "$_MD_UUID" ]; then
@@ -43,10 +45,10 @@ _md_force_run() {
             _UUID=$(
                 /sbin/mdadm -D --export "$_md" \
                     | while read -r line || [ -n "$line" ]; do
-                    str_starts "$line" "MD_UUID=" || continue
-                    printf "%s" "${line#MD_UUID=}"
-                done
-                )
+                        str_starts "$line" "MD_UUID=" || continue
+                        printf "%s" "${line#MD_UUID=}"
+                    done
+            )
 
             [ -z "$_UUID" ] && continue
             _UUID=$(str_replace "$_UUID" ":" "")

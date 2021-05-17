@@ -1,11 +1,11 @@
-#!/bin/sh
+#!/bin/bash
 # This file is part of dracut.
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 # Prerequisite check(s) for module.
 check() {
 
-    # If the binary(s) requirements are not fulfilled the module can't be installed
+    # If the binary(s) requirements are not fulfilled the module can't be installed.
     require_binaries systemd-repart || return 1
 
     # Return 255 to only include the module, if another module requires it.
@@ -16,9 +16,7 @@ check() {
 # Module dependency requirements.
 depends() {
 
-    # This module has external dependency on the systemd module.
-    echo systemd
-    # Return 0 to include the dependent systemd module in the initramfs.
+    # Return 0 to include the dependent module(s) in the initramfs.
     return 0
 
 }
@@ -27,17 +25,16 @@ depends() {
 install() {
 
     inst_multiple -o \
-        $libdir/repart.d/*.conf \
-        $systemdsystemunitdir/systemd-repart.service \
-        $systemdsystemunitdir/initrd-root-fs.target.wants/systemd-repart.service \
+        "$libdir/repart.d/*.conf" \
+        "$systemdsystemunitdir"/systemd-repart.service \
+        "$systemdsystemunitdir"/initrd-root-fs.target.wants/systemd-repart.service \
         systemd-repart
 
     # Install the hosts local user configurations if enabled.
     if [[ $hostonly ]]; then
         inst_multiple -H -o \
-            /etc/repart.d/*.conf \
-            $systemdsystemconfdir/systemd-repart.service \
-            $systemdsystemconfdir/systemd-repart.service.d/*.conf \
-            ${NULL}
+            "/etc/repart.d/*.conf" \
+            "$systemdsystemconfdir"/systemd-repart.service \
+            "$systemdsystemconfdir/systemd-repart.service.d/*.conf"
     fi
 }

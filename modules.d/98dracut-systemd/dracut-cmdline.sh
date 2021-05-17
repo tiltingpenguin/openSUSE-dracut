@@ -1,9 +1,9 @@
 #!/bin/sh
 
 if [ -f /dracut-state.sh ]; then
-    . /dracut-state.sh 2>/dev/null
+    . /dracut-state.sh 2> /dev/null
 fi
-type getarg >/dev/null 2>&1 || . /lib/dracut-lib.sh
+type getarg > /dev/null 2>&1 || . /lib/dracut-lib.sh
 
 [ -f /usr/lib/initrd-release ] && . /usr/lib/initrd-release
 [ -n "$VERSION" ] && info "dracut-$VERSION"
@@ -14,7 +14,7 @@ if ! getargbool 1 'rd.hostonly'; then
     [ -f /tmp/99-cmdline-ask.conf ] && mv /tmp/99-cmdline-ask.conf /etc/cmdline.d/99-cmdline-ask.conf
 fi
 
-info "Using kernel command line parameters:" $(getcmdline)
+info "Using kernel command line parameters:" "$(getcmdline)"
 
 getargbool 0 rd.udev.log-priority=info -d rd.udev.info -d -n -y rdudevinfo && echo 'udev_log="info"' >> /etc/udev/udev.conf
 getargbool 0 rd.udev.log-priority=debug -d rd.udev.debug -d -n -y rdudevdebug && echo 'udev_log="debug"' >> /etc/udev/udev.conf
@@ -49,30 +49,19 @@ source_hook cmdline
 
 [ -f /lib/dracut/parse-resume.sh ] && . /lib/dracut/parse-resume.sh
 
-case "${root}${root_unset}" in
-    block:LABEL=*|LABEL=*)
-        root="${root#block:}"
-        root="$(echo $root | sed 's,/,\\x2f,g')"
-        root="block:/dev/disk/by-label/${root#LABEL=}"
-        rootok=1 ;;
-    block:UUID=*|UUID=*)
-        root="${root#block:}"
-        root="block:/dev/disk/by-uuid/${root#UUID=}"
-        rootok=1 ;;
-    block:PARTUUID=*|PARTUUID=*)
-        root="${root#block:}"
-        root="block:/dev/disk/by-partuuid/${root#PARTUUID=}"
-        rootok=1 ;;
-    block:PARTLABEL=*|PARTLABEL=*)
-        root="${root#block:}"
-        root="block:/dev/disk/by-partlabel/${root#PARTLABEL=}"
-        rootok=1 ;;
+case "${root#block:}${root_unset}" in
+    LABEL=* | UUID=* | PARTUUID=* | PARTLABEL=*)
+        root="block:$(label_uuid_to_dev "${root#block:}")"
+        rootok=1
+        ;;
     /dev/*)
-        root="block:${root}"
-        rootok=1 ;;
-    UNSET|gpt-auto)
-        # systemd's gpt-auto-generator handles this case.
-        rootok=1 ;;
+        root="block:${root#block:}"
+        rootok=1
+        ;;
+    UNSET | gpt-auto | tmpfs)
+        # systemd's gpt-auto-generator/fstab-generator handles this case.
+        rootok=1
+        ;;
 esac
 
 [ -z "${root}${root_unset}" ] && die "Empty root= argument"

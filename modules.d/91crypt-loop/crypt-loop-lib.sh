@@ -1,6 +1,6 @@
 #!/bin/sh
 
-command -v ask_for_password >/dev/null || . /lib/dracut-crypt-lib.sh
+command -v ask_for_password > /dev/null || . /lib/dracut-crypt-lib.sh
 
 # loop_decrypt mnt_point keypath keydev device
 #
@@ -15,23 +15,26 @@ loop_decrypt() {
     local keypath="$2"
     local keydev="$3"
     local device="$4"
+    local key
 
-    local key="/dev/mapper/$(str_replace "loop-$keydev-$mntp-$keypath" '/' '-')"
+    key="/dev/mapper/$(str_replace "loop-$keydev-$mntp-$keypath" '/' '-')"
 
-    if [ ! -b $key ]; then
-        local loopdev=$(losetup -f "${mntp}/${keypath}" --show)
-        local opts="-d - luksOpen $loopdev ${key##*/}"
+    if [ ! -b "$key" ]; then
+        local loopdev
+        local opts
+        loopdev=$(losetup -f "${mntp}/${keypath}" --show)
+        opts="-d - luksOpen $loopdev ${key##*/}"
 
         ask_for_password \
             --cmd "cryptsetup $opts" \
             --prompt "Password ($keypath on $keydev for $device)" \
             --tty-echo-off
 
-        [ -b $key ] || die "Failed to unlock $keypath on $keydev for $device."
+        [ -b "$key" ] || die "Failed to unlock $keypath on $keydev for $device."
 
-        printf "%s\n" "cryptsetup luksClose \"$key\"" > ${hookdir}/cleanup/"crypt-loop-cleanup-10-${key##*/}".sh
-        printf "%s\n" "losetup -d \"$loopdev\"" > ${hookdir}/cleanup/"crypt-loop-cleanup-20-${loopdev##*/}".sh
+        printf "%s\n" "cryptsetup luksClose \"$key\"" > "${hookdir}/cleanup/crypt-loop-cleanup-10-${key##*/}.sh"
+        printf "%s\n" "losetup -d \"$loopdev\"" > "${hookdir}/cleanup/crypt-loop-cleanup-20-${loopdev##*/}.sh"
     fi
 
-    cat $key
+    cat "$key"
 }
