@@ -1,7 +1,7 @@
 #
 # spec file for package dracut
 #
-# Copyright (c) 2020 SUSE LLC
+# Copyright (c) 2021 SUSE LLC
 #
 # All modifications and additions to the file contributed by third parties
 # remain the property of their copyright owners, unless otherwise agreed
@@ -19,7 +19,7 @@
 %define dracutlibdir %{_prefix}/lib/dracut
 
 Name:           dracut
-Version:        049
+Version:        054
 Release:        0
 Summary:        Initramfs generator using udev
 License:        GPL-2.0-or-later AND LGPL-2.1-or-later
@@ -57,9 +57,6 @@ Requires:       util-linux >= 2.21
 Requires:       xz
 # We use 'btrfs fi usage' that was not present before
 Conflicts:      btrfsprogs < 3.18
-Recommends:     logrotate
-Obsoletes:      mkinitrd < 2.8.2
-Provides:       mkinitrd = 2.8.2
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 %{?systemd_requires}
 
@@ -115,6 +112,18 @@ Requires:       keyutils
 This package contains all modules that are part of dracut upstream
 but are not normally supported or required.
 
+%package mkinitrd-deprecated
+Summary:        Dracut mkinitrd wrapper
+Group:          System/Base
+Requires:       %{name} = %{version}-%{release}
+Requires:       dracut
+Obsoletes:      mkinitrd < 2.8.2
+Provides:       mkinitrd = 2.8.2
+
+%description mkinitrd-deprecated
+This package contains the legacy initrd script for dracut.
+Call dracut directly instead.
+
 %prep
 %setup -q
 
@@ -144,8 +153,7 @@ install -m 0644 dracut.conf.d/ima.conf.example %{buildroot}%{_sysconfdir}/dracut
 install -m 0644 suse/s390x_persistent_device.conf %{buildroot}%{_sysconfdir}/dracut.conf.d/10-s390x_persistent_device.conf
 %endif
 
-rm %{buildroot}%{_bindir}/mkinitrd
-install -D -m 0755 mkinitrd-suse.sh %{buildroot}/%{_sbindir}/mkinitrd
+install -D -m 0755 suse/mkinitrd-suse.sh %{buildroot}/%{_sbindir}/mkinitrd
 install -D -m 0755 suse/dracut-installkernel %{buildroot}/%{_sbindir}/installkernel
 
 %if !0%{?usrmerged}
@@ -156,10 +164,6 @@ ln -s %{_sbindir}/installkernel %{buildroot}/sbin/installkernel
 %endif
 
 mv %{buildroot}%{_mandir}/man8/mkinitrd-suse.8 %{buildroot}%{_mandir}/man8/mkinitrd.8
-
-mkdir -p %{buildroot}%{_sysconfdir}/logrotate.d
-install -m 0644 dracut.logrotate %{buildroot}%{_sysconfdir}/logrotate.d/dracut
-
 
 %if 0%{?suse_version}
 #rm -f %%{buildroot}/%%{dracutlibdir}/modules.d/45ifcfg/write-ifcfg.sh
@@ -206,7 +210,7 @@ fi
 %postun fips
 %{?regenerate_initrd_post}
 
-%postun ima 
+%postun ima
 %{?regenerate_initrd_post}
 
 %posttrans
@@ -244,9 +248,6 @@ fi
 %defattr(-,root,root,0755)
 %license COPYING
 
-# Use systemd-analyze instead, does not need dracut support
-%{dracutlibdir}/modules.d/00bootchart
-
 %{dracutlibdir}/modules.d/00mksh
 %{dracutlibdir}/modules.d/02caps
 %{dracutlibdir}/modules.d/00dash
@@ -259,19 +260,23 @@ fi
 %{dracutlibdir}/modules.d/95zfcp
 %{dracutlibdir}/modules.d/95znet
 
+%files mkinitrd-deprecated
+%defattr(-,root,root,0755)
+%{_sbindir}/mkinitrd
+/sbin/mkinitrd
+%{_mandir}/man8/mkinitrd.8*
+
 %files
 %defattr(-,root,root,0755)
 %license COPYING
-%doc README.md README.cross README.generic README.kernel
-%doc README.modules README.testsuite
-%doc HACKING TODO AUTHORS NEWS dracut.html dracut.png dracut.svg
+%doc README.md NEWS.md AUTHORS dracut.html
+%doc docs/README.cross docs/README.generic docs/README.kernel
+%doc docs/HACKING.md docs/dracut.png docs/dracut.svg
 %{_bindir}/dracut
 %{_bindir}/lsinitrd
 %{_sbindir}/installkernel
-%{_sbindir}/mkinitrd
 %if !0%{?usrmerged}
 /sbin/installkernel
-/sbin/mkinitrd
 %endif
 %{_datarootdir}/bash-completion/completions/lsinitrd
 %{_datadir}/pkgconfig/dracut.pc
@@ -288,7 +293,6 @@ fi
 %endif
 
 %{_mandir}/man8/dracut.8*
-%{_mandir}/man8/mkinitrd.8*
 %{_mandir}/man1/lsinitrd.1*
 %{_mandir}/man7/dracut.kernel.7*
 %{_mandir}/man7/dracut.cmdline.7*
@@ -318,19 +322,42 @@ fi
 %{dracutlibdir}/dracut-logger.sh
 %{dracutlibdir}/dracut-initramfs-restore
 %{dracutlibdir}/dracut-install
+%{dracutlibdir}/dracut-util
 
 %dir %{dracutlibdir}/modules.d
 %{dracutlibdir}/modules.d/00bash
 %{dracutlibdir}/modules.d/00systemd
+%{dracutlibdir}/modules.d/00systemd-network-management
 %{dracutlibdir}/modules.d/00warpclock
+%{dracutlibdir}/modules.d/01systemd-ac-power
+%{dracutlibdir}/modules.d/01systemd-ask-password
+%{dracutlibdir}/modules.d/01systemd-coredump
+%{dracutlibdir}/modules.d/01systemd-hostnamed
 %{dracutlibdir}/modules.d/01systemd-initrd
-%{dracutlibdir}/modules.d/02systemd-networkd
+%{dracutlibdir}/modules.d/01systemd-journald
+%{dracutlibdir}/modules.d/01systemd-ldconfig
+%{dracutlibdir}/modules.d/01systemd-modules-load
+%{dracutlibdir}/modules.d/01systemd-networkd
+%{dracutlibdir}/modules.d/01systemd-repart
+%{dracutlibdir}/modules.d/01systemd-resolved
+%{dracutlibdir}/modules.d/01systemd-rfkill
+%{dracutlibdir}/modules.d/01systemd-sysctl
+%{dracutlibdir}/modules.d/01systemd-sysext
+%{dracutlibdir}/modules.d/01systemd-sysusers
+%{dracutlibdir}/modules.d/01systemd-timedated
+%{dracutlibdir}/modules.d/01systemd-timesyncd
+%{dracutlibdir}/modules.d/01systemd-tmpfiles
+%{dracutlibdir}/modules.d/01systemd-udevd
+%{dracutlibdir}/modules.d/01systemd-veritysetup
+
 %{dracutlibdir}/modules.d/03modsign
 %{dracutlibdir}/modules.d/03rescue
 %{dracutlibdir}/modules.d/04watchdog
 %{dracutlibdir}/modules.d/04watchdog-modules
-%{dracutlibdir}/modules.d/06dbus
+%{dracutlibdir}/modules.d/06dbus-broker
+%{dracutlibdir}/modules.d/06dbus-daemon
 %{dracutlibdir}/modules.d/06rngd
+%{dracutlibdir}/modules.d/09dbus
 %{dracutlibdir}/modules.d/10i18n
 %{dracutlibdir}/modules.d/30convertfs
 %{dracutlibdir}/modules.d/35network-legacy
@@ -341,6 +368,7 @@ fi
 %{dracutlibdir}/modules.d/45url-lib
 %{dracutlibdir}/modules.d/50drm
 %{dracutlibdir}/modules.d/50plymouth
+%{dracutlibdir}/modules.d/62bluetooth
 %{dracutlibdir}/modules.d/80cms
 %{dracutlibdir}/modules.d/80lvmmerge
 %{dracutlibdir}/modules.d/81cio_ignore
@@ -362,6 +390,7 @@ fi
 %{dracutlibdir}/modules.d/90qemu-net
 %{dracutlibdir}/modules.d/91crypt-gpg
 %{dracutlibdir}/modules.d/91crypt-loop
+%{dracutlibdir}/modules.d/91tpm2-tss
 %{dracutlibdir}/modules.d/91zipl
 %{dracutlibdir}/modules.d/95cifs
 %{dracutlibdir}/modules.d/95dasd_mod
@@ -400,7 +429,6 @@ fi
 %{dracutlibdir}/modules.d/99suse
 %{dracutlibdir}/modules.d/99suse-initrd
 %{dracutlibdir}/modules.d/99uefi-lib
-%config(noreplace) %{_sysconfdir}/logrotate.d/dracut
 %attr(0640,root,root) %ghost %config(missingok,noreplace) %{_localstatedir}/log/dracut.log
 %dir %{_unitdir}/initrd.target.wants
 %dir %{_unitdir}/sysinit.target.wants
