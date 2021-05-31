@@ -1005,7 +1005,9 @@ static void usage(int status)
                "\n"
                "  --module,-m       Install kernel modules, instead of files\n"
                "  --kerneldir       Specify the kernel module directory\n"
+               "                     (default: /lib/modules/`uname -r`)\n"
                "  --firmwaredirs    Specify the firmware directory search path with : separation\n"
+               "                     (default: DRACUT_FIRMWARE_PATH env var, /lib/firmware if not set)\n"
                "  --silent          Don't display error messages for kernel module install\n"
                "  --modalias        Only generate module list from /sys/devices modalias list\n"
                "  --check-supported Check if module is supported by a vendor\n"
@@ -1171,10 +1173,17 @@ static int parse_argv(int argc, char *argv[])
                 }
         }
 
+        if (arg_loglevel >= 0) {
+                log_set_max_level(arg_loglevel);
+        }
+
         if (!kerneldir) {
                 struct utsname buf;
                 uname(&buf);
-                kerneldir = strdup(buf.version);
+                if (asprintf(&kerneldir, "%s%s", "/lib/modules/", buf.release) < 0) {
+                        log_error("Out of memory!");
+                        exit(EXIT_FAILURE);
+                }
         }
 
         if (arg_modalias) {
@@ -1187,14 +1196,12 @@ static int parse_argv(int argc, char *argv[])
 
                         path = getenv("DRACUT_FIRMWARE_PATH");
 
-                        if (path == NULL) {
-                                log_error("Environment variable DRACUT_FIRMWARE_PATH is not set");
-                                exit(EXIT_FAILURE);
+                        if (path) {
+                                log_debug("DRACUT_FIRMWARE_PATH=%s", path);
+                                firmwaredirs = strv_split(path, ":");
+                        } else {
+                                firmwaredirs = strv_new("/lib/firmware", NULL);
                         }
-
-                        log_debug("DRACUT_FIRMWARE_PATH=%s", path);
-
-                        firmwaredirs = strv_split(path, ":");
                 }
         }
 
@@ -2046,17 +2053,13 @@ int main(int argc, char **argv)
         char *path = NULL;
         char *env_no_xattr = NULL;
 
+        log_set_target(LOG_TARGET_CONSOLE);
+        log_parse_environment();
+        log_open();
+
         r = parse_argv(argc, argv);
         if (r <= 0)
                 return r < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
-
-        log_set_target(LOG_TARGET_CONSOLE);
-        log_parse_environment();
-
-        if (arg_loglevel >= 0)
-                log_set_max_level(arg_loglevel);
-
-        log_open();
 
         modules_loaded = hashmap_new(string_hash_func, string_compare_func);
         if (arg_modalias) {
