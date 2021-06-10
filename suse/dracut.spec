@@ -274,9 +274,6 @@ fi
 %{_bindir}/dracut
 %{_bindir}/lsinitrd
 %{_sbindir}/installkernel
-%if !0%{?usrmerged}
-/sbin/installkernel
-%endif
 %{_datarootdir}/bash-completion/completions/lsinitrd
 %{_datadir}/pkgconfig/dracut.pc
 
