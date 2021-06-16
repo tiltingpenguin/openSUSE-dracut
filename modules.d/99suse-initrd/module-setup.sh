@@ -23,7 +23,7 @@ get_modprobe_conf_files() {
 # called by dracut
 installkernel() {
     local line mod reqs all_mods=
-    local BUILT_IN_PATH="/lib/modules/$(uname -r)/modules.builtin"
+    local BUILT_IN_PATH="/lib/modules/$kernel/modules.builtin"
 
     while read -r line; do
         mod="${line##*SUSE INITRD: }"
