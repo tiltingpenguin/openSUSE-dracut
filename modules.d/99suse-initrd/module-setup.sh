@@ -20,10 +20,24 @@ get_modprobe_conf_files() {
     return 0
 }
 
+read_initrd_modules() {
+    if [[ -f /etc/sysconfig/kernel ]]; then
+        INITRD_MODULES=
+        . /etc/sysconfig/kernel
+        echo "$INITRD_MODULES"
+    fi
+}
+
+filter_builtin() {
+    while [[ $# -gt 0 ]]; do
+        grep -q "/$1.ko" "/lib/modules/$kernel/modules.builtin" || echo "$1"
+        shift
+    done
+}
+
 # called by dracut
 installkernel() {
-    local line mod reqs all_mods=
-    local BUILT_IN_PATH="/lib/modules/$kernel/modules.builtin"
+    local line mod reqs all_mods="$(filter_builtin $(read_initrd_modules))"
 
     while read -r line; do
         mod="${line##*SUSE INITRD: }"
@@ -31,14 +45,7 @@ installkernel() {
         reqs="${line##*REQUIRES }"
         if [[ ! $hostonly ]] || grep -q "^$mod\$" "$DRACUT_KERNEL_MODALIASES"
         then
-            for module in $reqs
-            do
-                if ! grep -q "/$module.ko" $BUILT_IN_PATH
-                then
-                    # The module is not built-in, so we can safely add it
-                    all_mods="$all_mods $module"
-                fi
-            done
+            all_mods="$all_mods $(filter_builtin $reqs)"
         fi
     done <<< "$(grep -h "^# SUSE INITRD: " $(get_modprobe_conf_files))"
 
