@@ -57,6 +57,8 @@ Requires:       util-linux >= 2.21
 Requires:       xz
 # We use 'btrfs fi usage' that was not present before
 Conflicts:      btrfsprogs < 3.18
+# suse-module-tools >= 16.0.3 is prepared for the removal of mkinitrd-suse.sh
+Conflicts: suse-module-tools < 16.0.3
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 %{?systemd_requires}
 
