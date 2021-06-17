@@ -327,8 +327,8 @@ dracut_args="${dracut_args} --force"
 if [ -f /etc/sysconfig/kernel ] ; then
     . /etc/sysconfig/kernel
 fi
-[[ $module_list ]] || module_list=""
-[[ $domu_module_list ]] || domu_module_list=""
+[[ $module_list ]] || module_list="${INITRD_MODULES}"
+[[ $domu_module_list ]] || domu_module_list="${DOMU_INITRD_MODULES}"
 shopt -s extglob
 
 failed=""
