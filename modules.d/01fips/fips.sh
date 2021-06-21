@@ -214,7 +214,7 @@ do_fips() {
         fi
 
         if [ -n "$(fipscheck)" ]; then
-            $(fipscheck) -c "${BOOT_IMAGE_HMAC}" "${BOOT_IMAGE_KERNEL}" || return 1
+            $(fipscheck) "${BOOT_IMAGE_KERNEL}" || return 1
         else
             warn "Could not find fipscheck to verify MACs"
             return 1
