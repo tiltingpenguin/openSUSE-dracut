@@ -15,7 +15,7 @@ if [[ -d "$BOOT_DIR_ABS" ]]; then
     INITRD="initrd"
 else
     BOOT_DIR_ABS="/boot"
-    INITRD="initramfs-${KERNEL_VERSION}.img"
+    INITRD="initrd-${KERNEL_VERSION}"
 fi
 
 ret=0
