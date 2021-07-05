@@ -217,6 +217,8 @@ default_kernel_images() {
 while (($# > 0)); do
     case ${1%%=*} in
 	-f) read_arg feature_list "$@" || shift $?
+	    echo "Obsolete -f param, use add_dracutmodules+= variable in /etc/dracut.conf.d/"
+	    exit 1
 	    # Could be several features
 	    ;;
 	-k) # Would be nice to get a list of images here
