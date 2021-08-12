@@ -193,7 +193,12 @@ default_kernel_images() {
         # script is itself called from within the binary kernel
         # packages, and rpm does not allow recursive calls.
 
-        [ -L "$boot_dir/$kernel_image" ] && continue
+        if [ -L "$boot_dir/$kernel_image" ]; then
+            # check for usrmerged kernel. in That case the link point to
+            # /usr/lib/modules
+            link=$(readlink "$boot_dir/$kernel_image")
+            [ "${link#/usr/lib/modules}" = "$link" ] && continue
+        fi
         [ "${kernel_image%%.gz}" != "$kernel_image" ] && continue
 
         kernel_version=$(kernel_version_from_image \
