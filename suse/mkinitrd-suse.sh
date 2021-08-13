@@ -197,7 +197,8 @@ default_kernel_images() {
             # check for usrmerged kernel. in That case the link point to
             # /usr/lib/modules
             link=$(readlink "$boot_dir/$kernel_image")
-            [ "${link#/usr/lib/modules}" = "$link" ] && continue
+            [ "${link#/usr/lib/modules}" = "$link" ] && \
+                [ "${link#../usr/lib/modules}" = "$link" ] && continue
         fi
         [ "${kernel_image%%.gz}" != "$kernel_image" ] && continue
 
