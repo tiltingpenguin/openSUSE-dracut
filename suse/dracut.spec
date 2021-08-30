@@ -15,7 +15,6 @@
 # Please submit bugfixes or comments via https://bugs.opensuse.org/
 #
 
-
 %define dracutlibdir %{_prefix}/lib/dracut
 
 Name:           dracut
@@ -156,7 +155,6 @@ install -m 0644 suse/s390x_persistent_device.conf %{buildroot}%{_sysconfdir}/dra
 %endif
 
 install -D -m 0755 suse/mkinitrd-suse.sh %{buildroot}/%{_sbindir}/mkinitrd
-install -D -m 0755 suse/dracut-installkernel %{buildroot}/%{_sbindir}/installkernel
 
 mv %{buildroot}%{_mandir}/man8/mkinitrd-suse.8 %{buildroot}%{_mandir}/man8/mkinitrd.8
 
@@ -268,7 +266,6 @@ fi
 %doc docs/HACKING.md docs/dracut.png docs/dracut.svg
 %{_bindir}/dracut
 %{_bindir}/lsinitrd
-%{_sbindir}/installkernel
 %{_datarootdir}/bash-completion/completions/lsinitrd
 %{_datadir}/pkgconfig/dracut.pc
 
