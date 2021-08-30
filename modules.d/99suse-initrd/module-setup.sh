@@ -10,7 +10,8 @@
 # called by dracut
 check() {
     # Skip the module if no SUSE INITRD is used
-    grep -q "^# SUSE INITRD: " $(get_modprobe_conf_files)
+    local conf_files=$(get_modprobe_conf_files)
+    [[ $conf_files ]] && grep -q "^# SUSE INITRD: " $conf_files
 }
 
 get_modprobe_conf_files() {
@@ -18,6 +19,11 @@ get_modprobe_conf_files() {
        /lib/modprobe.d/*.conf /usr/lib/modprobe.d/*.conf \
        2>/dev/null
     return 0
+}
+
+get_suse_initrd_lines() {
+    local conf_files=$(get_modprobe_conf_files)
+    [[ -z "$conf_files" ]] || grep -h "^# SUSE INITRD: " $conf_files
 }
 
 read_initrd_modules() {
@@ -47,7 +53,7 @@ installkernel() {
         then
             all_mods="$all_mods $(filter_builtin $reqs)"
         fi
-    done <<< "$(grep -h "^# SUSE INITRD: " $(get_modprobe_conf_files))"
+    done <<< "$(get_suse_initrd_lines)"
 
     # strip whitespace
     all_mods="$(echo $all_mods)"
