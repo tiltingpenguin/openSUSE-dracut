@@ -109,12 +109,15 @@ install() {
         $systemdsystemunitdir/systemd-random-seed-load.service \
         $systemdsystemunitdir/systemd-random-seed.service \
         $systemdsystemunitdir/systemd-sysctl.service \
+        $systemdsystemunitdir/systemd-coredump@.service \
+        $systemdsystemunitdir/systemd-coredump.socket \
         \
         $systemdsystemunitdir/sysinit.target.wants/systemd-modules-load.service \
         $systemdsystemunitdir/sysinit.target.wants/systemd-ask-password-console.path \
         $systemdsystemunitdir/sysinit.target.wants/systemd-journald.service \
         $systemdsystemunitdir/sockets.target.wants/systemd-udevd-control.socket \
         $systemdsystemunitdir/sockets.target.wants/systemd-udevd-kernel.socket \
+        $systemdsystemunitdir/sockets.target.wants/systemd-coredump.socket \
         $systemdsystemunitdir/sockets.target.wants/systemd-journald.socket \
         $systemdsystemunitdir/sockets.target.wants/systemd-journald-audit.socket \
         $systemdsystemunitdir/sockets.target.wants/systemd-journald-dev-log.socket \
