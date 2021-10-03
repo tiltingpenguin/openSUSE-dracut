@@ -170,53 +170,56 @@ do_fips() {
 
     KERNEL=$(uname -r)
 
-    fips_info "Checking integrity of kernel"
-    if [ -e "/run/initramfs/live/vmlinuz0" ]; then
-        do_rhevh_check /run/initramfs/live/vmlinuz0 || return 1
-    elif [ -e "/run/initramfs/live/isolinux/vmlinuz0" ]; then
-        do_rhevh_check /run/initramfs/live/isolinux/vmlinuz0 || return 1
-    elif [ -e "/run/install/repo/images/pxeboot/vmlinuz" ]; then
-        # This is a boot.iso with the .hmac inside the install.img
-        do_rhevh_check /run/install/repo/images/pxeboot/vmlinuz || return 1
-    else
-        BOOT_IMAGE="$(getarg BOOT_IMAGE)"
+    if ! getarg rd.fips.skipkernel > /dev/null; then
 
-        # Trim off any leading GRUB boot device (e.g. ($root) )
-        BOOT_IMAGE="$(echo "${BOOT_IMAGE}" | sed 's/^(.*)//')"
-
-        BOOT_IMAGE_NAME="${BOOT_IMAGE##*/}"
-        BOOT_IMAGE_PATH="${BOOT_IMAGE%${BOOT_IMAGE_NAME}}"
-
-        if [ -z "$BOOT_IMAGE_NAME" ]; then
-            BOOT_IMAGE_NAME="${_vmname}-${KERNEL}"
-        elif ! [ -e "/boot/${BOOT_IMAGE_PATH}/${BOOT_IMAGE}" ]; then
-            #if /boot is not a separate partition BOOT_IMAGE might start with /boot
-            BOOT_IMAGE_PATH=${BOOT_IMAGE_PATH#"/boot"}
-            #on some achitectures BOOT_IMAGE does not contain path to kernel
-            #so if we can't find anything, let's treat it in the same way as if it was empty
-            if ! [ -e "/boot/${BOOT_IMAGE_PATH}/${BOOT_IMAGE_NAME}" ]; then
-                BOOT_IMAGE_NAME="${_vmname}-${KERNEL}"
-                BOOT_IMAGE_PATH=""
-            fi
-        fi
-
-        BOOT_IMAGE_HMAC="/boot/${BOOT_IMAGE_PATH}/.${BOOT_IMAGE_NAME}.hmac"
-        if ! [ -e "${BOOT_IMAGE_HMAC}" ]; then
-            warn "${BOOT_IMAGE_HMAC} does not exist"
-            return 1
-        fi
-
-        BOOT_IMAGE_KERNEL="/boot/${BOOT_IMAGE_PATH}${BOOT_IMAGE_NAME}"
-        if ! [ -e "${BOOT_IMAGE_KERNEL}" ]; then
-            warn "${BOOT_IMAGE_KERNEL} does not exist"
-            return 1
-        fi
-
-        if [ -n "$(fipscheck)" ]; then
-            $(fipscheck) "${BOOT_IMAGE_KERNEL}" || return 1
+        fips_info "Checking integrity of kernel"
+        if [ -e "/run/initramfs/live/vmlinuz0" ]; then
+            do_rhevh_check /run/initramfs/live/vmlinuz0 || return 1
+        elif [ -e "/run/initramfs/live/isolinux/vmlinuz0" ]; then
+            do_rhevh_check /run/initramfs/live/isolinux/vmlinuz0 || return 1
+        elif [ -e "/run/install/repo/images/pxeboot/vmlinuz" ]; then
+            # This is a boot.iso with the .hmac inside the install.img
+            do_rhevh_check /run/install/repo/images/pxeboot/vmlinuz || return 1
         else
-            warn "Could not find fipscheck to verify MACs"
-            return 1
+            BOOT_IMAGE="$(getarg BOOT_IMAGE)"
+
+            # Trim off any leading GRUB boot device (e.g. ($root) )
+            BOOT_IMAGE="$(echo "${BOOT_IMAGE}" | sed 's/^(.*)//')"
+
+            BOOT_IMAGE_NAME="${BOOT_IMAGE##*/}"
+            BOOT_IMAGE_PATH="${BOOT_IMAGE%${BOOT_IMAGE_NAME}}"
+
+            if [ -z "$BOOT_IMAGE_NAME" ]; then
+                BOOT_IMAGE_NAME="${_vmname}-${KERNEL}"
+            elif ! [ -e "/boot/${BOOT_IMAGE_PATH}/${BOOT_IMAGE}" ]; then
+                #if /boot is not a separate partition BOOT_IMAGE might start with /boot
+                BOOT_IMAGE_PATH=${BOOT_IMAGE_PATH#"/boot"}
+                #on some achitectures BOOT_IMAGE does not contain path to kernel
+                #so if we can't find anything, let's treat it in the same way as if it was empty
+                if ! [ -e "/boot/${BOOT_IMAGE_PATH}/${BOOT_IMAGE_NAME}" ]; then
+                    BOOT_IMAGE_NAME="${_vmname}-${KERNEL}"
+                    BOOT_IMAGE_PATH=""
+                fi
+            fi
+
+            BOOT_IMAGE_HMAC="/boot/${BOOT_IMAGE_PATH}/.${BOOT_IMAGE_NAME}.hmac"
+            if ! [ -e "${BOOT_IMAGE_HMAC}" ]; then
+                warn "${BOOT_IMAGE_HMAC} does not exist"
+                return 1
+            fi
+
+            BOOT_IMAGE_KERNEL="/boot/${BOOT_IMAGE_PATH}${BOOT_IMAGE_NAME}"
+            if ! [ -e "${BOOT_IMAGE_KERNEL}" ]; then
+                warn "${BOOT_IMAGE_KERNEL} does not exist"
+                return 1
+            fi
+
+            if [ -n "$(fipscheck)" ]; then
+                $(fipscheck) "${BOOT_IMAGE_KERNEL}" || return 1
+            else
+                warn "Could not find fipscheck to verify MACs"
+                return 1
+            fi
         fi
     fi
 
