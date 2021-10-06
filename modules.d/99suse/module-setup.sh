@@ -5,4 +5,7 @@
 
 install() {
     inst_hook cmdline 99 "$moddir/parse-suse-initrd.sh"
+
+    inst_rules \
+    60-io-scheduler.rules
 }
