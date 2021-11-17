@@ -53,7 +53,8 @@ Requires:       systemd >= 219
 Requires:       systemd-sysvinit
 Requires:       udev > 166
 Requires:       util-linux >= 2.21
-Requires:       xz
+Recommends:     xz
+Requires:       zstd
 # We use 'btrfs fi usage' that was not present before
 Conflicts:      btrfsprogs < 3.18
 # suse-module-tools >= 16.0.3 is prepared for the removal of mkinitrd-suse.sh
