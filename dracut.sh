@@ -1,10 +1,6 @@
 #!/bin/bash -p
 #
 # Generator script for a dracut initramfs
-#!/bin/bash -p
-#
-# Generator script for a dracut initramfs
-
 
 # Copyright 2005-2013 Red Hat, Inc.  All rights reserved.
 #
