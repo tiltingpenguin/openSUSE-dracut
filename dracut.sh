@@ -1,10 +1,6 @@
 #!/bin/bash -p
 #
 # Generator script for a dracut initramfs
-#!/bin/bash -p
-#
-# Generator script for a dracut initramfs
-
 
 # Copyright 2005-2013 Red Hat, Inc.  All rights reserved.
 #
@@ -2353,7 +2349,7 @@ fi
 
 if ! [[ $compress ]]; then
     # check all known compressors, if none specified
-    for i in $DRACUT_COMPRESS_PIGZ $DRACUT_COMPRESS_GZIP $DRACUT_COMPRESS_LZ4 $DRACUT_COMPRESS_LZOP $ $DRACUT_COMPRESS_ZSTD $DRACUT_COMPRESS_LZMA $DRACUT_COMPRESS_XZ $DRACUT_COMPRESS_LBZIP2 $OMPRESS_BZIP2 $DRACUT_COMPRESS_CAT; do
+    for i in $DRACUT_COMPRESS_PIGZ $DRACUT_COMPRESS_GZIP $DRACUT_COMPRESS_LZ4 $DRACUT_COMPRESS_LZOP $DRACUT_COMPRESS_ZSTD $DRACUT_COMPRESS_LZMA $DRACUT_COMPRESS_XZ $DRACUT_COMPRESS_LBZIP2 $DRACUT_COMPRESS_BZIP2 $DRACUT_COMPRESS_CAT; do
         command -v "$i" &> /dev/null || continue
         compress="$i"
         break
