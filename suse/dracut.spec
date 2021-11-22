@@ -58,7 +58,7 @@ Requires:       zstd
 # We use 'btrfs fi usage' that was not present before
 Conflicts:      btrfsprogs < 3.18
 # suse-module-tools >= 16.0.3 is prepared for the removal of mkinitrd-suse.sh
-Conflicts: suse-module-tools < 16.0.3
+Conflicts: suse-module-tools < 15.4.7
 %{?systemd_requires}
 
 %description
