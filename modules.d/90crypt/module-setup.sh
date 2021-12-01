@@ -18,7 +18,17 @@ check() {
 
 # called by dracut
 depends() {
-    echo dm rootfs-block
+    local deps
+    deps="dm rootfs-block"
+    if [[ $hostonly && -f "$dracutsysrootdir"/etc/crypttab ]]; then
+        if grep -q "tpm2-device=" "$dracutsysrootdir"/etc/crypttab; then
+            deps+=" tpm2-tss"
+        fi
+        if grep -q -e "fido2-device=" -e "fido2-cid=" "$dracutsysrootdir"/etc/crypttab; then
+            deps+=" fido2"
+        fi
+    fi
+    echo "$deps"
     return 0
 }
 
