@@ -34,6 +34,8 @@ BuildRequires:  libxslt
 BuildRequires:  suse-module-tools
 BuildRequires:  pkgconfig(libkmod)
 BuildRequires:  pkgconfig(systemd) >= 219
+BuildRequires:  cargo
+BuildRequires:  rust
 Requires:       %{_bindir}/get_kernel_version
 Requires:       bash
 # systemd-sysvinit provides: poweroff, reboot, halt
@@ -129,10 +131,11 @@ Call dracut directly instead.
 %autosetup
 
 %build
-%configure\
-  --systemdsystemunitdir=%{_unitdir}\
+%configure \
+  --systemdsystemunitdir=%{_unitdir} \
   --bashcompletiondir=%{_datarootdir}/bash-completion/completions \
-  --libdir=%{_prefix}/lib
+  --libdir=%{_prefix}/lib \
+  --enable-dracut-cpio
 %make_build all CFLAGS="%{optflags}" %{?_smp_mflags}
 
 %install
@@ -309,6 +312,7 @@ fi
 %{dracutlibdir}/dracut-initramfs-restore
 %{dracutlibdir}/dracut-install
 %{dracutlibdir}/dracut-util
+%{dracutlibdir}/dracut-cpio
 
 %dir %{dracutlibdir}/modules.d
 %{dracutlibdir}/modules.d/00bash
