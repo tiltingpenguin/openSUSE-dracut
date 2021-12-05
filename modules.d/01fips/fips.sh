@@ -94,10 +94,7 @@ nonfatal_modprobe() {
         done
 }
 
-fips_load_crypto() {
-    local _k
-    local _v
-    local _module
+get_vmname() {
     local _vmname
 
     case "$(uname -m)" in
@@ -117,6 +114,17 @@ fips_load_crypto() {
         _vmname=vmlinuz
         ;;
     esac
+
+    echo "$_vmname"
+}
+
+fips_load_crypto() {
+    local _k
+    local _v
+    local _module
+    local _vmname
+
+    _vmname=$(get_vmname)
 
     KERNEL=$(uname -r)
 
@@ -168,6 +176,9 @@ fips_load_crypto() {
 do_fips() {
     local _v
     local _module
+    local _vmname
+
+    _vmname=$(get_vmname)
 
     KERNEL=$(uname -r)
 
