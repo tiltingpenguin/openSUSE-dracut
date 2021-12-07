@@ -41,11 +41,9 @@ depends() {
 
 # called by dracut
 cmdline() {
-    for m in scsi_dh_alua scsi_dh_emc scsi_dh_rdac dm_multipath; do
-        if grep -m 1 -q "$m" /proc/modules; then
-            printf 'rd.driver.pre=%s ' "$m"
-        fi
-    done
+    if grep -m 1 -q dm_multipath /proc/modules; then
+        printf 'rd.driver.pre=%s ' dm_multipath
+    fi
 }
 
 # called by dracut
