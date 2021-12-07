@@ -58,6 +58,10 @@ installkernel() {
     hostonly='' dracut_instmods -o -s "$_funcs" "=drivers/scsi" "=drivers/md" ${_s390drivers:+"$_s390drivers"}
 }
 
+mpathconf_installed() {
+    command -v mpathconf &> /dev/null
+}
+
 # called by dracut
 install() {
     local -A _allow
@@ -91,7 +95,8 @@ install() {
         /etc/multipath/* \
         /etc/multipath/conf.d/*
 
-    [[ $hostonly ]] && [[ $hostonly_mode == "strict" ]] && {
+    mpathconf_installed \
+        && [[ $hostonly ]] && [[ $hostonly_mode == "strict" ]] && {
         for_each_host_dev_and_slaves_all add_hostonly_mpath_conf
         if ((${#_allow[@]} > 0)); then
             local -a _args
@@ -115,9 +120,11 @@ install() {
     fi
 
     if dracut_module_included "systemd"; then
-        inst_simple "${moddir}/multipathd-configure.service" "${systemdsystemunitdir}/multipathd-configure.service"
+        if mpathconf_installed; then
+            inst_simple "${moddir}/multipathd-configure.service" "${systemdsystemunitdir}/multipathd-configure.service"
+            $SYSTEMCTL -q --root "$initdir" enable multipathd-configure.service
+        fi
         inst_simple "${moddir}/multipathd.service" "${systemdsystemunitdir}/multipathd.service"
-        $SYSTEMCTL -q --root "$initdir" enable multipathd-configure.service
         $SYSTEMCTL -q --root "$initdir" enable multipathd.service
     else
         inst_hook pre-trigger 02 "$moddir/multipathd.sh"
