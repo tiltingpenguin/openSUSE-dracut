@@ -226,6 +226,7 @@ Creates initial ramdisk images for preloading modules
                          otherwise you will not be able to boot.
   --no-compress         Do not compress the generated initramfs.  This will
                          override any other compression options.
+  --enhanced-cpio       Attempt to reflink cpio file data using dracut-cpio.
   --list-modules        List all available dracut modules.
   -M, --show-modules    Print included module's name to standard output during
                          build.
@@ -417,6 +418,7 @@ rearrange_params() {
             --long zstd \
             --long no-compress \
             --long gzip \
+            --long enhanced-cpio \
             --long list-modules \
             --long show-modules \
             --long keep \
@@ -777,6 +779,7 @@ while :; do
         --zstd) compress_l="zstd" ;;
         --no-compress) _no_compress_l="cat" ;;
         --gzip) compress_l="gzip" ;;
+        --enhanced-cpio) enhanced_cpio_l="yes" ;;
         --list-modules) do_list="yes" ;;
         -M | --show-modules)
             show_modules_l="yes"
@@ -991,6 +994,7 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 [[ $tmpdir ]] || tmpdir="$dracutsysrootdir"/var/tmp
 [[ $INITRD_COMPRESS ]] && compress=$INITRD_COMPRESS
 [[ $compress_l ]] && compress=$compress_l
+[[ $enhanced_cpio_l ]] && enhanced_cpio=$enhanced_cpio_l
 [[ $show_modules_l ]] && show_modules=$show_modules_l
 [[ $nofscks_l ]] && nofscks="yes"
 [[ $ro_mnt_l ]] && ro_mnt="yes"
@@ -1198,6 +1202,19 @@ else
     exit 1
 fi
 
+if [[ $enhanced_cpio == "yes" ]]; then
+    enhanced_cpio="$dracutbasedir/dracut-cpio"
+    if [[ -x $enhanced_cpio ]]; then
+        # align based on statfs optimal transfer size
+        cpio_align=$(stat --file-system -c "%s" -- "$initdir")
+    else
+        dinfo "--enhanced-cpio ignored due to lack of dracut-cpio"
+        unset enhanced_cpio
+    fi
+else
+    unset enhanced_cpio
+fi
+
 # shellcheck disable=SC2154
 if [[ $no_kernel != yes ]] && ! [[ -d $srcmods ]]; then
     printf "%s\n" "dracut: Cannot find module directory $srcmods" >&2
@@ -1287,23 +1304,6 @@ if [[ $no_kernel != yes ]] && [[ -d $srcmods ]]; then
             exit 1
         else
             dwarn "$srcmods/modules.dep is missing. Did you run depmod?"
-        fi
-    elif ! (command -v gzip &> /dev/null && command -v xz &> /dev/null); then
-        read -r _mod < "$srcmods"/modules.dep
-        _mod=${_mod%%:*}
-        if [[ -f $srcmods/"$_mod" ]]; then
-            # Check, if kernel modules are compressed, and if we can uncompress them
-            case "$_mod" in
-                *.ko.gz) kcompress=gzip ;;
-                *.ko.xz) kcompress=xz ;;
-                *.ko.zst) kcompress=zstd ;;
-            esac
-            if [[ $kcompress ]]; then
-                if ! command -v "$kcompress" &> /dev/null; then
-                    dfatal "Kernel modules are compressed with $kcompress, but $kcompress is not available."
-                    exit 1
-                fi
-            fi
         fi
     fi
 fi
@@ -2264,6 +2264,8 @@ if dracut_module_included "squash"; then
 fi
 
 if [[ $do_strip == yes ]] && ! [[ $DRACUT_FIPS_MODE ]]; then
+    # stripping files negates (dedup) benefits of using reflink
+    [[ -n $enhanced_cpio ]] && ddebug "strip is enabled alongside cpio reflink"
     dinfo "*** Stripping files ***"
     find "$initdir" -type f \
         -executable -not -path '*/lib/modules/*.ko' -print0 \
@@ -2335,27 +2337,62 @@ if [[ $create_early_cpio == yes ]]; then
     fi
 
     # The microcode blob is _before_ the initramfs blob, not after
-    if ! (
-        umask 077
-        cd "$early_cpio_dir/d"
-        find . -print0 | sort -z \
-            | cpio ${CPIO_REPRODUCIBLE:+--reproducible} --null \
-                ${cpio_owner:+-R "$cpio_owner"} -H newc -o --quiet > "${DRACUT_TMPDIR}/initramfs.img"
-    ); then
-        dfatal "dracut: creation of $outfile failed"
-        exit 1
+    if [[ -n $enhanced_cpio ]]; then
+        if ! (
+            umask 077
+            cd "$early_cpio_dir/d"
+            find . -print0 | sort -z \
+                | $enhanced_cpio --null ${cpio_owner:+--owner "$cpio_owner"} \
+                    --mtime 0 --data-align "$cpio_align" --truncate-existing \
+                    "${DRACUT_TMPDIR}/initramfs.img"
+        ); then
+            dfatal "dracut-cpio: creation of $outfile failed"
+            exit 1
+        fi
+    else
+        if ! (
+            umask 077
+            cd "$early_cpio_dir/d"
+            find . -print0 | sort -z \
+                | cpio ${CPIO_REPRODUCIBLE:+--reproducible} --null \
+                    ${cpio_owner:+-R "$cpio_owner"} -H newc -o --quiet > "${DRACUT_TMPDIR}/initramfs.img"
+        ); then
+            dfatal "dracut: creation of $outfile failed"
+            exit 1
+        fi
+    fi
+fi
+
+if check_kernel_config CONFIG_RD_ZSTD; then
+    DRACUT_KERNEL_RD_ZSTD=yes
+else
+    DRACUT_KERNEL_RD_ZSTD=
+fi
+
+if [[ $compress == $DRACUT_COMPRESS_ZSTD* && ! $DRACUT_KERNEL_RD_ZSTD ]]; then
+    dwarn "dracut: kernel has no zstd support compiled in."
+    compress=
+fi
+
+if [[ $compress && $compress != cat ]]; then
+    if ! command -v "${compress%% *}" &> /dev/null; then
+        derror "dracut: cannot execute compression command '$compress', falling back to default"
+        compress=
     fi
 fi
 
 if ! [[ $compress ]]; then
     # check all known compressors, if none specified
     for i in $DRACUT_COMPRESS_PIGZ $DRACUT_COMPRESS_GZIP $DRACUT_COMPRESS_LZ4 $DRACUT_COMPRESS_LZOP $DRACUT_COMPRESS_ZSTD $DRACUT_COMPRESS_LZMA $DRACUT_COMPRESS_XZ $DRACUT_COMPRESS_LBZIP2 $DRACUT_COMPRESS_BZIP2 $DRACUT_COMPRESS_CAT; do
+        [[ $i != "$DRACUT_COMPRESS_ZSTD" || $DRACUT_KERNEL_RD_ZSTD ]] || continue
         command -v "$i" &> /dev/null || continue
         compress="$i"
         break
     done
     if [[ $compress == cat ]]; then
-        printf "%s\n" "dracut: no compression tool available. Initramfs image is going to be big." >&2
+        dwarn "dracut: no compression tool available. Initramfs image is going to be big."
+    else
+        dinfo "dracut: using auto-determined compression method '$compress'"
     fi
 fi
 
@@ -2394,20 +2431,41 @@ case $compress in
         ;;
 esac
 
-if [[ $compress == $DRACUT_COMPRESS_ZSTD* ]] && ! check_kernel_config CONFIG_RD_ZSTD; then
-    dwarn "dracut: kernel has no zstd support compiled in."
-    compress="cat"
-fi
+if [[ -n $enhanced_cpio ]]; then
+    if [[ $compress == "cat" ]]; then
+        # dracut-cpio appends by default, so any ucode remains
+        cpio_outfile="${DRACUT_TMPDIR}/initramfs.img"
+    else
+        ddebug "$compress compression enabled alongside cpio reflink"
+        # dracut-cpio doesn't output to stdout, so stage for compression
+        cpio_outfile="${DRACUT_TMPDIR}/initramfs.img.uncompressed"
+    fi
 
-if ! (
-    umask 077
-    cd "$initdir"
-    find . -print0 | sort -z \
-        | cpio ${CPIO_REPRODUCIBLE:+--reproducible} --null ${cpio_owner:+-R "$cpio_owner"} -H newc -o --quiet \
-        | $compress >> "${DRACUT_TMPDIR}/initramfs.img"
-); then
-    dfatal "dracut: creation of $outfile failed"
-    exit 1
+    if ! (
+        umask 077
+        cd "$initdir"
+        find . -print0 | sort -z \
+            | $enhanced_cpio --null ${cpio_owner:+--owner "$cpio_owner"} \
+                --mtime 0 --data-align "$cpio_align" "$cpio_outfile" || exit 1
+        [[ $compress == "cat" ]] && exit 0
+        $compress < "$cpio_outfile" >> "${DRACUT_TMPDIR}/initramfs.img" \
+            && rm "$cpio_outfile"
+    ); then
+        dfatal "dracut-cpio: creation of $outfile failed"
+        exit 1
+    fi
+    unset cpio_outfile
+else
+    if ! (
+        umask 077
+        cd "$initdir"
+        find . -print0 | sort -z \
+            | cpio ${CPIO_REPRODUCIBLE:+--reproducible} --null ${cpio_owner:+-R "$cpio_owner"} -H newc -o --quiet \
+            | $compress >> "${DRACUT_TMPDIR}/initramfs.img"
+    ); then
+        dfatal "dracut: creation of $outfile failed"
+        exit 1
+    fi
 fi
 
 # shellcheck disable=SC2154
