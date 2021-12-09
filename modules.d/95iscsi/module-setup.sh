@@ -233,6 +233,8 @@ install() {
             "$systemdsystemunitdir"/iscsiuio.socket \
             iscsiadm iscsid
 
+        inst_simple "/sbin/iscsi-gen-initiatorname"
+
         mkdir -p "${initdir}/$systemdsystemunitdir/basic.target.wants"
         for i in \
                 iscsid.service \
@@ -258,6 +260,15 @@ install() {
             echo "Conflicts=shutdown.target"
             echo "Before=shutdown.target sockets.target"
         } > "${initdir}/$systemdsystemunitdir/iscsid.socket.d/dracut.conf"
+
+        # align iscsi-init service to the iscsid dependencies
+        mkdir -p "${initdir}/$systemdsystemunitdir/iscsi-init.service.d"
+        {
+            echo "[Unit]"
+            echo "DefaultDependencies=no"
+            echo "Conflicts=shutdown.target"
+            echo "Before=shutdown.target sockets.target"
+        } > "${initdir}/$systemdsystemunitdir/iscsi-init.service.d/dracut.conf"
 
         mkdir -p "${initdir}/$systemdsystemunitdir/iscsiuio.service.d"
         {
