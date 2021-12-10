@@ -17,6 +17,12 @@
 
 %define dracutlibdir %{_prefix}/lib/dracut
 
+%if 0%{?suse_version} >= 1550
+%define dracut_sbindir %{_sbindir}
+%else
+%define dracut_sbindir /sbin
+%endif
+
 Name:           dracut
 Version:        054
 Release:        0
@@ -59,7 +65,7 @@ Recommends:     xz
 Requires:       zstd
 # We use 'btrfs fi usage' that was not present before
 Conflicts:      btrfsprogs < 3.18
-# suse-module-tools >= 16.0.3 is prepared for the removal of mkinitrd-suse.sh
+# suse-module-tools >= 15.4.7 is prepared for the removal of mkinitrd-suse.sh
 Conflicts: suse-module-tools < 15.4.7
 %{?systemd_requires}
 
@@ -122,6 +128,7 @@ Requires:       %{name} = %{version}-%{release}
 Requires:       dracut
 Obsoletes:      mkinitrd < 2.8.2
 Provides:       mkinitrd = 2.8.2
+Provides:       dracut:/sbin/mkinitrd
 
 %description mkinitrd-deprecated
 This package contains the legacy initrd script for dracut.
@@ -157,11 +164,7 @@ install -m 0644 dracut.conf.d/ima.conf.example %{buildroot}%{_sysconfdir}/dracut
 install -m 0644 suse/s390x_persistent_device.conf %{buildroot}%{_sysconfdir}/dracut.conf.d/10-s390x_persistent_device.conf
 %endif
 
-%if 0%{?suse_version} < 1550
-    install -D -m 0755 suse/mkinitrd-suse.sh %{buildroot}/sbin/mkinitrd
-%else
-    install -D -m 0755 suse/mkinitrd-suse.sh %{buildroot}/%{_sbindir}/mkinitrd
-%endif
+install -D -m 0755 suse/mkinitrd-suse.sh %{buildroot}/%{dracut_sbindir}/mkinitrd
 
 mv %{buildroot}%{_mandir}/man8/mkinitrd-suse.8 %{buildroot}%{_mandir}/man8/mkinitrd.8
 
@@ -253,11 +256,7 @@ fi
 %{dracutlibdir}/modules.d/95znet
 
 %files mkinitrd-deprecated
-%if 0%{?suse_version} < 1550
-    /sbin/mkinitrd
-%else
-    %{_sbindir}/mkinitrd
-%endif
+%{dracut_sbindir}/mkinitrd
 %{_mandir}/man8/mkinitrd.8*
 
 %files
