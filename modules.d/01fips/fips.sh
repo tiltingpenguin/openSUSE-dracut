@@ -164,10 +164,6 @@ fips_load_crypto() {
 }
 
 do_fips() {
-    local _vmname
-
-    _vmname=$(get_vmname)
-
     KERNEL=$(uname -r)
 
     if ! getarg rd.fips.skipkernel > /dev/null; then
@@ -188,6 +184,9 @@ do_fips() {
 
             BOOT_IMAGE_NAME="${BOOT_IMAGE##*/}"
             BOOT_IMAGE_PATH="${BOOT_IMAGE%${BOOT_IMAGE_NAME}}"
+
+            local _vmname
+            _vmname=$(get_vmname)
 
             if [ -z "$BOOT_IMAGE_NAME" ]; then
                 BOOT_IMAGE_NAME="${_vmname}-${KERNEL}"
