@@ -28,14 +28,12 @@ else
 fi
 
 mount_boot() {
-
     boot=$(getarg boot=)
 
     if [ -n "$boot" ]; then
         case "$boot" in
             LABEL=* | UUID=* | PARTUUID=* | PARTLABEL=*)
                 boot="$(label_uuid_to_dev "$boot")"
-
                 ;;
             /dev/*) ;;
 
@@ -51,7 +49,6 @@ mount_boot() {
             while ! [ -e "$boot" ]; do
                 udevadm settle --exit-if-exists="$boot"
                 [ -e "$boot" ] && break
-
                 sleep 0.5
                 i=$((i + 1))
                 [ $i -gt 40 ] && break
@@ -71,7 +68,6 @@ mount_boot() {
 }
 
 do_rhevh_check() {
-
     KERNEL=$(uname -r)
     kpath=${1}
 
@@ -89,7 +85,6 @@ do_rhevh_check() {
 nonfatal_modprobe() {
     modprobe "$1" 2>&1 > /dev/stdout \
         | while read -r line || [ -n "$line" ]; do
-
             echo "${line#modprobe: FATAL: }" >&2
         done
 }
@@ -122,11 +117,7 @@ fips_load_crypto() {
     local _k
     local _v
     local _module
-    local _vmname
-
-    _vmname=$(get_vmname)
-
-    KERNEL=$(uname -r)
+    local _found
 
     FIPSMODULES=$(cat /etc/fipsmodules)
 
@@ -161,7 +152,6 @@ fips_load_crypto() {
                         _found=1
                     fi
                 fi
-
                 [ "$_found" = "0" ] && cat /tmp/fips.modprobe_err >&2 && return 1
             fi
         fi
@@ -174,8 +164,6 @@ fips_load_crypto() {
 }
 
 do_fips() {
-    local _v
-    local _module
     local _vmname
 
     _vmname=$(get_vmname)
