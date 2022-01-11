@@ -54,6 +54,7 @@ Requires:       systemd >= 219
 Requires:       systemd-sysvinit
 Requires:       udev > 166
 Requires:       util-linux >= 2.21
+Requires:       util-linux-systemd >= 2.36.2
 Requires:       xz
 # We use 'btrfs fi usage' that was not present before
 Conflicts:      btrfsprogs < 3.18
