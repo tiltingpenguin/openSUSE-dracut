@@ -332,8 +332,13 @@ do_static() {
                     warn "Duplicate address detected for $ip for interface $netif."
                     return 1
                 fi
-            else
+            elif command -v arping > /dev/null; then
                 if ! arping -f -q -D -c 2 -I "$netif" "$ip"; then
+                    warn "Duplicate address detected for $ip for interface $netif."
+                    return 1
+                fi
+            else
+                if ! wicked arp verify --quiet --count 2 --interval 1000 "$netif" "$ip"; then
                     warn "Duplicate address detected for $ip for interface $netif."
                     return 1
                 fi

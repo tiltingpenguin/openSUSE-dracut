@@ -33,7 +33,9 @@ install() {
     inst_multiple ip dhclient sed awk grep pgrep tr expr
 
     inst_multiple -o arping arping2
-    strstr "$(arping 2>&1)" "ARPing 2" && mv "$initdir/bin/arping" "$initdir/bin/arping2"
+    if command -v arping > /dev/null; then
+        strstr "$(arping 2>&1)" "ARPing 2" && mv "$initdir/bin/arping" "$initdir/bin/arping2"
+    fi
     inst_multiple -o wicked
     inst_multiple -o ping ping6
     inst_multiple -o teamd teamdctl teamnl
