@@ -57,10 +57,14 @@ install() {
     inst_hook cleanup 10 "$moddir/kill-dhclient.sh"
 
     # SUSE specific files
-    inst_multiple /etc/sysconfig/network/ifcfg-*
-    inst_multiple -o /etc/sysconfig/network/ifroute-*
-    inst_simple /etc/sysconfig/network/routes
-    inst_multiple -o /var/lib/wicked/duid.xml /var/lib/wicked/iaid.xml
+    for f in \
+        /etc/sysconfig/network/ifcfg-* \
+        /etc/sysconfig/network/ifroute-* \
+        /etc/sysconfig/network/routes \
+        /var/lib/wicked/duid.xml \
+        /var/lib/wicked/iaid.xml; do
+        [ -e "$f" ] && inst_simple "$f"
+    done
 
     # install all config files for teaming
     unset TEAM_MASTER
