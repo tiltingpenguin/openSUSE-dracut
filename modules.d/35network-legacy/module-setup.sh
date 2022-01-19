@@ -30,7 +30,8 @@ install() {
         [[ $hostonly ]] && inst_multiple -H -o "${systemdsystemconfdir}/network/*.link"
     fi
 
-    inst_multiple ip dhclient sed awk grep pgrep tr expr
+    inst_multiple ip sed awk grep pgrep tr expr
+    inst_simple -o dhclient
 
     inst_multiple -o arping arping2
     if command -v arping > /dev/null; then
