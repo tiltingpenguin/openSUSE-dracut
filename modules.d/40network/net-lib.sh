@@ -281,7 +281,7 @@ ibft_to_cmdline() {
                 # skip not assigned ip adresses
                 [ "$ip" = "0.0.0.0" ] && continue
                 [ -e ${iface}/gateway ] && gw=$(read a < ${iface}/gateway; echo $a)
-                [ "$gateway" = "0.0.0.0" ] && unset $gateway
+                [ "$gw" = "0.0.0.0" ] && unset $gw
                 [ -e ${iface}/subnet-mask ] && mask=$(read a < ${iface}/subnet-mask; echo $a)
                 [ -e ${iface}/prefix-len ] && prefix=$(read a < ${iface}/prefix-len; echo $a)
                 [ -e ${iface}/primary-dns ] && dns1=$(read a < ${iface}/primary-dns; echo $a)
