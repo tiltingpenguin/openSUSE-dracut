@@ -888,13 +888,17 @@ block_is_nbd() {
 # Check whether $1 is an nbd device
 block_is_iscsi() {
     local _dir
-    local _dev=$1
+    local _dev=$1 _real _sess
     [[ -L "/sys/dev/block/$_dev" ]] || return
     _dir="$(readlink -f "/sys/dev/block/$_dev")" || return
     until [[ -d "$_dir/sys" || -d "$_dir/iscsi_session" ]]; do
         _dir="$_dir/.."
     done
-    [[ -d "$_dir/iscsi_session" ]]
+    [[ -d "$_dir/iscsi_session" ]] && {
+        _real=$(realpath "$_dir")
+        _sess=${_real##*/}
+        [[ -f "$_real/iscsi_session/$_sess/initiatorname" ]]
+    }
 }
 
 # block_is_fcoe <maj:min>
