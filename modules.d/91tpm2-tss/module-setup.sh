@@ -32,9 +32,9 @@ installkernel() {
 install() {
 
     inst_multiple -o \
-        "$sysusers"/tpm2-tss.conf \
-        "$tmpfilesdir"/tpm2-tss-fapi.conf \
-        "$udevrulesdir"/60-tpm-udev.rules \
+        "$sysusers"/system-user-tss.conf \
+        "$tmpfilesdir"/tpm2-tss-fapi*.conf \
+        "$udevrulesdir"/90-tpm.rules \
         tpm2_pcrread tpm2_pcrextend tpm2_createprimary tpm2_createpolicy \
         tpm2_create tpm2_load tpm2_unseal tpm2
 
