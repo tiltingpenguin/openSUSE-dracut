@@ -361,9 +361,12 @@ fn archive_path<W: Seek + Write>(
         // no zero terminator for symlink target path
     }
 
+    // Linux kernel uses 32-bit dev_t, encoded as mmmM MMmm. glibc uses 64-bit
+    // MMMM Mmmm mmmM MMmm, which is compatible with the former.
     if ftype.is_block_device() || ftype.is_char_device() {
-        rmajor = (md.rdev() >> 8) as u32;
-        rminor = (md.rdev() & 0xff) as u32;
+        let rd = md.rdev();
+        rmajor = (((rd >> 32) & 0xfffff000) | ((rd >> 8) & 0x00000fff)) as u32;
+        rminor = (((rd >> 12) & 0xffffff00) | (rd & 0x000000ff)) as u32;
     }
 
     if ftype.is_file() {
@@ -810,7 +813,8 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-// tests change working directory, so need to be run with --test-threads=1
+// tests change working directory, so need to be run with:
+// cargo test -- --test-threads=1 --nocapture
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -882,6 +886,25 @@ mod tests {
         pub fn create_tmp_dir(&mut self, name: &str) {
             fs::create_dir(name).unwrap();
             self.cleanup_dirs.push(PathBuf::from(name));
+        }
+
+        // execute coreutils mknod NAME TYPE [MAJOR MINOR]
+        pub fn create_tmp_mknod(&mut self, name: &str, typ: char,
+                                maj_min: Option<(u32, u32)>) {
+            let t = typ.to_string();
+            let proc = match maj_min {
+                Some(maj_min) => {
+                    let (maj, min) = maj_min;
+                    Command::new("mknod")
+                        .args(&[name, &t, &maj.to_string(), &min.to_string()])
+                        .spawn()
+                },
+                None => Command::new("mknod").args(&[name, &t]).spawn()
+            };
+            let status = proc.expect("mknod failed to start").wait().unwrap();
+            assert!(status.success());
+
+            self.cleanup_files.push(PathBuf::from(name));
         }
     }
 
@@ -1144,13 +1167,7 @@ mod tests {
     fn test_archive_fifo() {
         let mut twd = TempWorkDir::new();
 
-        // mknod [OPTION]... NAME TYPE [MAJOR MINOR]
-        let mut proc = Command::new("mknod")
-            .args(&["fifo", "p"])
-            .spawn()
-            .expect("mknod failed to start");
-        assert!(proc.wait().unwrap().success());
-        twd.cleanup_files.push(PathBuf::from("fifo"));
+        twd.create_tmp_mknod("fifo", 'p', None);
 
         gnu_cpio_create("fifo\n".as_bytes(), "gnu.cpio");
         twd.cleanup_files.push(PathBuf::from("gnu.cpio"));
@@ -1719,5 +1736,78 @@ mod tests {
         let ex_md = fs::symlink_metadata("extractor/file2").unwrap();
         assert_eq!(src_md.uid(), ex_md.uid());
         assert_eq!(src_md.gid(), ex_md.gid());
+    }
+
+    #[test]
+    fn test_archive_dev_maj_min() {
+        let mut twd = TempWorkDir::new();
+        twd.create_tmp_file("file1", 0);
+
+        let md = fs::symlink_metadata("file1").unwrap();
+        if md.uid() != 0 {
+            println!("SKIPPED: this test requires root");
+            return;
+        }
+
+        twd.create_tmp_mknod("bdev1", 'b', Some((0x01, 0x01)));
+        twd.create_tmp_mknod("bdev2", 'b', Some((0x02, 0x100)));
+        twd.create_tmp_mknod("bdev3", 'b', Some((0x03, 0x1000)));
+        twd.create_tmp_mknod("bdev4", 'b', Some((0x04, 0x10000)));
+        twd.create_tmp_mknod("bdev5", 'b', Some((0x100, 0x05)));
+        twd.create_tmp_mknod("bdev6", 'b', Some((0x100, 0x06)));
+        let file_list: &str = "file1\nbdev1\nbdev2\nbdev3\nbdev4\nbdev5\nbdev6\n";
+
+        // create GNU cpio archive
+        twd.create_tmp_dir("gnucpio_xtr");
+        gnu_cpio_create(file_list.as_bytes(), "gnucpio_xtr/gnu.cpio");
+        twd.cleanup_files.push(PathBuf::from("gnucpio_xtr/gnu.cpio"));
+
+        // create Dracut cpio archive
+        twd.create_tmp_dir("dracut_xtr");
+        let f = fs::File::create("dracut_xtr/dracut.cpio").unwrap();
+        let mut writer = io::BufWriter::new(f);
+        let mut reader = io::BufReader::new(file_list.as_bytes());
+        let wrote = archive_loop(
+            &mut reader,
+            &mut writer,
+            &ArchiveProperties::default()
+        )
+        .unwrap();
+        twd.cleanup_files.push(PathBuf::from("dracut_xtr/dracut.cpio"));
+
+        let file_list_count = file_list.split_terminator('\n').count() as u64;
+        assert!(wrote >= NEWC_HDR_LEN * file_list_count
+                         + (file_list.len() as u64));
+
+        let status = Command::new("cpio")
+            .current_dir("gnucpio_xtr")
+            .args(&["--quiet", "-i", "-H", "newc", "-F", "gnu.cpio"])
+            .status()
+            .expect("GNU cpio failed to start");
+        assert!(status.success());
+        for s in file_list.split_terminator('\n') {
+            let p = PathBuf::from("gnucpio_xtr/".to_owned() + s);
+            twd.cleanup_files.push(p);
+        }
+
+        let status = Command::new("cpio")
+            .current_dir("dracut_xtr")
+            .args(&["--quiet", "-i", "-H", "newc", "-F", "dracut.cpio"])
+            .status()
+            .expect("GNU cpio failed to start");
+        assert!(status.success());
+        for s in file_list.split_terminator('\n') {
+            let dp = PathBuf::from("dracut_xtr/".to_owned() + s);
+            twd.cleanup_files.push(dp);
+        }
+
+        // diff extracted major/minor between dracut and GNU cpio created archives
+        for s in file_list.split_terminator('\n') {
+            let gmd = fs::symlink_metadata("gnucpio_xtr/".to_owned() + s).unwrap();
+            let dmd = fs::symlink_metadata("dracut_xtr/".to_owned() + s).unwrap();
+            print!("{}: cpio extracted dev_t gnu: {:#x}, dracut: {:#x}\n",
+                   s, gmd.rdev(), dmd.rdev());
+            assert!(gmd.rdev() == dmd.rdev());
+        }
     }
 }
