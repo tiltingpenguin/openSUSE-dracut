@@ -1,7 +1,7 @@
 #
 # spec file for package dracut
 #
-# Copyright (c) 2021 SUSE LLC
+# Copyright (c) 2022 SUSE LLC
 #
 # All modifications and additions to the file contributed by third parties
 # remain the property of their copyright owners, unless otherwise agreed
@@ -24,10 +24,10 @@
 %endif
 
 Name:           dracut
-Version:        054
+Version:        056
 Release:        0
-Summary:        Initramfs generator using udev
-License:        GPL-2.0-or-later AND LGPL-2.1-or-later
+Summary:        Event driven initramfs infrastructure
+License:        GPLv2+ and LGPLv2+ and GPLv2
 Group:          System/Base
 URL:            https://dracut.wiki.kernel.org/
 Source0:        dracut-%{version}.tar.xz
@@ -44,7 +44,6 @@ BuildRequires:  cargo
 BuildRequires:  rust
 Requires:       %{_bindir}/get_kernel_version
 Requires:       bash
-# systemd-sysvinit provides: poweroff, reboot, halt
 Requires:       coreutils
 Requires(post): coreutils
 Requires:       cpio
@@ -58,7 +57,6 @@ Requires:       modutils
 Requires:       pigz
 Requires:       sed
 Requires:       systemd >= 219
-Requires:       systemd-sysvinit
 Requires:       udev > 166
 Requires:       util-linux >= 2.21
 Requires:       util-linux-systemd >= 2.36.2
@@ -67,7 +65,7 @@ Requires:       zstd
 # We use 'btrfs fi usage' that was not present before
 Conflicts:      btrfsprogs < 3.18
 # suse-module-tools >= 15.4.7 is prepared for the removal of mkinitrd-suse.sh
-Conflicts: suse-module-tools < 15.4.7
+Conflicts:      suse-module-tools < 15.4.7
 %{?systemd_requires}
 
 %description
@@ -324,6 +322,7 @@ fi
 %{dracutlibdir}/modules.d/01systemd-coredump
 %{dracutlibdir}/modules.d/01systemd-hostnamed
 %{dracutlibdir}/modules.d/01systemd-initrd
+%{dracutlibdir}/modules.d/01systemd-integritysetup
 %{dracutlibdir}/modules.d/01systemd-journald
 %{dracutlibdir}/modules.d/01systemd-ldconfig
 %{dracutlibdir}/modules.d/01systemd-modules-load
@@ -381,6 +380,8 @@ fi
 %{dracutlibdir}/modules.d/91crypt-gpg
 %{dracutlibdir}/modules.d/91crypt-loop
 %{dracutlibdir}/modules.d/91fido2
+%{dracutlibdir}/modules.d/91pcsc
+%{dracutlibdir}/modules.d/91pkcs11
 %{dracutlibdir}/modules.d/91tpm2-tss
 %{dracutlibdir}/modules.d/91zipl
 %{dracutlibdir}/modules.d/95cifs
