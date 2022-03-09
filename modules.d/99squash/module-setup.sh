@@ -28,6 +28,11 @@ installpost() {
         [[ $squash_dir == "$i"/* ]] || mv "$i" "$squash_dir"/
     done
 
+    # initdir also needs ld.so.* to make ld.so work
+    inst /etc/ld.so.cache
+    inst /etc/ld.so.conf
+    inst_dir /etc/ld.so.conf.d
+
     # Create mount points for squash loader
     mkdir -p "$initdir"/squash/
     mkdir -p "$squash_dir"/squash/
@@ -42,19 +47,25 @@ installpost() {
     # Install required modules and binaries for the squash image init script.
     if [[ $_busybox ]]; then
         inst "$_busybox" /usr/bin/busybox
-        for _i in sh echo mount modprobe mkdir switch_root grep; do
+        for _i in sh echo mount modprobe mkdir switch_root grep umount; do
             ln_r /usr/bin/busybox /usr/bin/$_i
         done
     else
-        DRACUT_RESOLVE_DEPS=1 inst_multiple sh mount modprobe mkdir switch_root grep
+        DRACUT_RESOLVE_DEPS=1 inst_multiple sh mount modprobe mkdir switch_root grep umount
+
+        # libpthread workaround: pthread_cancel wants to dlopen libgcc_s.so
+        inst_libdir_file -o "libgcc_s.so*"
+
+        # FIPS workaround for Fedora/RHEL: libcrypto needs libssl when FIPS is enabled
+        [[ $DRACUT_FIPS_MODE ]] && inst_libdir_file -o "libssl.so*"
     fi
 
     hostonly="" instmods "loop" "squashfs" "overlay"
     dracut_kernel_post
 
     # Install squash image init script.
-    ln -sfn /usr/bin "$initdir/bin"
-    ln -sfn /usr/sbin "$initdir/sbin"
+    ln_r /usr/bin /bin
+    ln_r /usr/sbin /sbin
     inst_simple "$moddir"/init-squash.sh /init
 }
 

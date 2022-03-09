@@ -392,7 +392,7 @@ setdebug() {
             if getargbool 0 rd.debug -d -y rdinitdebug -d -y rdnetdebug; then
                 RD_DEBUG=yes
                 [ -n "$BASH" ] \
-                    && export PS4='${BASH_SOURCE}@${LINENO}(${FUNCNAME[0]}): '
+                    && export PS4='${BASH_SOURCE}@${LINENO}(${FUNCNAME[0]-}): '
             fi
         fi
         export RD_DEBUG
@@ -594,10 +594,13 @@ label_uuid_to_dev() {
             echo "/dev/disk/by-partlabel/$(echo "${_dev#PARTLABEL=}" | sed 's,/,\\x2f,g;s, ,\\x20,g')"
             ;;
         UUID=*)
-            echo "/dev/disk/by-uuid/$(echo "${_dev#UUID=}" | tr "[:upper:]" "[:lower:]")"
+            echo "/dev/disk/by-uuid/${_dev#UUID=}"
             ;;
         PARTUUID=*)
-            echo "/dev/disk/by-partuuid/$(echo "${_dev#PARTUUID=}" | tr "[:upper:]" "[:lower:]")"
+            echo "/dev/disk/by-partuuid/${_dev#PARTUUID=}"
+            ;;
+        *)
+            echo "$_dev"
             ;;
     esac
 }

@@ -129,11 +129,9 @@ do_live_overlay() {
     # need to know where to look for the overlay
     if [ -z "$setup" -a -n "$devspec" -a -n "$pathspec" -a -n "$overlay" ]; then
         mkdir -m 0755 -p /run/initramfs/overlayfs
-        opt=''
-        [ -n "$readonly_overlay" ] && opt=-r
         mount -n -t auto "$devspec" /run/initramfs/overlayfs || :
         if [ -f /run/initramfs/overlayfs$pathspec -a -w /run/initramfs/overlayfs$pathspec ]; then
-            OVERLAY_LOOPDEV=$(losetup -f --show $opt /run/initramfs/overlayfs$pathspec)
+            OVERLAY_LOOPDEV=$(losetup -f --show ${readonly_overlay:+-r} /run/initramfs/overlayfs$pathspec)
             over=$OVERLAY_LOOPDEV
             umount -l /run/initramfs/overlayfs || :
             oltype=$(det_img_fs "$OVERLAY_LOOPDEV")
@@ -148,11 +146,11 @@ do_live_overlay() {
                 fi
                 setup="yes"
             else
-                mount -n -t "$oltype" $opt "$OVERLAY_LOOPDEV" /run/initramfs/overlayfs
+                mount -n -t "$oltype" ${readonly_overlay:+-r} "$OVERLAY_LOOPDEV" /run/initramfs/overlayfs
                 if [ -d /run/initramfs/overlayfs/overlayfs ] \
                     && [ -d /run/initramfs/overlayfs/ovlwork ]; then
-                    ln -s /run/initramfs/overlayfs/overlayfs /run/overlayfs$opt
-                    ln -s /run/initramfs/overlayfs/ovlwork /run/ovlwork$opt
+                    ln -s /run/initramfs/overlayfs/overlayfs /run/overlayfs${readonly_overlay:+-r}
+                    ln -s /run/initramfs/overlayfs/ovlwork /run/ovlwork${readonly_overlay:+-r}
                     if [ -z "$overlayfs" ] && [ -n "$DRACUT_SYSTEMD" ]; then
                         reloadsysrootmountunit=":>/xor_overlayfs;"
                     fi
@@ -162,8 +160,8 @@ do_live_overlay() {
             fi
         elif [ -d /run/initramfs/overlayfs$pathspec ] \
             && [ -d /run/initramfs/overlayfs$pathspec/../ovlwork ]; then
-            ln -s /run/initramfs/overlayfs$pathspec /run/overlayfs$opt
-            ln -s /run/initramfs/overlayfs$pathspec/../ovlwork /run/ovlwork$opt
+            ln -s /run/initramfs/overlayfs$pathspec /run/overlayfs${readonly_overlay:+-r}
+            ln -s /run/initramfs/overlayfs$pathspec/../ovlwork /run/ovlwork${readonly_overlay:+-r}
             if [ -z "$overlayfs" ] && [ -n "$DRACUT_SYSTEMD" ]; then
                 reloadsysrootmountunit=":>/xor_overlayfs;"
             fi
@@ -212,8 +210,6 @@ do_live_overlay() {
             fi
         fi
         if [ -n "$overlayfs" ]; then
-            mkdir -m 0755 -p /run/overlayfs
-            mkdir -m 0755 -p /run/ovlwork
             if [ -n "$readonly_overlay" ] && ! [ -h /run/overlayfs-r ]; then
                 info "No persistent overlay found."
                 unset -v readonly_overlay
@@ -336,13 +332,13 @@ if [ -n "$FSIMG" ]; then
         fi
         FSIMG=/run/initramfs/fsimg/rootfs.img
     fi
-    opt=-r
     # For writable DM images...
+    readonly_base=1
     if [ -z "$SQUASHED" -a -n "$live_ram" -a -z "$overlayfs" ] \
         || [ -n "$writable_fsimg" ] \
         || [ "$overlay" = none -o "$overlay" = None -o "$overlay" = NONE ]; then
         if [ -z "$readonly_overlay" ]; then
-            opt=''
+            unset readonly_base
             setup=rw
         else
             setup=yes
@@ -351,7 +347,7 @@ if [ -n "$FSIMG" ]; then
     if [ "$FSIMG" = "$SQUASHED" ]; then
         BASE_LOOPDEV=$SQUASHED_LOOPDEV
     else
-        BASE_LOOPDEV=$(losetup -f --show "$opt" $FSIMG)
+        BASE_LOOPDEV=$(losetup -f --show ${readonly_base:+-r} $FSIMG)
         sz=$(blockdev --getsz "$BASE_LOOPDEV")
     fi
     if [ "$setup" = rw ]; then
@@ -370,7 +366,14 @@ fi
 ROOTFLAGS="$(getarg rootflags)"
 
 if [ -n "$overlayfs" ]; then
-    mkdir -m 0755 -p /run/rootfsbase
+    if [ -n "$FSIMG" ]; then
+        mkdir -m 0755 -p /run/rootfsbase
+        mount -r $FSIMG /run/rootfsbase
+    else
+        ln -sf /run/initramfs/live /run/rootfsbase
+    fi
+    mkdir -m 0755 -p /run/overlayfs
+    mkdir -m 0755 -p /run/ovlwork
     if [ -n "$reset_overlay" ] && [ -h /run/overlayfs ]; then
         ovlfs=$(readlink /run/overlayfs)
         info "Resetting the OverlayFS overlay directory."
@@ -381,7 +384,6 @@ if [ -n "$overlayfs" ]; then
     else
         ovlfs=lowerdir=/run/rootfsbase
     fi
-    mount -r $FSIMG /run/rootfsbase
     if [ -z "$DRACUT_SYSTEMD" ]; then
         printf 'mount -t overlay LiveOS_rootfs -o%s,%s %s\n' "$ROOTFLAGS" \
             "$ovlfs",upperdir=/run/overlayfs,workdir=/run/ovlwork \

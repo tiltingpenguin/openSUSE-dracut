@@ -111,6 +111,8 @@ Creates initial ramdisk images for preloading modules
   --no-early-microcode  Do not combine early microcode with ramdisk
   --kernel-cmdline [PARAMETERS] Specify default kernel command line parameters
   --strip               Strip binaries in the initramfs
+  --aggresive-strip     Strip more than just debug symbol and sections,
+                        for a smaller initramfs build.
   --nostrip             Do not strip binaries in the initramfs
   --hardlink            Hardlink files in the initramfs
   --nohardlink          Do not hardlink files in the initramfs
@@ -384,6 +386,7 @@ rearrange_params() {
             --long print-cmdline \
             --long kernel-cmdline: \
             --long strip \
+            --long aggresive-strip \
             --long nostrip \
             --long hardlink \
             --long nohardlink \
@@ -704,6 +707,7 @@ while :; do
             early_microcode_l="no"
             ;;
         --strip) do_strip_l="yes" ;;
+        --aggresive-strip) aggresive_strip_l="yes" ;;
         --nostrip) do_strip_l="no" ;;
         --hardlink) do_hardlink_l="yes" ;;
         --nohardlink) do_hardlink_l="no" ;;
@@ -886,7 +890,7 @@ unset GREP_OPTIONS
 export DRACUT_LOG_LEVEL=warning
 [[ $debug ]] && {
     export DRACUT_LOG_LEVEL=debug
-    export PS4='${BASH_SOURCE}@${LINENO}(${FUNCNAME[0]}): '
+    export PS4='${BASH_SOURCE}@${LINENO}(${FUNCNAME[0]-}): '
     set -x
 }
 
@@ -899,20 +903,26 @@ export DRACUT_LOG_LEVEL=warning
 [[ $dracutbasedir ]] || dracutbasedir="$dracutsysrootdir"/usr/lib/dracut
 
 # if we were not passed a config file, try the default one
-if [[ ! -f $conffile ]]; then
+if [[ -z $conffile ]]; then
     if [[ $allowlocal ]]; then
         conffile="$dracutbasedir/dracut.conf"
     else
         conffile="$dracutsysrootdir/etc/dracut.conf"
     fi
+elif [[ ! -f $conffile ]]; then
+    printf "%s\n" "dracut: Configuration file '$conffile' not found." >&2
+    exit 1
 fi
 
-if [[ ! -d $confdir ]]; then
+if [[ -z $confdir ]]; then
     if [[ $allowlocal ]]; then
         confdir="$dracutbasedir/dracut.conf.d"
     else
         confdir="$dracutsysrootdir/etc/dracut.conf.d"
     fi
+elif [[ ! -d $confdir ]]; then
+    printf "%s\n" "dracut: Configuration directory '$confdir' not found." >&2
+    exit 1
 fi
 
 # source our config file
@@ -972,6 +982,7 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 [[ $drivers_dir_l ]] && drivers_dir=$drivers_dir_l
 [[ $do_strip_l ]] && do_strip=$do_strip_l
 [[ $do_strip ]] || do_strip=yes
+[[ $aggresive_strip_l ]] && aggresive_strip=$aggresive_strip_l
 [[ $do_hardlink_l ]] && do_hardlink=$do_hardlink_l
 [[ $do_hardlink ]] || do_hardlink=yes
 [[ $prefix_l ]] && prefix=$prefix_l
@@ -2081,9 +2092,11 @@ for ((i = 0; i < ${#include_src[@]}; i++)); do
             # check for preexisting symlinks, so we can cope with the
             # symlinks to $prefix
             # Objectname is a file or a directory
+            reset_dotglob="$(shopt -p dotglob)"
+            shopt -q -s dotglob
             for objectname in "$src"/*; do
                 [[ -e $objectname || -L $objectname ]] || continue
-                if [[ -d $objectname ]]; then
+                if [[ -d $objectname ]] && [[ ! -L $objectname ]]; then
                     # objectname is a directory, let's compute the final directory name
                     object_destdir=${destdir}/${objectname#$src/}
                     if ! [[ -e $object_destdir ]]; then
@@ -2091,11 +2104,12 @@ for ((i = 0; i < ${#include_src[@]}; i++)); do
                         mkdir -m 0755 -p "$object_destdir"
                         chmod --reference="$objectname" "$object_destdir"
                     fi
-                    $DRACUT_CP -t "$object_destdir" "$dracutsysrootdir$objectname"/*
+                    $DRACUT_CP -t "$object_destdir" "$dracutsysrootdir$objectname"/.
                 else
                     $DRACUT_CP -t "$destdir" "$dracutsysrootdir$objectname"
                 fi
             done
+            eval "$reset_dotglob"
         elif [[ -e $src ]]; then
             derror "$src is neither a directory nor a regular file"
         else
@@ -2123,6 +2137,13 @@ if [[ $do_strip == yes ]]; then
             do_strip=no
         fi
     done
+
+    if [[ $aggresive_strip ]]; then
+        # `eu-strip` and `strip` both strips all unneeded parts by default
+        strip_args=(-p)
+    else
+        strip_args=(-g -p)
+    fi
 fi
 
 # cleanup empty ldconfig_paths directories
@@ -2269,14 +2290,14 @@ if [[ $do_strip == yes ]] && ! [[ $DRACUT_FIPS_MODE ]]; then
     dinfo "*** Stripping files ***"
     find "$initdir" -type f \
         -executable -not -path '*/lib/modules/*.ko' -print0 \
-        | xargs -r -0 $strip_cmd -g -p 2> /dev/null
+        | xargs -r -0 $strip_cmd "${strip_args[@]}" 2> /dev/null
 
     # strip kernel modules, but do not touch signed modules
     find "$initdir" -type f -path '*/lib/modules/*.ko' -print0 \
         | while read -r -d $'\0' f || [ -n "$f" ]; do
             SIG=$(tail -c 28 "$f" | tr -d '\000')
             [[ $SIG == '~Module signature appended~' ]] || { printf "%s\000" "$f"; }
-        done | xargs -r -0 $strip_cmd -g -p
+        done | xargs -r -0 $strip_cmd "${strip_args[@]}"
     dinfo "*** Stripping files done ***"
 fi
 

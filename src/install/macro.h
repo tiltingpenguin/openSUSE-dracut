@@ -190,9 +190,9 @@ static inline size_t ALIGN_TO(size_t l, size_t ali)
                 _i->iov_len = strlen(_s);       \
         } while(false)
 
-static inline size_t IOVEC_TOTAL_SIZE(const struct iovec *i, unsigned n)
+static inline size_t IOVEC_TOTAL_SIZE(const struct iovec *i, unsigned int n)
 {
-        unsigned j;
+        unsigned int j;
         size_t r = 0;
 
         for (j = 0; j < n; j++)
@@ -201,9 +201,9 @@ static inline size_t IOVEC_TOTAL_SIZE(const struct iovec *i, unsigned n)
         return r;
 }
 
-static inline size_t IOVEC_INCREMENT(struct iovec *i, unsigned n, size_t k)
+static inline size_t IOVEC_INCREMENT(struct iovec *i, unsigned int n, size_t k)
 {
-        unsigned j;
+        unsigned int j;
 
         for (j = 0; j < n; j++) {
                 size_t sub;
@@ -280,5 +280,20 @@ do {                                                                    \
             sizeof(type) <= 2 ? 5 :                                     \
             sizeof(type) <= 4 ? 10 :                                    \
             sizeof(type) <= 8 ? 20 : sizeof(int[-2*(sizeof(type) > 8)])))
+
+/*
+ * Takes inspiration from Rust's Option::take() method: reads and returns a pointer.
+ * But at the same time resets it to NULL.
+ * See: https://doc.rust-lang.org/std/option/enum.Option.html#method.take
+ */
+#define TAKE_PTR(ptr)                           \
+        ({                                      \
+                typeof(ptr) _ptr_ = (ptr);      \
+                (ptr) = NULL;                   \
+                _ptr_;                          \
+        })
+
+/* Use to suppress unused variable/function arg warning */
+#define UNUSED(var)   ((void)var)
 
 #include "log.h"

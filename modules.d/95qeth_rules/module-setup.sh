@@ -9,6 +9,7 @@ check() {
 
     [[ $hostonly ]] && {
         for i in /sys/devices/qeth/*/online; do
+            [ ! -f "$i" ] && continue
             read -r _online < "$i"
             [ "$_online" -eq 1 ] && return 0
         done
@@ -54,5 +55,4 @@ install() {
         [ -n "$id" ] && inst_rules_qeth "$id"
     done
 
-    inst_simple -o /usr/lib/udev/collect
 }

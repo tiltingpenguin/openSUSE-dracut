@@ -328,6 +328,7 @@ echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/
 %{dracutlibdir}/modules.d/01systemd-coredump
 %{dracutlibdir}/modules.d/01systemd-hostnamed
 %{dracutlibdir}/modules.d/01systemd-initrd
+%{dracutlibdir}/modules.d/01systemd-integritysetup
 %{dracutlibdir}/modules.d/01systemd-journald
 %{dracutlibdir}/modules.d/01systemd-ldconfig
 %{dracutlibdir}/modules.d/01systemd-modules-load
@@ -373,6 +374,8 @@ echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/
 %{dracutlibdir}/modules.d/91crypt-gpg
 %{dracutlibdir}/modules.d/91crypt-loop
 %{dracutlibdir}/modules.d/91fido2
+%{dracutlibdir}/modules.d/91pcsc
+%{dracutlibdir}/modules.d/91pkcs11
 %{dracutlibdir}/modules.d/91tpm2-tss
 %{dracutlibdir}/modules.d/95debug
 %{dracutlibdir}/modules.d/95fstab-sys
@@ -415,6 +418,7 @@ echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/
 %dir %{_sharedstatedir}/initramfs
 %if %{defined _unitdir}
 %{_unitdir}/dracut-shutdown.service
+%{_unitdir}/dracut-shutdown-onfailure.service
 %{_unitdir}/sysinit.target.wants/dracut-shutdown.service
 %{_unitdir}/dracut-cmdline.service
 %{_unitdir}/dracut-initqueue.service

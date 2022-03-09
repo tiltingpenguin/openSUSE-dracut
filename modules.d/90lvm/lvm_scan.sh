@@ -7,11 +7,10 @@ type getarg > /dev/null 2>&1 || . /lib/dracut-lib.sh
 
 VGS=$(getargs rd.lvm.vg -d rd_LVM_VG=)
 LVS=$(getargs rd.lvm.lv -d rd_LVM_LV=)
-SNAPSHOT=$(getargs rd.lvm.snapshot -d rd_LVM_SNAPSHOT=)
-SNAPSIZE=$(getargs rd.lvm.snapsize -d rd_LVM_SNAPSIZE=)
 
 # shellcheck disable=SC2174
 [ -d /etc/lvm ] || mkdir -m 0755 -p /etc/lvm
+[ -d /run/lvm ] || mkdir -m 0755 -p /run/lvm
 # build a list of devices to scan
 lvmdevs=$(
     for f in /tmp/.lvm_scan-*; do
@@ -19,32 +18,6 @@ lvmdevs=$(
         printf '%s' "${f##/tmp/.lvm_scan-} "
     done
 )
-
-if [ ! -e /etc/lvm/lvm.conf ]; then
-    {
-        echo 'devices {'
-        printf '    filter = [ '
-        for dev in $lvmdevs; do
-            printf '"a|^/dev/%s$|", ' "$dev"
-        done
-        echo '"r/.*/" ]'
-        echo '}'
-
-        # establish LVM locking
-        if [ -n "$SNAPSHOT" ]; then
-            echo 'global {'
-            echo '    locking_type = 1'
-            echo '    use_lvmetad = 0'
-            echo '}'
-        else
-            echo 'global {'
-            echo '    locking_type = 4'
-            echo '    use_lvmetad = 0'
-            echo '}'
-        fi
-    } > /etc/lvm/lvm.conf
-    lvmwritten=1
-fi
 
 check_lvm_ver() {
     maj=$1
@@ -59,6 +32,75 @@ check_lvm_ver() {
     return 1
 }
 
+no_lvm_conf_filter() {
+    if [ ! -e /etc/lvm/lvm.conf ]; then
+        return 0
+    fi
+
+    if [ -e /run/lvm/initrd_no_filter ]; then
+        return 0
+    fi
+
+    if [ -e /run/lvm/initrd_filter ]; then
+        return 1
+    fi
+
+    if [ -e /run/lvm/initrd_global_filter ]; then
+        return 1
+    fi
+
+    # Save lvm config results in /run to avoid running
+    # lvm config commands for every PV that's scanned.
+
+    filter=$(lvm config devices/filter | grep "$filter=")
+    if [ -n "$filter" ]; then
+        printf '%s\n' "$filter" > /run/lvm/initrd_filter
+        return 1
+    fi
+
+    global_filter=$(lvm config devices/global_filter | grep "$global_filter=")
+    if [ -n "$global_filter" ]; then
+        printf '%s\n' "$global_filter" > /run/lvm/initrd_global_filter
+        return 1
+    fi
+
+    # /etc/lvm/lvm.conf exists with no filter setting
+    true > /run/lvm/initrd_no_filter
+    return 0
+}
+
+# If no lvm.conf exists, create a basic one with a global section.
+if [ ! -e /etc/lvm/lvm.conf ]; then
+    {
+        echo 'global {'
+        echo '}'
+    } > /etc/lvm/lvm.conf
+    lvmwritten=1
+fi
+
+# Save the original lvm.conf before appending a filter setting.
+if [ ! -e /etc/lvm/lvm.conf.orig ]; then
+    cp /etc/lvm/lvm.conf /etc/lvm/lvm.conf.orig
+fi
+
+# If the original lvm.conf does not contain a filter setting,
+# then generate a filter and append it to the original lvm.conf.
+# The filter is generated from the list PVs that have been seen
+# so far (each has been processed by the lvm udev rule.)
+if no_lvm_conf_filter; then
+    {
+        echo 'devices {'
+        printf '    filter = [ '
+        for dev in $lvmdevs; do
+            printf '"a|^/dev/%s$|", ' "$dev"
+        done
+        echo '"r/.*/" ]'
+        echo '}'
+    } > /etc/lvm/lvm.conf.filter
+    lvmfilter=1
+    cat /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf.filter > /etc/lvm/lvm.conf
+fi
+
 # hopefully this output format will never change, e.g.:
 #   LVM version:     2.02.53(1) (2009-09-25)
 OLDIFS=$IFS
@@ -71,67 +113,63 @@ min=$2
 sub=${3%% *}
 sub=${sub%%\(*}
 
-lvm_ignorelockingfailure="--ignorelockingfailure"
-lvm_quirk_args="--ignorelockingfailure --ignoremonitoring"
+# For lvchange and vgchange use --sysinit which:
+# disables polling (--poll n)
+# ignores monitoring (--ignoremonitoring)
+# ignores locking failures (--ignorelockingfailure)
+# disables hints (--nohints)
+#
+# For lvs and vgscan:
+# disable locking (--nolocking)
+# disable hints (--nohints)
 
-check_lvm_ver 2 2 57 "$maj" "$min" "$sub" \
-    && lvm_quirk_args="$lvm_quirk_args --poll n"
-
-if check_lvm_ver 2 2 65 "$maj" "$min" "$sub"; then
-    lvm_quirk_args=" --sysinit $extraargs"
-fi
-
-if check_lvm_ver 2 2 221 "$maj" "$min" "$sub"; then
-    lvm_quirk_args=" $extraargs"
-    unset lvm_ignorelockingfailure
-fi
-
+activate_args="--sysinit $extraargs"
 unset extraargs
 
 export LVM_SUPPRESS_LOCKING_FAILURE_MESSAGES=1
 
-if [ -n "$SNAPSHOT" ]; then
-    # HACK - this should probably be done elsewhere or turned into a function
-    # Enable read-write LVM locking
-    sed -i -e 's/\(^[[:space:]]*\)locking_type[[:space:]]*=[[:space:]]*[[:digit:]]/\1locking_type =  1/' /etc/lvm/lvm.conf
+scan_args="--nolocking"
 
-    # Expected SNAPSHOT format "<orig lv name>:<snap lv name>"
-    ORIG_LV=${SNAPSHOT%%:*}
-    SNAP_LV=${SNAPSHOT##*:}
-
-    info "Removing existing LVM snapshot $SNAP_LV"
-    lvm lvremove --force "$SNAP_LV" 2>&1 | vinfo
-
-    # Determine snapshot size
-    if [ -z "$SNAPSIZE" ]; then
-        SNAPSIZE=$(lvm lvs --noheadings --units m --options lv_size "$ORIG_LV")
-        info "No LVM snapshot size provided, using size of $ORIG_LV ($SNAPSIZE)"
-    fi
-
-    info "Creating LVM snapshot $SNAP_LV ($SNAPSIZE)"
-    lvm lvcreate -s -n "$SNAP_LV" -L "$SNAPSIZE" "$ORIG_LV" 2>&1 | vinfo
-fi
+check_lvm_ver 2 3 14 "$maj" "$min" "$sub" \
+    && scan_args="$scan_args --nohints"
 
 if [ -n "$LVS" ]; then
     info "Scanning devices $lvmdevs for LVM logical volumes $LVS"
-    lvm lvscan $lvm_ignorelockingfailure 2>&1 | vinfo
+    # shellcheck disable=SC2086
+    LVSLIST=$(lvm lvs $scan_args --noheading -o lv_full_name,segtype $LVS)
+    info "$LVSLIST"
+
+    # Only attempt to activate an LV if it appears in the lvs output.
     for LV in $LVS; do
-        # shellcheck disable=SC2086
-        lvm lvchange --yes -K -ay $lvm_quirk_args "$LV" 2>&1 | vinfo
+        if strstr "$LVSLIST" "$LV"; then
+            # This lvchange is expected to fail if all PVs used by
+            # the LV are not yet present.  Premature/failed lvchange
+            # could be avoided by reporting if an LV is complete
+            # from the lvs command above and skipping this lvchange
+            # if the LV is not lised as complete.
+            # shellcheck disable=SC2086
+            lvm lvchange --yes -K -ay $activate_args "$LV" 2>&1 | vinfo
+        fi
     done
 fi
 
 if [ -z "$LVS" ] || [ -n "$VGS" ]; then
     info "Scanning devices $lvmdevs for LVM volume groups $VGS"
-    lvm vgscan $lvm_ignorelockingfailure 2>&1 | vinfo
     # shellcheck disable=SC2086
-    lvm vgchange -ay $lvm_quirk_args $VGS 2>&1 | vinfo
+    lvm vgscan $scan_args 2>&1 | vinfo
+    # shellcheck disable=SC2086
+    lvm vgchange -ay $activate_args $VGS 2>&1 | vinfo
 fi
 
 if [ "$lvmwritten" ]; then
     rm -f -- /etc/lvm/lvm.conf
+elif [ "$lvmfilter" ]; then
+    # revert filter that was appended to existing lvm.conf
+    cp /etc/lvm/lvm.conf.orig /etc/lvm/lvm.conf
+    rm -f -- /etc/lvm/lvm.conf.filter
 fi
 unset lvmwritten
+unset lvmfilter
 
 udevadm settle
 

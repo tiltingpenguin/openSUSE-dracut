@@ -67,6 +67,7 @@ mpathconf_installed() {
 # called by dracut
 install() {
     local -A _allow
+    local config_dir
 
     add_hostonly_mpath_conf() {
         if is_mpath "$1"; then
@@ -77,6 +78,16 @@ install() {
             _allow["$_dev"]="$_dev"
         fi
     }
+
+    local k v
+    while read -r k v; do
+        if [[ $k == "config_dir" ]]; then
+            v="${v#\"}"
+            config_dir="${v%\"}"
+            break
+        fi
+    done < <(multipath -t 2> /dev/null)
+    [[ -d $config_dir ]] || config_dir=/etc/multipath/conf.d
 
     inst_multiple \
         pkill \
@@ -95,7 +106,7 @@ install() {
         /etc/xdrdevices.conf \
         /etc/multipath.conf \
         /etc/multipath/* \
-        /etc/multipath/conf.d/*
+        "$config_dir"/*
 
     mpathconf_installed \
         && [[ $hostonly ]] && [[ $hostonly_mode == "strict" ]] && {

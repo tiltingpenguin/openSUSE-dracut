@@ -15,11 +15,11 @@ depends() {
 install() {
     inst_multiple mount mknod mkdir sleep chroot chown \
         sed ls flock cp mv dmesg rm ln rmmod mkfifo umount readlink setsid \
-        modprobe chmod
+        modprobe chmod tr
 
     inst_multiple -o findmnt less kmod
 
-    inst_binary "${dracutsysrootdir}${dracutbasedir}/dracut-util" "/usr/bin/dracut-util"
+    inst_binary "${dracutbasedir}/dracut-util" "/usr/bin/dracut-util"
 
     ln -s dracut-util "${initdir}/usr/bin/dracut-getarg"
     ln -s dracut-util "${initdir}/usr/bin/dracut-getargs"

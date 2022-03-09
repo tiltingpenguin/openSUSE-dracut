@@ -17,19 +17,24 @@
   along with systemd; If not, see <http://www.gnu.org/licenses/>.
 ***/
 
+#define _GNU_SOURCE
+
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/types.h>
-#include <sys/syscall.h>
 
 #include "util.h"
 
-static inline pid_t gettid(void)
-{
-        return (pid_t) syscall(SYS_gettid);
-}
+#if __GLIBC_PREREQ(2, 30) == 0
+#include <sys/syscall.h>
+#ifndef SYS_gettid
+#error "SYS_gettid unavailable on this system"
+#endif
+
+#define gettid()    ((pid_t) syscall(SYS_gettid))
+#endif /*__GLIBC_PREREQ */
 
 size_t page_size(void)
 {
@@ -96,7 +101,7 @@ void close_nointr_nofail(int fd)
 int open_terminal(const char *name, int mode)
 {
         int fd, r;
-        unsigned c = 0;
+        unsigned int c = 0;
 
         /*
          * If a TTY is in the process of being closed opening it might
@@ -161,7 +166,7 @@ bool is_main_thread(void)
         return cached > 0;
 }
 
-int safe_atou(const char *s, unsigned *ret_u)
+int safe_atou(const char *s, unsigned int *ret_u)
 {
         char *x = NULL;
         unsigned long l;
@@ -175,10 +180,10 @@ int safe_atou(const char *s, unsigned *ret_u)
         if (!x || *x || errno)
                 return errno ? -errno : -EINVAL;
 
-        if ((unsigned long)(unsigned)l != l)
+        if ((unsigned long)(unsigned int)l != l)
                 return -ERANGE;
 
-        *ret_u = (unsigned)l;
+        *ret_u = (unsigned int)l;
         return 0;
 }
 
@@ -530,4 +535,23 @@ int unoctchar(char c)
                 return c - '0';
 
         return -1;
+}
+
+int dracut_asprintf(char **restrict strp, const char *restrict fmt, ...)
+{
+        int ret = -1;
+        va_list args;
+
+        if (!strp || !fmt) {
+                return ret;
+        }
+
+        va_start(args, fmt);
+        ret = vasprintf(strp, fmt, args);
+        if (ret < 0) {
+                *strp = NULL;
+        }
+        va_end(args);
+
+        return ret;
 }

@@ -103,9 +103,11 @@ void log_set_facility(int facility)
 
 static int write_to_console(int level, const char *file, unsigned int line, const char *func, const char *buffer)
 {
-
         struct iovec iovec[5];
-        unsigned n = 0;
+        unsigned int n = 0;
+
+        // might be useful going ahead
+        UNUSED(level);
 
         if (console_fd < 0)
                 return 0;
@@ -115,8 +117,8 @@ static int write_to_console(int level, const char *file, unsigned int line, cons
         IOVEC_SET_STRING(iovec[n++], "dracut-install: ");
 
         if (show_location) {
-                char location[64];
-                if (snprintf(location, sizeof(location), "(%s:%u) ", file, line) <= 0)
+                char location[LINE_MAX] = {0};
+                if (snprintf(location, sizeof(location), "(%s:%s:%u) ", file, func, line) <= 0)
                         return -errno;
                 IOVEC_SET_STRING(iovec[n++], location);
         }
@@ -130,7 +132,7 @@ static int write_to_console(int level, const char *file, unsigned int line, cons
         return 1;
 }
 
-static int log_dispatch(int level, const char *file, int line, const char *func, char *buffer)
+static int log_dispatch(int level, const char *file, unsigned int line, const char *func, char *buffer)
 {
 
         int r = 0;
@@ -163,26 +165,31 @@ static int log_dispatch(int level, const char *file, int line, const char *func,
         return r;
 }
 
-int log_metav(int level, const char *file, int line, const char *func, const char *format, va_list ap)
+int log_metav(int level, const char *file, unsigned int line, const char *func, const char *format, va_list ap)
 {
-
-        char buffer[LINE_MAX];
+        char buffer[LINE_MAX] = {0};
         int saved_errno, r;
 
         if (_likely_(LOG_PRI(level) > log_max_level))
                 return 0;
 
         saved_errno = errno;
-        vsnprintf(buffer, sizeof(buffer), format, ap);
+
+        r = vsnprintf(buffer, sizeof(buffer), format, ap);
+        if (r <= 0) {
+                goto end;
+        }
+
         char_array_0(buffer);
 
         r = log_dispatch(level, file, line, func, buffer);
-        errno = saved_errno;
 
+end:
+        errno = saved_errno;
         return r;
 }
 
-int log_meta(int level, const char *file, int line, const char *func, const char *format, ...)
+int log_meta(int level, const char *file, unsigned int line, const char *func, const char *format, ...)
 {
 
         int r;
@@ -197,27 +204,28 @@ int log_meta(int level, const char *file, int line, const char *func, const char
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
-_noreturn_ static void log_assert(const char *text, const char *file, int line, const char *func, const char *format)
+_noreturn_ static void log_assert(const char *text, const char *file, unsigned int line, const char *func,
+                                  const char *format)
 {
         static char buffer[LINE_MAX];
 
-        snprintf(buffer, sizeof(buffer), format, text, file, line, func);
+        if (snprintf(buffer, sizeof(buffer), format, text, file, line, func) > 0) {
+                char_array_0(buffer);
+                log_abort_msg = buffer;
+                log_dispatch(LOG_CRIT, file, line, func, buffer);
+        }
 
-        char_array_0(buffer);
-        log_abort_msg = buffer;
-
-        log_dispatch(LOG_CRIT, file, line, func, buffer);
         abort();
 }
 
 #pragma GCC diagnostic pop
 
-_noreturn_ void log_assert_failed(const char *text, const char *file, int line, const char *func)
+_noreturn_ void log_assert_failed(const char *text, const char *file, unsigned int line, const char *func)
 {
         log_assert(text, file, line, func, "Assertion '%s' failed at %s:%u, function %s(). Aborting.");
 }
 
-_noreturn_ void log_assert_failed_unreachable(const char *text, const char *file, int line, const char *func)
+_noreturn_ void log_assert_failed_unreachable(const char *text, const char *file, unsigned int line, const char *func)
 {
         log_assert(text, file, line, func, "Code should not be reached '%s' at %s:%u, function %s(). Aborting.");
 }

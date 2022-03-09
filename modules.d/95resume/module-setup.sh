@@ -13,7 +13,7 @@ check() {
     # Only support resume if hibernation is currently on
     # and no swap is mounted on a net device
     [[ $hostonly ]] || [[ $mount_needs ]] && {
-        swap_on_netdevice || [[ "$(cat /sys/power/resume)" == "0:0" ]] && return 255
+        swap_on_netdevice || [[ -f /sys/power/resume && "$(cat /sys/power/resume)" == "0:0" ]] && return 255
     }
 
     return 0
@@ -50,7 +50,7 @@ install() {
     fi
 
     # Optional uswsusp support
-    for _bin in /usr/sbin/resume /usr/lib/suspend/resume /usr/lib/uswsusp/resume; do
+    for _bin in /usr/sbin/resume /usr/lib/suspend/resume /usr/lib64/suspend/resume /usr/lib/uswsusp/resume /usr/lib64/uswsusp/resume; do
         [[ -x $dracutsysrootdir${_bin} ]] && {
             inst "${_bin}" /usr/sbin/resume
             [[ $hostonly ]] && [[ -f $dracutsysrootdir/etc/suspend.conf ]] && inst -H /etc/suspend.conf

@@ -16,9 +16,15 @@ installkernel() {
     }
 
     record_block_dev_drv() {
+
         for _mod in $(get_dev_module /dev/block/"$1"); do
             _hostonly_drvs["$_mod"]="$_mod"
         done
+
+        for _mod in $(get_blockdev_drv_through_sys "/sys/dev/block/$1"); do
+            _hostonly_drvs["$_mod"]="$_mod"
+        done
+
         ((${#_hostonly_drvs[@]} > 0)) && return 0
         return 1
     }
@@ -53,6 +59,7 @@ installkernel() {
             "=drivers/pci/host" \
             "=drivers/pci/controller" \
             "=drivers/pinctrl" \
+            "=drivers/usb/typec" \
             "=drivers/watchdog"
 
         instmods \
@@ -61,7 +68,7 @@ installkernel() {
             virtio virtio_ring virtio_pci pci_hyperv \
             "=drivers/pcmcia"
 
-        if [[ ${DRACUT_ARCH:-$(uname -m)} == arm* || ${DRACUT_ARCH:-$(uname -m)} == aarch64 ]]; then
+        if [[ ${DRACUT_ARCH:-$(uname -m)} == arm* || ${DRACUT_ARCH:-$(uname -m)} == aarch64 || ${DRACUT_ARCH:-$(uname -m)} == riscv* ]]; then
             # arm/aarch64 specific modules
             _blockfuncs+='|dw_mc_probe|dw_mci_pltfm_register'
             instmods \
@@ -73,9 +80,11 @@ installkernel() {
                 "=drivers/hwmon" \
                 "=drivers/hwspinlock" \
                 "=drivers/i2c/busses" \
+                "=drivers/mailbox" \
                 "=drivers/memory" \
                 "=drivers/mfd" \
                 "=drivers/mmc/core" \
+                "=drivers/mmc/host" \
                 "=drivers/phy" \
                 "=drivers/power" \
                 "=drivers/regulator" \
@@ -83,6 +92,7 @@ installkernel() {
                 "=drivers/rpmsg" \
                 "=drivers/rtc" \
                 "=drivers/soc" \
+                "=drivers/spi" \
                 "=drivers/usb/chipidea" \
                 "=drivers/usb/dwc2" \
                 "=drivers/usb/dwc3" \

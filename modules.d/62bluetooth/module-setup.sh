@@ -56,6 +56,7 @@ install() {
     local -a var_lib_files
 
     inst_multiple \
+        "$dbussystem"/bluetooth.conf \
         "${systemdsystemunitdir}/bluetooth.target" \
         "${systemdsystemunitdir}/bluetooth.service" \
         bluetoothctl
@@ -67,9 +68,9 @@ install() {
     if [[ $hostonly ]]; then
         var_lib_files=("$dracutsysrootdir"/var/lib/bluetooth/**)
 
-        inst_multiple \
+        inst_multiple -o \
             /etc/bluetooth/main.conf \
-            /etc/dbus-1/system.d/bluetooth.conf \
+            "$dbussystemconfdir"/bluetooth.conf \
             "${var_lib_files[@]#"$dracutsysrootdir"}"
     fi
 

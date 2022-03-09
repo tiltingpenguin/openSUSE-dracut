@@ -65,7 +65,6 @@ depends() {
 
 # called by dracut
 install() {
-    inst_multiple -o /usr/lib/udev/collect
     inst_hook cmdline 30 "$moddir/parse-zfcp.sh"
     if [[ $hostonly_cmdline == "yes" ]]; then
         local _zfcp

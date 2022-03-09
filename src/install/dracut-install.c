@@ -49,6 +49,14 @@
 #include "util.h"
 #include "strv.h"
 
+#define _asprintf(strp, fmt, ...) \
+        do { \
+            if (dracut_asprintf(strp, fmt, __VA_ARGS__) < 0) { \
+                    log_error("Out of memory\n"); \
+                    exit(EXIT_FAILURE); \
+            } \
+        } while (0)
+
 static bool arg_hmac = false;
 static bool arg_createdir = false;
 static int arg_loglevel = -1;
@@ -162,7 +170,6 @@ static char *convert_abs_rel(const char *from, const char *target)
         size_t level = 0, fromlevel = 0, targetlevel = 0;
         int l;
         size_t i, rl, dirlen;
-        int ret;
 
         target_dir_p = strdup(target);
         if (!target_dir_p)
@@ -183,11 +190,7 @@ static char *convert_abs_rel(const char *from, const char *target)
         for (i = dirlen + 1; i < rl; ++i)
                 if (target_dir_p[i] != '/')
                         break;
-        ret = asprintf(&realtarget, "%s/%s", realpath_p, &target_dir_p[i]);
-        if (ret < 0) {
-                log_error("Out of memory!");
-                exit(EXIT_FAILURE);
-        }
+        _asprintf(&realtarget, "%s/%s", realpath_p, &target_dir_p[i]);
 
         /* now calculate the relative path from <from> to <target> and
            store it in <relative_from>
@@ -352,8 +355,8 @@ normal_copy:
 static int library_install(const char *src, const char *lib)
 {
         _cleanup_free_ char *p = NULL;
-        _cleanup_free_ char *pdir = NULL, *ppdir = NULL, *clib = NULL;
-        char *q;
+        _cleanup_free_ char *pdir = NULL, *ppdir = NULL, *pppdir = NULL, *clib = NULL;
+        char *q, *clibdir;
         int r, ret = 0;
 
         p = strdup(lib);
@@ -375,7 +378,8 @@ static int library_install(const char *src, const char *lib)
                         log_debug("Lib install: '%s'", p);
         }
 
-        /* Also try to install the same library from one directory above.
+        /* Also try to install the same library from one directory above
+         * or from one directory above glibc-hwcaps.
            This fixes the case, where only the HWCAP lib would be installed
            # ldconfig -p|grep -F libc.so
            libc.so.6 (libc6,64bit, hwcap: 0x0000001000000000, OS ABI: Linux 2.6.32) => /lib64/power6/libc.so.6
@@ -396,10 +400,18 @@ static int library_install(const char *src, const char *lib)
                 return ret;
 
         ppdir = strdup(ppdir);
+        pppdir = dirname(ppdir);
+        if (!pppdir)
+                return ret;
+
+        pppdir = strdup(pppdir);
+        if (!pppdir)
+                return ret;
 
         strcpy(p, lib);
 
-        clib = strjoin(ppdir, "/", basename(p), NULL);
+        clibdir = streq(basename(ppdir), "glibc-hwcaps") ? pppdir : ppdir;
+        clib = strjoin(clibdir, "/", basename(p), NULL);
         if (dracut_install(clib, clib, false, false, true) == 0)
                 log_debug("Lib install: '%s'", clib);
         /* also install lib.so for lib.so.* files */
@@ -417,21 +429,23 @@ static int library_install(const char *src, const char *lib)
 
 static char *get_real_file(const char *src, bool fullyresolve)
 {
-        char linktarget[PATH_MAX + 1];
-        ssize_t linksz;
-        _cleanup_free_ char *fullsrcpath;
-        char *abspath = NULL;
         struct stat sb;
+        ssize_t linksz;
+        char linktarget[PATH_MAX + 1];
+        _cleanup_free_ char *fullsrcpath;
+        _cleanup_free_ char *abspath = NULL;
 
         if (sysrootdirlen) {
-                if (strncmp(src, sysrootdir, sysrootdirlen) == 0)
+                if (strncmp(src, sysrootdir, sysrootdirlen) == 0) {
                         fullsrcpath = strdup(src);
-                else if (asprintf
-                         (&fullsrcpath, "%s/%s", (sysrootdirlen ? sysrootdir : ""),
-                          (src[0] == '/' ? src + 1 : src)) < 0)
-                        _exit(EXIT_FAILURE);
-        } else
+                } else {
+                        _asprintf(&fullsrcpath, "%s/%s",
+                                  (sysrootdirlen ? sysrootdir : ""),
+                                  (src[0] == '/' ? src + 1 : src));
+                }
+        } else {
                 fullsrcpath = strdup(src);
+        }
 
         log_debug("get_real_file('%s')", fullsrcpath);
 
@@ -456,34 +470,33 @@ static char *get_real_file(const char *src, bool fullyresolve)
         log_debug("get_real_file: readlink('%s') returns '%s'", fullsrcpath, linktarget);
 
         if (linktarget[0] == '/') {
-                if (asprintf(&abspath, "%s%s", (sysrootdirlen ? sysrootdir : ""), linktarget) < 0)
-                        return NULL;
+                _asprintf(&abspath, "%s%s", (sysrootdirlen ? sysrootdir : ""), linktarget);
         } else {
                 _cleanup_free_ char *fullsrcdir = strdup(fullsrcpath);
 
                 if (!fullsrcdir) {
                         log_error("Out of memory!");
-                        return NULL;
+                        exit(EXIT_FAILURE);
                 }
 
                 fullsrcdir[dir_len(fullsrcdir)] = '\0';
-
-                if (asprintf(&abspath, "%s/%s", fullsrcdir, linktarget) < 0)
-                        return NULL;
+                _asprintf(&abspath, "%s/%s", fullsrcdir, linktarget);
         }
 
         if (fullyresolve) {
                 struct stat st;
                 if (lstat(abspath, &st) < 0) {
-                        if (errno != ENOENT)
+                        if (errno != ENOENT) {
                                 return NULL;
+                        }
                 }
-                if (S_ISLNK(st.st_mode))
+                if (S_ISLNK(st.st_mode)) {
                         return get_real_file(abspath, fullyresolve);
+                }
         }
 
         log_debug("get_real_file('%s') => '%s'", src, abspath);
-        return abspath;
+        return TAKE_PTR(abspath);
 }
 
 static int resolve_deps(const char *src)
@@ -501,11 +514,11 @@ static int resolve_deps(const char *src)
         if (!fullsrcpath)
                 return 0;
 
-        buf = malloc(LINE_MAX);
+        buf = malloc0(LINE_MAX);
         if (buf == NULL)
                 return -errno;
 
-        if (strstr(src, ".so") == 0) {
+        if (strstr(src, ".so") == NULL) {
                 _cleanup_close_ int fd = -1;
                 fd = open(fullsrcpath, O_RDONLY | O_CLOEXEC);
                 if (fd < 0)
@@ -531,21 +544,22 @@ static int resolve_deps(const char *src)
         }
 
         /* run ldd */
-        ret = asprintf(&cmd, "%s %s 2>&1", ldd, fullsrcpath);
-        if (ret < 0) {
-                log_error("Out of memory!");
-                exit(EXIT_FAILURE);
-        }
+        _asprintf(&cmd, "%s %s 2>&1", ldd, fullsrcpath);
 
         log_debug("%s", cmd);
 
         ret = 0;
 
         fptr = popen(cmd, "r");
+        if (fptr == NULL) {
+                log_error("Error '%s' initiating pipe stream from '%s'", strerror(errno), cmd);
+                exit(EXIT_FAILURE);
+        }
 
         while (!feof(fptr)) {
                 char *p;
 
+                memset(buf, 0, LINE_MAX);
                 if (getline(&buf, &linesize, fptr) <= 0)
                         continue;
 
@@ -620,7 +634,6 @@ static int hmac_install(const char *src, const char *dst, const char *hmacpath)
         _cleanup_free_ char *dstpath = strdup(dst);
         _cleanup_free_ char *srchmacname = NULL;
         _cleanup_free_ char *dsthmacname = NULL;
-        int ret;
 
         if (!(srcpath && dstpath))
                 return -ENOMEM;
@@ -640,29 +653,11 @@ static int hmac_install(const char *src, const char *dst, const char *hmacpath)
         srcpath[dlen] = '\0';
         dstpath[dir_len(dst)] = '\0';
         if (hmacpath) {
-                ret = asprintf(&srchmacname, "%s/%s.hmac", hmacpath, &src[dlen + 1]);
-                if (ret < 0) {
-                        log_error("Out of memory!");
-                        exit(EXIT_FAILURE);
-                }
-
-                ret = asprintf(&dsthmacname, "%s/%s.hmac", hmacpath, &src[dlen + 1]);
-                if (ret < 0) {
-                        log_error("Out of memory!");
-                        exit(EXIT_FAILURE);
-                }
+                _asprintf(&srchmacname, "%s/%s.hmac", hmacpath, &src[dlen + 1]);
+                _asprintf(&dsthmacname, "%s/%s.hmac", hmacpath, &src[dlen + 1]);
         } else {
-                ret = asprintf(&srchmacname, "%s/.%s.hmac", srcpath, &src[dlen + 1]);
-                if (ret < 0) {
-                        log_error("Out of memory!");
-                        exit(EXIT_FAILURE);
-                }
-
-                ret = asprintf(&dsthmacname, "%s/.%s.hmac", dstpath, &src[dlen + 1]);
-                if (ret < 0) {
-                        log_error("Out of memory!");
-                        exit(EXIT_FAILURE);
-                }
+                _asprintf(&srchmacname, "%s/.%s.hmac", srcpath, &src[dlen + 1]);
+                _asprintf(&dsthmacname, "%s/.%s.hmac", dstpath, &src[dlen + 1]);
         }
         log_debug("hmac cp '%s' '%s')", srchmacname, dsthmacname);
         dracut_install(srchmacname, dsthmacname, false, false, true);
@@ -673,13 +668,8 @@ void mark_hostonly(const char *path)
 {
         _cleanup_free_ char *fulldstpath = NULL;
         _cleanup_fclose_ FILE *f = NULL;
-        int ret;
 
-        ret = asprintf(&fulldstpath, "%s/lib/dracut/hostonly-files", destrootdir);
-        if (ret < 0) {
-                log_error("Out of memory!");
-                exit(EXIT_FAILURE);
-        }
+        _asprintf(&fulldstpath, "%s/lib/dracut/hostonly-files", destrootdir);
 
         f = fopen(fulldstpath, "a");
 
@@ -772,8 +762,7 @@ static int dracut_install(const char *orig_src, const char *orig_dst, bool isdir
                         fullsrcpath = strdup(orig_src);
                 } else {
                         src = strdup(orig_src);
-                        if (asprintf(&fullsrcpath, "%s%s", sysrootdir, src) < 0)
-                                _exit(EXIT_FAILURE);
+                        _asprintf(&fullsrcpath, "%s%s", sysrootdir, src);
                 }
                 if (strncmp(orig_dst, sysrootdir, sysrootdirlen) == 0)
                         dst = strdup(orig_dst + sysrootdirlen);
@@ -810,14 +799,9 @@ static int dracut_install(const char *orig_src, const char *orig_dst, bool isdir
                 src_mode = sb.st_mode;
         }
 
-        ret = asprintf(&fulldstpath, "%s/%s", destrootdir, (dst[0] == '/' ? (dst + 1) : dst));
-        if (ret < 0) {
-                log_error("Out of memory!");
-                exit(EXIT_FAILURE);
-        }
+        _asprintf(&fulldstpath, "%s/%s", destrootdir, (dst[0] == '/' ? (dst + 1) : dst));
 
         ret = stat(fulldstpath, &sb);
-
         if (ret != 0) {
                 dst_exists = false;
                 if (errno != ENOENT) {
@@ -913,13 +897,8 @@ static int dracut_install(const char *orig_src, const char *orig_dst, bool isdir
                         if (lstat(fulldstpath, &sb) != 0) {
                                 _cleanup_free_ char *absdestpath = NULL;
 
-                                ret =
-                                        asprintf(&absdestpath, "%s/%s", destrootdir,
-                                                 (abspath[0] == '/' ? (abspath + 1) : abspath) + sysrootdirlen);
-                                if (ret < 0) {
-                                        log_error("Out of memory!");
-                                        exit(EXIT_FAILURE);
-                                }
+                                _asprintf(&absdestpath, "%s/%s", destrootdir,
+                                          (abspath[0] == '/' ? (abspath + 1) : abspath) + sysrootdirlen);
 
                                 ln_r(absdestpath, fulldstpath);
                         }
@@ -1180,10 +1159,7 @@ static int parse_argv(int argc, char *argv[])
         if (!kerneldir) {
                 struct utsname buf;
                 uname(&buf);
-                if (asprintf(&kerneldir, "%s%s", "/lib/modules/", buf.release) < 0) {
-                        log_error("Out of memory!");
-                        exit(EXIT_FAILURE);
-                }
+                _asprintf(&kerneldir, "%s%s", "/lib/modules/", buf.release);
         }
 
         if (arg_modalias) {
@@ -1222,7 +1198,6 @@ static int resolve_lazy(int argc, char **argv)
         for (i = 0; i < argc; i++) {
                 const char *src = argv[i];
                 char *p = argv[i];
-                char *existing;
 
                 log_debug("resolve_deps('%s')", src);
 
@@ -1230,10 +1205,8 @@ static int resolve_lazy(int argc, char **argv)
                         p = &argv[i][destrootdirlen];
                 }
 
-                existing = hashmap_get(items, p);
-                if (existing) {
-                        if (strcmp(existing, p) == 0)
-                                continue;
+                if (check_hashmap(items, p)) {
+                        continue;
                 }
 
                 item = strdup(p);
@@ -1248,21 +1221,15 @@ static char **find_binary(const char *src)
 {
         char **ret = NULL;
         char **q;
-        char *fullsrcpath;
         char *newsrc = NULL;
 
         STRV_FOREACH(q, pathdirs) {
                 struct stat sb;
-                int r;
+                char *fullsrcpath;
 
-                r = asprintf(&newsrc, "%s/%s", *q, src);
-                if (r < 0) {
-                        log_error("Out of memory!");
-                        exit(EXIT_FAILURE);
-                }
+                _asprintf(&newsrc, "%s/%s", *q, src);
 
                 fullsrcpath = get_real_file(newsrc, false);
-
                 if (!fullsrcpath) {
                         log_debug("get_real_file(%s) not found", newsrc);
                         free(newsrc);
@@ -1360,15 +1327,11 @@ static int install_all(int argc, char **argv)
                                 _cleanup_free_ char *realsrc = NULL;
                                 _cleanup_globfree_ glob_t globbuf;
 
-                                ret = asprintf(&realsrc, "%s%s", sysrootdir ? sysrootdir : "", argv[i]);
-                                if (ret < 0) {
-                                        log_error("Out of memory!");
-                                        exit(EXIT_FAILURE);
-                                }
+                                _asprintf(&realsrc, "%s%s", sysrootdir ? sysrootdir : "", argv[i]);
 
                                 ret = glob(realsrc, 0, NULL, &globbuf);
                                 if (ret == 0) {
-                                        int j;
+                                        size_t j;
 
                                         for (j = 0; j < globbuf.gl_pathc; j++) {
                                                 char *dest = strdup(globbuf.gl_pathv[j] + sysrootdirlen);
@@ -1395,13 +1358,9 @@ static int install_firmware_fullpath(const char *fwpath)
         _cleanup_free_ char *fwpath_xz = NULL;
         fw = fwpath;
         struct stat sb;
-        int ret, r;
+        int ret;
         if (stat(fwpath, &sb) != 0) {
-                r = asprintf(&fwpath_xz, "%s.xz", fwpath);
-                if (r < 0) {
-                        log_error("Out of memory!");
-                        exit(EXIT_FAILURE);
-                }
+                _asprintf(&fwpath_xz, "%s.xz", fwpath);
                 if (stat(fwpath_xz, &sb) != 0) {
                         log_debug("stat(%s) != 0", fwpath);
                         return 1;
@@ -1417,7 +1376,7 @@ static int install_firmware_fullpath(const char *fwpath)
 
 static int install_firmware(struct kmod_module *mod)
 {
-        struct kmod_list *l;
+        struct kmod_list *l = NULL;
         _cleanup_kmod_module_info_free_list_ struct kmod_list *list = NULL;
         int ret;
 
@@ -1441,28 +1400,24 @@ static int install_firmware(struct kmod_module *mod)
                 STRV_FOREACH(q, firmwaredirs) {
                         _cleanup_free_ char *fwpath = NULL;
                         struct stat sb;
-                        int r;
 
-                        r = asprintf(&fwpath, "%s/%s", *q, value);
-                        if (r < 0) {
-                                log_error("Out of memory!");
-                                exit(EXIT_FAILURE);
-                        }
+                        _asprintf(&fwpath, "%s/%s", *q, value);
 
                         if ((strstr(value, "*") != 0 || strstr(value, "?") != 0 || strstr(value, "[") != 0)
                             && stat(fwpath, &sb) != 0) {
-                                int i;
+                                size_t i;
                                 _cleanup_globfree_ glob_t globbuf;
+
                                 glob(fwpath, 0, NULL, &globbuf);
                                 for (i = 0; i < globbuf.gl_pathc; i++) {
-                                        install_firmware_fullpath(globbuf.gl_pathv[i]);
+                                        ret = install_firmware_fullpath(globbuf.gl_pathv[i]);
                                         if (ret != 0) {
                                                 log_info("Possible missing firmware %s for kernel module %s", value,
                                                          kmod_module_get_name(mod));
                                         }
                                 }
                         } else {
-                                install_firmware_fullpath(fwpath);
+                                ret = install_firmware_fullpath(fwpath);
                                 if (ret != 0) {
                                         log_info("Possible missing firmware %s for kernel module %s", value,
                                                  kmod_module_get_name(mod));
@@ -1475,7 +1430,7 @@ static int install_firmware(struct kmod_module *mod)
 
 static bool check_module_symbols(struct kmod_module *mod)
 {
-        struct kmod_list *itr;
+        struct kmod_list *itr = NULL;
         _cleanup_kmod_module_dependency_symbols_free_list_ struct kmod_list *deplist = NULL;
 
         if (!arg_mod_filter_symbol && !arg_mod_filter_nosymbol)
@@ -1560,7 +1515,7 @@ static int check_module_supported(struct kmod_module *mod) {
 
 static int install_dependent_modules(struct kmod_list *modlist)
 {
-        struct kmod_list *itr;
+        struct kmod_list *itr = NULL;
         const char *path = NULL;
         const char *name = NULL;
         int ret = 0;
@@ -1694,7 +1649,8 @@ static int modalias_list(struct kmod_ctx *ctx)
 {
         int err;
         struct kmod_list *loaded_list = NULL;
-        struct kmod_list *itr, *l;
+        struct kmod_list *l = NULL;
+        struct kmod_list *itr = NULL;
         _cleanup_fts_close_ FTS *fts = NULL;
 
         {
@@ -1704,11 +1660,10 @@ static int modalias_list(struct kmod_ctx *ctx)
         for (FTSENT *ftsent = fts_read(fts); ftsent != NULL; ftsent = fts_read(fts)) {
                 _cleanup_fclose_ FILE *f = NULL;
                 _cleanup_kmod_module_unref_list_ struct kmod_list *list = NULL;
-                struct kmod_list *l;
 
                 int err;
 
-                char alias[2048];
+                char alias[2048] = {0};
                 size_t len;
 
                 if (strncmp("modalias", ftsent->fts_name, 8) != 0)
@@ -1777,7 +1732,7 @@ static int modalias_list(struct kmod_ctx *ctx)
 static int install_modules(int argc, char **argv)
 {
         _cleanup_kmod_unref_ struct kmod_ctx *ctx = NULL;
-        struct kmod_list *itr;
+        struct kmod_list *itr = NULL;
 
         struct kmod_module *mod = NULL, *mod_o = NULL;
 
@@ -1896,23 +1851,9 @@ static int install_modules(int argc, char **argv)
 
                         log_debug("Handling =%s", &argv[i][1]);
                         /* FIXME and add more paths */
-                        r = asprintf(&path2, "%s/kernel/%s", kerneldir, &argv[i][1]);
-                        if (r < 0) {
-                                log_error("Out of memory!");
-                                exit(EXIT_FAILURE);
-                        }
-
-                        r = asprintf(&path1, "%s/extra/%s", kerneldir, &argv[i][1]);
-                        if (r < 0) {
-                                log_error("Out of memory!");
-                                exit(EXIT_FAILURE);
-                        }
-
-                        r = asprintf(&path3, "%s/updates/%s", kerneldir, &argv[i][1]);
-                        if (r < 0) {
-                                log_error("Out of memory!");
-                                exit(EXIT_FAILURE);
-                        }
+                        _asprintf(&path2, "%s/kernel/%s", kerneldir, &argv[i][1]);
+                        _asprintf(&path1, "%s/extra/%s", kerneldir, &argv[i][1]);
+                        _asprintf(&path3, "%s/updates/%s", kerneldir, &argv[i][1]);
 
                         {
                                 char *paths[] = { path1, path2, path3, NULL };
@@ -2136,13 +2077,7 @@ int main(int argc, char **argv)
         }
 
         if (logdir) {
-                int ret;
-
-                ret = asprintf(&logfile, "%s/%d.log", logdir, getpid());
-                if (ret < 0) {
-                        log_error("Out of memory!");
-                        exit(EXIT_FAILURE);
-                }
+                _asprintf(&logfile, "%s/%d.log", logdir, getpid());
 
                 logfile_f = fopen(logfile, "a");
                 if (logfile_f == NULL) {
