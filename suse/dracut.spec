@@ -175,6 +175,9 @@ mv %{buildroot}/%{dracutlibdir}/modules.d/45ifcfg/write-ifcfg.sh %{buildroot}/%{
 ln -s %{dracutlibdir}/modules.d/45ifcfg/write-ifcfg-redhat.sh %{buildroot}/%{dracutlibdir}/modules.d/45ifcfg/write-ifcfg.sh
 %endif
 
+# create a link to dracut-util to be able to parse kernel command line arguments at generation time
+ln -s %{dracutlibdir}/dracut-util %{buildroot}/%{dracutlibdir}/dracut-getarg
+
 %post
 # check whether /var/run has been converted to a symlink
 if [ ! -L /var/run ]; then
@@ -310,6 +313,7 @@ fi
 %{dracutlibdir}/dracut-initramfs-restore
 %{dracutlibdir}/dracut-install
 %{dracutlibdir}/dracut-util
+%{dracutlibdir}/dracut-getarg
 %{dracutlibdir}/dracut-cpio
 
 %dir %{dracutlibdir}/modules.d
