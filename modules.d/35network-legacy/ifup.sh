@@ -54,7 +54,9 @@ dhcp_wicked_apply() {
     if [ -n "${ROUTES}" ]; then
         for r in ${ROUTES}; do
             route=(${r//,/ })
-            [[ ${route[2]} == "0.0.0.0" ]] || gateway=" via ${route[2]}"
+            if [ ! ${route[2]} == "0.0.0.0" ]; then
+                gateway=" via ${route[2]}"
+            fi
             ip $1 route add "${route[0]}"/"${route[1]}""$gateway" dev "$INTERFACE"
         done
     fi

@@ -156,13 +156,13 @@ for netup in /tmp/net.*.did-setup; do
             echo "BRIDGE='yes'"
             echo "BRIDGE_STP='off'"
             echo "BRIDGE_FORWARDDELAY='0'"
-            echo -n "BRIDGE_PORTS='"
+            printf "BRIDGE_PORTS='"
         } >> /tmp/ifcfg/ifcfg-"$netif"
 
         if [ "$ethname" = "$bondname" ]; then
             {
                 for slave in $bondslaves; do
-                    echo -n "$bondname "
+                    printf "$bondname "
                 done
                 echo "'"
             } >> /tmp/ifcfg/ifcfg-"$netif"
