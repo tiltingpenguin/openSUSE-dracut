@@ -309,10 +309,10 @@ static int cp(const char *src, const char *dst)
         pid = fork();
         if (pid == 0) {
                 if (geteuid() == 0)
-                        execlp("cp", "cp", "--reflink=auto", "--sparse=auto", "--preserve=mode,xattr,timestamps", "-fL", src, dst,
+                        execlp("cp", "cp", "--reflink=auto", "--sparse=auto", "--preserve=mode,xattr,timestamps,ownership", "-fL", src, dst,
                                NULL);
                 else
-                        execlp("cp", "cp", "--reflink=auto", "--sparse=auto", "--preserve=mode,timestamps", "-fL", src, dst,
+                        execlp("cp", "cp", "--reflink=auto", "--sparse=auto", "--preserve=mode,timestamps,ownership", "-fL", src, dst,
                                NULL);
                 _exit(EXIT_FAILURE);
         }
@@ -321,10 +321,10 @@ static int cp(const char *src, const char *dst)
                 if (errno != EINTR) {
                         ret = -1;
                         if (geteuid() == 0)
-                                log_error("Failed: cp --reflink=auto --sparse=auto --preserve=mode,xattr,timestamps -fL %s %s", src,
+                                log_error("Failed: cp --reflink=auto --sparse=auto --preserve=mode,xattr,timestamps,ownership -fL %s %s", src,
                                           dst);
                         else
-                                log_error("Failed: cp --reflink=auto --sparse=auto --preserve=mode,timestamps -fL %s %s", src,
+                                log_error("Failed: cp --reflink=auto --sparse=auto --preserve=mode,timestamps,ownership -fL %s %s", src,
                                           dst);
                         break;
                 }
