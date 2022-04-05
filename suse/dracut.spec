@@ -80,7 +80,6 @@ NFS, iSCSI, NBD, FCoE.
 Summary:        Dracut modules to build a dracut initramfs with an integrity check
 Group:          System/Base
 Requires:       %{name} = %{version}-%{release}
-Requires:       fipscheck
 Requires:       libcryptsetup12-hmac
 Requires:       libgcrypt20-hmac
 Requires:       libkcapi-tools
