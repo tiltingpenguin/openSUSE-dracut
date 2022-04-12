@@ -10,8 +10,10 @@ check() {
         return 1
     }
 
-    # Only support resume if no swap is mounted on a net device
+    # Only support resume if there is any suitable swap and
+    # it is not mounted on a net device
     [[ $hostonly ]] || [[ $mount_needs ]] && {
+        ((${#swap_devs[@]})) || return 1
         swap_on_netdevice && return 255
     }
 
