@@ -12,6 +12,17 @@ check() {
 
     # Only support resume if no swap is mounted on a net device
     [[ $hostonly ]] || [[ $mount_needs ]] && {
+        # sanity check: do not add the resume module if there is a
+        # resume argument pointing to a non existent disk
+        local _resume
+        _resume=$(getarg resume=)
+        if [ -n "$_resume" ]; then
+            _resume="$(label_uuid_to_dev "$_resume")"
+            if [ ! -e "$_resume" ]; then
+                derror "Current resume kernel argument points to an invalid disk"
+                return 255
+            fi
+        fi
         swap_on_netdevice && return 255
     }
 
