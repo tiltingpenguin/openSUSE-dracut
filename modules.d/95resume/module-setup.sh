@@ -10,7 +10,8 @@ check() {
         return 1
     }
 
-    # Only support resume if no swap is mounted on a net device
+    # Only support resume if there is any suitable swap and
+    # it is not mounted on a net device
     [[ $hostonly ]] || [[ $mount_needs ]] && {
         # sanity check: do not add the resume module if there is a
         # resume argument pointing to a non existent disk or to a
@@ -34,6 +35,7 @@ check() {
                 fi
             fi
         fi
+        ((${#swap_devs[@]})) || return 255
         swap_on_netdevice && return 255
     }
 
