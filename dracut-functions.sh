@@ -970,3 +970,102 @@ get_dev_module() {
     fi
     echo "$dev_drivers"
 }
+
+getcmdline() {
+    local _line
+    local _cmdline
+    if [ -e /proc/cmdline ]; then
+        while read -r _line || [ -n "$_line" ]; do
+            _cmdline="$_cmdline $_line"
+        done < /proc/cmdline
+    fi
+    printf "%s" "$_cmdline"
+}
+
+getarg() {
+    if ! [[ -x "$dracutbasedir/dracut-getarg" ]]; then
+        derror "$dracutbasedir/dracut-getarg not found, cannot parse command line arguments"
+        return 1
+    fi
+    local _deprecated _newoption
+    CMDLINE=$(getcmdline)
+    export CMDLINE
+    while [ $# -gt 0 ]; do
+        case $1 in
+            -d)
+                _deprecated=1
+                shift
+                ;;
+            -y)
+                if "$dracutbasedir"/dracut-getarg "$2" > /dev/null; then
+                    if [ "$_deprecated" = "1" ]; then
+                        if [ -n "$_newoption" ]; then
+                            dwarn "Kernel command line option '$2' is deprecated, use '$_newoption' instead."
+                        else
+                            dwarn "Option '$2' is deprecated."
+                        fi
+                    fi
+                    echo 1
+                    return 0
+                fi
+                _deprecated=0
+                shift 2
+                ;;
+            -n)
+                if "$dracutbasedir"/dracut-getarg "$2" > /dev/null; then
+                    echo 0
+                    if [ "$_deprecated" = "1" ]; then
+                        if [ -n "$_newoption" ]; then
+                            dwarn "Kernel command line option '$2' is deprecated, use '$_newoption=0' instead."
+                        else
+                            dwarn "Option '$2' is deprecated."
+                        fi
+                    fi
+                    return 1
+                fi
+                _deprecated=0
+                shift 2
+                ;;
+            *)
+                if [ -z "$_newoption" ]; then
+                    _newoption="$1"
+                fi
+                if "$dracutbasedir"/dracut-getarg "$1"; then
+                    if [ "$_deprecated" = "1" ]; then
+                        if [ -n "$_newoption" ]; then
+                            dwarn "Kernel command line option '$1' is deprecated, use '$_newoption' instead."
+                        else
+                            dwarn "Option '$1' is deprecated."
+                        fi
+                    fi
+                    return 0
+                fi
+                _deprecated=0
+                shift
+                ;;
+        esac
+    done
+    return 1
+}
+
+label_uuid_to_dev() {
+    local _dev
+    _dev="${1#block:}"
+    case "$_dev" in
+        LABEL=*)
+            echo "/dev/disk/by-label/$(echo "${_dev#LABEL=}" | sed 's,/,\\x2f,g;s, ,\\x20,g')"
+            ;;
+        PARTLABEL=*)
+            echo "/dev/disk/by-partlabel/$(echo "${_dev#PARTLABEL=}" | sed 's,/,\\x2f,g;s, ,\\x20,g')"
+            ;;
+        UUID=*)
+            echo "/dev/disk/by-uuid/${_dev#UUID=}"
+            ;;
+        PARTUUID=*)
+            echo "/dev/disk/by-partuuid/${_dev#PARTUUID=}"
+            ;;
+        *)
+            echo "$_dev"
+            ;;
+    esac
+}
