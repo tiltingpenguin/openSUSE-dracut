@@ -1082,16 +1082,8 @@ if ! [[ $outfile ]]; then
             && [[ $MACHINE_ID ]] \
             && [[ -d "$dracutsysrootdir"/boot/efi/${MACHINE_ID} || -L "$dracutsysrootdir"/boot/efi/${MACHINE_ID} ]]; then
             outfile="$dracutsysrootdir/boot/efi/${MACHINE_ID}/${kernel}/initrd"
-        elif [[ -f "$dracutsysrootdir"/lib/modules/${kernel}/initrd ]]; then
-            outfile="$dracutsysrootdir/lib/modules/${kernel}/initrd"
-        elif [[ -e $dracutsysrootdir/boot/initrd-${kernel} ]]; then
-            outfile="$dracutsysrootdir/boot/initrd-${kernel}"
-        elif [[ -z $dracutsysrootdir ]] && mountpoint -q /efi; then
-            outfile="/efi/${MACHINE_ID}/${kernel}/initrd"
-        elif [[ -z $dracutsysrootdir ]] && mountpoint -q /boot/efi; then
-            outfile="/boot/efi/${MACHINE_ID}/${kernel}/initrd"
         else
-            outfile="$dracutsysrootdir/boot/initrd-$kernel"
+            outfile="$dracutsysrootdir/boot/initrd-${kernel}"
         fi
     fi
 fi
