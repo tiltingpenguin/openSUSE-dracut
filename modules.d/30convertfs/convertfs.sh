@@ -23,8 +23,8 @@ done
 [ -w $ROOT ] || mount -o remount,rw $ROOT
 
 #mount /sysroot/var if it is a separate mount
-VARDEV=$(sed -n '/ \/var /s/\([[:graph:]]* \).*/\1/p' /sysroot/etc/fstab)
-VARFS=$(sed -n '/ \/var /s/[[:graph:]]* * [[:graph:]]* *\([[:graph:]]* \).*/\1/p' /sysroot/etc/fstab)
+VARDEV=$(sed -n -e 's/^\#.*//' -e '/ \/var /s/\([[:graph:]]* \).*/\1/p' /sysroot/etc/fstab)
+VARFS=$(sed -n -e 's/^\#.*//' -e '/ \/var /s/[[:graph:]]* * [[:graph:]]* *\([[:graph:]]* \).*/\1/p' /sysroot/etc/fstab)
 
 if [ -n $VARDEV ] && [ -n $VARFS ]; then
     #mount btrfs subvolume var
