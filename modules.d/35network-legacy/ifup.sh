@@ -135,7 +135,7 @@ dhcp_wicked_read_ifcfg() {
 
 dhcp_dhclient_run() {
     dhclient "$@" \
-                 ${_timeout:+-timeout $_timeout} \
+                 ${_timeout:+--timeout $_timeout} \
                  -q \
                  -1 \
                  -cf /etc/dhclient.conf \
@@ -172,7 +172,7 @@ dhcp_wicked_run() {
         [ -n "$mtu" ] && ip "$1" link set mtu $mtu dev $netif
     fi
 
-    $dhclient --format leaseinfo --output "/tmp/leaseinfo.${netif}.dhcp.ipv${1:1:1}" --request - $netif << EOF
+    $dhclient ${_timeout:+--timeout $_timeout} --format leaseinfo --output "/tmp/leaseinfo.${netif}.dhcp.ipv${1:1:1}" --request - $netif << EOF
 <request type="lease"/>
 EOF
     dhcp_wicked_apply $1 || return $?
