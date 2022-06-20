@@ -14,10 +14,10 @@ jobs:
         strategy:
             matrix:
                 container: [
-                        "fedora:33",
-                        "fedora:rawhide",
-                        "opensuse:latest",
                         "arch:latest",
+                        "debian:latest",
+                        "fedora:latest",
+                        "opensuse:latest",
                 ]
                 test: [
                         "04",
@@ -49,13 +49,13 @@ jobs:
                         "01",
                         "02",
                         "03",
-                        "04",
                         "10",
                         "11",
                         "12",
                         "13",
                         "14",
                         "15",
+                        "16",
                         "17",
                         "20",
                         "21",

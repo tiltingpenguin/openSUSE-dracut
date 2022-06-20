@@ -82,15 +82,6 @@ handle_firmware() {
         if [ $_res -ne 0 ]; then
             warn "iscsiadm: Log-in to iscsi target failed"
         else
-            # get a list of connected targets
-            tgts=$(cat /sys/firmware/ibft/target*/target-name | sort -u)
-            # disable NOPs for each FW target
-            for tgt in ${tgts}; do
-                iscsiadm -m node -T "${tgt}" \
-                    --op update \
-                    --name 'node.conn[0].timeo.noop_out_interval' --value 0 \
-                    --name 'node.conn[0].timeo.noop_out_timeout' --value 0
-            done
             need_shutdown
         fi
     fi
@@ -238,7 +229,7 @@ handle_netroot() {
             echo "$target"
         done
     })
-    [ -z "$targets" ] && echo "Target discovery to $iscsi_target_ip:${iscsi_target_port:+$iscsi_target_port} failed with status $?" && exit 1
+    [ -z "$targets" ] && warn "Target discovery to $iscsi_target_ip:${iscsi_target_port:+$iscsi_target_port} failed with status $?" && return 1
 
     found=
     for target in $targets; do

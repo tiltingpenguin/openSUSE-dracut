@@ -47,8 +47,8 @@ test_run() {
 
 test_setup() {
     # shellcheck disable=SC2064
-    trap "$(shopt -p nullglob globstar)" RETURN
-    shopt -q -s nullglob globstar
+    trap "$(shopt -p globstar)" RETURN
+    shopt -q -s globstar
 
     export kernel=$KVERSION
     # Create what will eventually be our root filesystem onto an overlay
@@ -82,6 +82,8 @@ test_setup() {
         inst_simple ./fstab /etc/fstab
         if type -P rpm &> /dev/null; then
             rpm -ql systemd | xargs -r "$DRACUT_INSTALL" ${initdir:+-D "$initdir"} -o -a -l
+        elif type -P dpkg &> /dev/null; then
+            dpkg -L systemd | xargs -r "$DRACUT_INSTALL" ${initdir:+-D "$initdir"} -o -a -l
         elif type -P pacman &> /dev/null; then
             pacman -Q -l systemd | while read -r _ a; do printf -- "%s\0" "$a"; done | xargs -0 -r "$DRACUT_INSTALL" ${initdir:+-D "$initdir"} -o -a -l
             rm "$initdir"/usr/lib/systemd/system/sysinit.target.wants/systemd-firstboot.service

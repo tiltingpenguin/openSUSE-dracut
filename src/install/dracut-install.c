@@ -984,9 +984,12 @@ static void usage(int status)
                "\n"
                "  --module,-m       Install kernel modules, instead of files\n"
                "  --kerneldir       Specify the kernel module directory\n"
-               "                     (default: /lib/modules/`uname -r`)\n"
+               "                     (default: /lib/modules/$(uname -r))\n"
                "  --firmwaredirs    Specify the firmware directory search path with : separation\n"
-               "                     (default: DRACUT_FIRMWARE_PATH env var, /lib/firmware if not set)\n"
+               "                     (default: $DRACUT_FIRMWARE_PATH, otherwise kernel-compatible\n"
+               "                      $(</sys/module/firmware_class/parameters/path),\n"
+               "                      /lib/firmware/updates/$(uname -r), /lib/firmware/updates\n"
+               "                      /lib/firmware/$(uname -r), /lib/firmware)\n"
                "  --silent          Don't display error messages for kernel module install\n"
                "  --modalias        Only generate module list from /sys/devices modalias list\n"
                "  --check-supported Check if module is supported by a vendor\n"
@@ -1156,10 +1159,10 @@ static int parse_argv(int argc, char *argv[])
                 log_set_max_level(arg_loglevel);
         }
 
+        struct utsname buf = {0};
         if (!kerneldir) {
-                struct utsname buf;
                 uname(&buf);
-                _asprintf(&kerneldir, "%s%s", "/lib/modules/", buf.release);
+                _asprintf(&kerneldir, "/lib/modules/%s", buf.release);
         }
 
         if (arg_modalias) {
@@ -1168,22 +1171,43 @@ static int parse_argv(int argc, char *argv[])
 
         if (arg_module) {
                 if (!firmwaredirs) {
-                        char *path = NULL;
-
-                        path = getenv("DRACUT_FIRMWARE_PATH");
+                        char *path = getenv("DRACUT_FIRMWARE_PATH");
 
                         if (path) {
                                 log_debug("DRACUT_FIRMWARE_PATH=%s", path);
                                 firmwaredirs = strv_split(path, ":");
                         } else {
-                                firmwaredirs = strv_new("/lib/firmware", NULL);
+                                if (!*buf.release)
+                                        uname(&buf);
+
+                                char fw_path_para[PATH_MAX + 1] = "";
+                                int path = open("/sys/module/firmware_class/parameters/path", O_RDONLY | O_CLOEXEC);
+                                if (path != -1) {
+                                        ssize_t rd = read(path, fw_path_para, PATH_MAX);
+                                        if (rd != -1)
+                                                fw_path_para[rd - 1] = '\0';
+                                        close(path);
+                                }
+                                char uk[22 + sizeof(buf.release)], fk[14 + sizeof(buf.release)];
+                                sprintf(uk, "/lib/firmware/updates/%s", buf.release);
+                                sprintf(fk, "/lib/firmware/%s", buf.release);
+                                firmwaredirs = strv_new(STRV_IFNOTNULL(*fw_path_para ? fw_path_para : NULL),
+                                                        uk,
+                                                        "/lib/firmware/updates",
+                                                        fk,
+                                                        "/lib/firmware",
+                                                        NULL);
                         }
                 }
         }
 
         if (!optind || optind == argc) {
-                log_error("No SOURCE argument given");
-                usage(EXIT_FAILURE);
+                if (!arg_optional) {
+                        log_error("No SOURCE argument given");
+                        usage(EXIT_FAILURE);
+                } else {
+                        exit(EXIT_SUCCESS);
+                }
         }
 
         return 1;
@@ -1354,18 +1378,20 @@ static int install_all(int argc, char **argv)
 
 static int install_firmware_fullpath(const char *fwpath)
 {
-        const char *fw;
-        _cleanup_free_ char *fwpath_xz = NULL;
-        fw = fwpath;
+        const char *fw = fwpath;
+        _cleanup_free_ char *fwpath_compressed = NULL;
         struct stat sb;
         int ret;
         if (stat(fwpath, &sb) != 0) {
-                _asprintf(&fwpath_xz, "%s.xz", fwpath);
-                if (stat(fwpath_xz, &sb) != 0) {
-                        log_debug("stat(%s) != 0", fwpath);
-                        return 1;
+                _asprintf(&fwpath_compressed, "%s.zst", fwpath);
+                if (access(fwpath_compressed, F_OK) != 0) {
+                        strcpy(fwpath_compressed + strlen(fwpath) + 1, "xz");
+                        if (access(fwpath_compressed, F_OK) != 0) {
+                                log_debug("stat(%s) != 0", fwpath);
+                                return 1;
+                        }
                 }
-                fw = fwpath_xz;
+                fw = fwpath_compressed;
         }
         ret = dracut_install(fw, fw, false, false, true);
         if (ret == 0) {

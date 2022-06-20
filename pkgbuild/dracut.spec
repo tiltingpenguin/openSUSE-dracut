@@ -217,9 +217,6 @@ rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/00dash
 # we do not support mksh in the initramfs
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/00mksh
 
-# remove gentoo specific modules
-rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/50gensplash
-
 %if %{defined _unitdir}
 # with systemd IMA and selinux modules do not make sense
 rm -fr -- $RPM_BUILD_ROOT/%{dracutlibdir}/modules.d/96securityfs
@@ -359,6 +356,7 @@ echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/
 %{dracutlibdir}/modules.d/50plymouth
 %{dracutlibdir}/modules.d/62bluetooth
 %{dracutlibdir}/modules.d/80lvmmerge
+%{dracutlibdir}/modules.d/80lvmthinpool-monitor
 %{dracutlibdir}/modules.d/90btrfs
 %{dracutlibdir}/modules.d/90crypt
 %{dracutlibdir}/modules.d/90dm
@@ -386,6 +384,7 @@ echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/
 %{dracutlibdir}/modules.d/95terminfo
 %{dracutlibdir}/modules.d/95udev-rules
 %{dracutlibdir}/modules.d/95virtfs
+%{dracutlibdir}/modules.d/95virtiofs
 %ifarch s390 s390x
 %{dracutlibdir}/modules.d/80cms
 %{dracutlibdir}/modules.d/81cio_ignore
@@ -439,6 +438,7 @@ echo 'dracut_rescue_image="yes"' > $RPM_BUILD_ROOT%{dracutlibdir}/dracut.conf.d/
 
 %files network
 %{dracutlibdir}/modules.d/01systemd-networkd
+%{dracutlibdir}/modules.d/35connman
 %{dracutlibdir}/modules.d/35network-manager
 %{dracutlibdir}/modules.d/35network-legacy
 %{dracutlibdir}/modules.d/35network-wicked

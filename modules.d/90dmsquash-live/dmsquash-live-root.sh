@@ -88,7 +88,7 @@ else
         # no mount needed - we've already got the LiveOS image in $livedev
         SQUASHED=$livedev
     elif [ "$livedev_fstype" != "ntfs" ]; then
-        if ! mount -n -t "$fstype" -o "${liverw:-ro}" "$livedev" /run/initramfs/live; then
+        if ! mount -n -t "$livedev_fstype" -o "${liverw:-ro}" "$livedev" /run/initramfs/live; then
             die "Failed to mount block device of live image"
             exit 1
         fi
@@ -129,7 +129,14 @@ do_live_overlay() {
     # need to know where to look for the overlay
     if [ -z "$setup" -a -n "$devspec" -a -n "$pathspec" -a -n "$overlay" ]; then
         mkdir -m 0755 -p /run/initramfs/overlayfs
-        mount -n -t auto "$devspec" /run/initramfs/overlayfs || :
+        if ismounted "$devspec"; then
+            devmnt=$(findmnt -e -v -n -o 'TARGET' --source "$devspec")
+            # We need $devspec writable for overlay storage
+            mount -o remount,rw "$devspec"
+            mount --bind "$devmnt" /run/initramfs/overlayfs
+        else
+            mount -n -t auto "$devspec" /run/initramfs/overlayfs || :
+        fi
         if [ -f /run/initramfs/overlayfs$pathspec -a -w /run/initramfs/overlayfs$pathspec ]; then
             OVERLAY_LOOPDEV=$(losetup -f --show ${readonly_overlay:+-r} /run/initramfs/overlayfs$pathspec)
             over=$OVERLAY_LOOPDEV

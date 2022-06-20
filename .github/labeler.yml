@@ -87,9 +87,6 @@ url-lib:
 drm:
   - modules.d/50drm/*
 
-gensplash:
-  - modules.d/50gensplash/*
-
 plymouth:
   - modules.d/50plymouth/*
 
@@ -227,6 +224,9 @@ udev-rules:
 
 virtfs:
   - modules.d/95virtfs/*
+
+virtiofs:
+  - modules.d/95virtiofs/*
 
 zfcp:
   - modules.d/95zfcp/*

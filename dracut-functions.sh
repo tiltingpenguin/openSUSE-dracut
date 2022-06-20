@@ -780,6 +780,14 @@ btrfs_devs() {
         done
 }
 
+zfs_devs() {
+    local _mp="$1"
+    zpool list -H -v -P "${_mp%%/*}" | awk -F$'\t' '$2 ~ /^\// {print $2}' \
+        | while read -r _dev; do
+            realpath "${_dev}"
+        done
+}
+
 iface_for_remote_addr() {
     # shellcheck disable=SC2046
     set -- $(ip -o route get to "$1")
@@ -922,7 +930,7 @@ block_is_nbd() {
 }
 
 # block_is_iscsi <maj:min>
-# Check whether $1 is an nbd device
+# Check whether $1 is an iSCSI device
 block_is_iscsi() {
     local _dir
     local _dev=$1 _real _sess
