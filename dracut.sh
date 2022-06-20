@@ -1143,7 +1143,7 @@ if ! [[ $outfile ]]; then
             && [[ -d "$dracutsysrootdir"/boot/efi/${MACHINE_ID} || -L "$dracutsysrootdir"/boot/efi/${MACHINE_ID} ]]; then
             outfile="$dracutsysrootdir/boot/efi/${MACHINE_ID}/${kernel}/initrd"
         else
-            outfile="$dracutsysrootdir/boot/initrd-${kernel}"
+            outfile="/boot/initrd-$kernel"
         fi
     fi
 fi
