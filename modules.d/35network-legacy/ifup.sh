@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # We don't need to check for ip= errors here, that is handled by the
 # cmdline parser script
@@ -168,6 +168,23 @@ dhcp_wicked_run() {
     if dhcp_wicked_read_ifcfg ; then
         [ -n "$macaddr" ] && ip "$1" link set address $macaddr dev $netif
         [ -n "$mtu" ] && ip "$1" link set mtu $mtu dev $netif
+    fi
+
+    local needtimeout=0
+    local CMDLINE=$(getcmdline)
+    local cmdlineopt
+    for cmdlineopt in $CMDLINE; do
+        case "$cmdlineopt" in
+            rd.iscsi.*) ;&
+            rd.fcoe*) ;&
+            root=nfs:*) ;&
+            root=iscsi:*)
+                needtimeout=1
+                ;;
+        esac
+    done
+    if [ $needtimeout -eq 1 -a -z "$_timeout" ]; then
+        _timeout=60
     fi
 
     $dhclient ${_timeout:+--timeout $_timeout} --format leaseinfo --output "/tmp/leaseinfo.${netif}.dhcp.ipv${1:1:1}" --request - $netif << EOF
