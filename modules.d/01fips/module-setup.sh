@@ -7,6 +7,7 @@ check() {
 
 # called by dracut
 depends() {
+    echo bash
     return 0
 }
 
