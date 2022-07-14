@@ -31,7 +31,7 @@ install() {
     fi
 
     inst_multiple ip sed awk grep pgrep tr expr
-    inst_simple -o dhclient
+    inst -o dhclient
 
     inst_multiple -o arping arping2
     if command -v arping > /dev/null; then
