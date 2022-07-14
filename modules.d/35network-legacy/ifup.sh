@@ -134,6 +134,13 @@ dhcp_wicked_read_ifcfg() {
 
 
 dhcp_dhclient_run() {
+    if [ -n "$_timeout" ]; then
+        if ! (dhclient --help 2>&1 | grep -q -F -- '--timeout' 2> /dev/null); then
+            warn "rd.net.timeout.dhcp has no effect because dhclient does not implement the --timeout option"
+            unset _timeout
+        fi
+    fi
+
     dhclient "$@" \
                  ${_timeout:+--timeout $_timeout} \
                  -q \
