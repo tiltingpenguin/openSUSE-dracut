@@ -303,9 +303,9 @@ done
 
 if [ -e /etc/machine-id ]; then
     read -r MACHINE_ID < /etc/machine-id
-    if [ -d "$boot_dir/efi/$MACHINE_ID" ]; then
-	error "Looks like systemd-boot is installed. mkinitrd won't work here. Use dracut directly instead."
-	exit 1
+    if [[ $MACHINE_ID ]] && [[ -d "$boot_dir/efi/$MACHINE_ID" ]]; then
+        error "Looks like systemd-boot is installed. mkinitrd won't work here. Use dracut directly instead."
+        exit 1
     fi
 fi
 
