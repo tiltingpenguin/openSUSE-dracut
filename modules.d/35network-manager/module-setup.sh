@@ -10,7 +10,7 @@ check() {
 
 # called by dracut
 depends() {
-    echo dbus
+    echo dbus bash
     return 0
 }
 
@@ -31,12 +31,18 @@ install() {
 
     inst NetworkManager
     inst_multiple -o /usr/{lib,libexec}/nm-initrd-generator
+    inst_multiple -o /usr/{lib,libexec}/nm-daemon-helper
     inst_multiple -o teamd dhclient
     inst_hook cmdline 99 "$moddir/nm-config.sh"
     if dracut_module_included "systemd"; then
 
         inst "$dbussystem"/org.freedesktop.NetworkManager.conf
         inst_multiple nmcli nm-online
+
+        # teaming support under systemd+dbus
+        inst_multiple -o \
+            "$dbussystem"/teamd.conf \
+            "$dbussystemconfdir"/teamd.conf
 
         # Install a configuration snippet to prevent the automatic creation of
         # "Wired connection #" DHCP connections for Ethernet interfaces
