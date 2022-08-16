@@ -37,7 +37,6 @@ BuildRequires:  asciidoc
 BuildRequires:  bash
 BuildRequires:  docbook-xsl-stylesheets
 BuildRequires:  libxslt
-BuildRequires:  suse-module-tools
 BuildRequires:  pkgconfig(libkmod)
 BuildRequires:  pkgconfig(systemd) >= 219
 BuildRequires:  cargo
