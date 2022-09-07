@@ -158,7 +158,9 @@ install -m 0644 dracut.conf.d/fips.conf.example %{buildroot}%{_sysconfdir}/dracu
 install -m 0644 dracut.conf.d/ima.conf.example %{buildroot}%{_sysconfdir}/dracut.conf.d/40-ima.conf
 # bsc#915218
 %ifarch s390 s390x
-install -m 0644 suse/s390x_persistent_device.conf %{buildroot}%{_sysconfdir}/dracut.conf.d/10-s390x_persistent_device.conf
+install -m 0644 suse/s390x_persistent_policy.conf %{buildroot}%{_sysconfdir}/dracut.conf.d/10-persistent_policy.conf
+%else
+install -m 0644 suse/persistent_policy.conf %{buildroot}%{_sysconfdir}/dracut.conf.d/10-persistent_policy.conf
 %endif
 
 install -D -m 0755 suse/mkinitrd-suse.sh %{buildroot}/%{dracut_sbindir}/mkinitrd
@@ -275,9 +277,7 @@ fi
 %if 0%{?fedora} || 0%{?suse_version} || 0%{?rhel}
 /usr/lib/dracut/dracut.conf.d/01-dist.conf
 %endif
-%ifarch s390 s390x
-%config %{_sysconfdir}/dracut.conf.d/10-s390x_persistent_device.conf
-%endif
+%config %{_sysconfdir}/dracut.conf.d/10-persistent_policy.conf
 
 %{_mandir}/man8/dracut.8*
 %{_mandir}/man1/lsinitrd.1*
