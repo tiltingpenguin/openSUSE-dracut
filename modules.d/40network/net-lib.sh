@@ -224,6 +224,7 @@ set_ifname() {
     for n in $(getargs ifname=); do
         strstr "$n" "$mac" && echo "${n%%:*}" && return
     done
+    [ ! -f "/tmp/set_ifname_$name" ] || read -r num < "/tmp/set_ifname_$name"
     # otherwise, pick a new name and use that
     while :; do
         num=$((num + 1))
@@ -234,6 +235,7 @@ set_ifname() {
         break
     done
     echo "ifname=$name$num:$mac" >> /etc/cmdline.d/45-ifname.conf
+    echo "$num" > "/tmp/set_ifname_$name"
     echo "$name$num"
 }
 
