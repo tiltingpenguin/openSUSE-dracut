@@ -84,6 +84,7 @@ install() {
         \
         $systemdsystemunitdir/sys-kernel-config.mount \
         \
+        $systemdsystemunitdir/modprobe@.service \
         $systemdsystemunitdir/kmod-static-nodes.service \
         $systemdsystemunitdir/systemd-tmpfiles-setup.service \
         $systemdsystemunitdir/systemd-tmpfiles-setup-dev.service \
@@ -179,6 +180,8 @@ install() {
             /etc/systemd/journald.conf.d/*.conf \
             /etc/systemd/system.conf \
             /etc/systemd/system.conf.d/*.conf \
+            $systemdsystemconfdir/modprobe@.service \
+            $systemdsystemconfdir/modprobe@.service.d/*.conf \
             /etc/hostname \
             /etc/machine-id \
             /etc/machine-info \
