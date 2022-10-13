@@ -364,7 +364,8 @@ do_static() {
                     return 1
                 fi
             else
-                if ! wicked arp verify --quiet --count 2 --interval 1000 "$netif" "$ip"; then
+                wicked arp verify --quiet --count 2 --interval 1000 "$netif" "$ip"
+                if [ $? -eq 4 ]; then
                     warn "Duplicate address detected for $ip for interface $netif."
                     return 1
                 fi
