@@ -193,7 +193,8 @@ case $reason in
                     exit 1
                 fi
             else
-                if ! wicked arp verify --quiet --count 2 --interval 1000 "$netif" "$new_ip_address"; then
+                wicked arp verify --quiet --count 2 --interval 1000 "$netif" "$new_ip_address"
+                if [ $? -eq 4 ]; then
                     warn "Duplicate address detected for $new_ip_address while doing dhcp. retrying"
                     exit 1
                 fi
