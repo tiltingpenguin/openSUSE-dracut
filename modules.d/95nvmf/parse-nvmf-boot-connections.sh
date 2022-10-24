@@ -1,17 +1,17 @@
 #!/bin/sh
 #
 # Supported formats:
-# nvmf.hostnqn=<hostnqn>
-# nvmf.hostid=<hostid>
-# nvmf.discover=<transport>,<traddr>,<host-traddr>,<trsvcid>
+# rd.nvmf.hostnqn=<hostnqn>
+# rd.nvmf.hostid=<hostid>
+# rd.nvmf.discover=<transport>,<traddr>,<host-traddr>,<trsvcid>
 #
 # Examples:
-# nvmf.hostnqn=nqn.2014-08.org.nvmexpress:uuid:37303738-3034-584d-5137-333230423843
-# nvmf.discover=rdma,192.168.1.3,,4420
-# nvmf.discover=tcp,192.168.1.3,,4420
-# nvmf.discover=tcp,192.168.1.3
-# nvmf.discover=fc,nn-0x200400a098d85236:pn-0x201400a098d85236,nn-0x200000109b7db455:pn-0x100000109b7db455
-# nvmf.discover=fc,auto
+# rd.nvmf.hostnqn=nqn.2014-08.org.nvmexpress:uuid:37303738-3034-584d-5137-333230423843
+# rd.nvmf.discover=rdma,192.168.1.3,,4420
+# rd.nvmf.discover=tcp,192.168.1.3,,4420
+# rd.nvmf.discover=tcp,192.168.1.3
+# rd.nvmf.discover=fc,nn-0x200400a098d85236:pn-0x201400a098d85236,nn-0x200000109b7db455:pn-0x100000109b7db455
+# rd.nvmf.discover=fc,auto
 #
 # Note: FC does autodiscovery, so typically there is no need to
 # specify any discover parameters for FC.
@@ -24,35 +24,7 @@ if getargbool 0 rd.nonvmf; then
     return 0
 fi
 
-initqueue --onetime modprobe --all -b -q nvme nvme_tcp nvme_core nvme_fabrics
-
-validate_ip_conn() {
-    if ! getargbool 0 rd.neednet; then
-        warn "$trtype transport requires rd.neednet=1"
-        return 1
-    fi
-
-    local_address=$(ip -o route get to "$traddr" | sed -n 's/.*src \([0-9a-f.:]*\).*/\1/p')
-
-    # confirm we got a local IP address
-    if ! is_ip "$local_address"; then
-        warn "$traddr is an invalid address"
-        return 1
-    fi
-
-    ifname=$(ip -o route get to "$local_address" | sed -n 's/.*dev \([^ ]*\).*/\1/p')
-
-    if ip l show "$ifname" > /dev/null 2>&1; then
-        warn "invalid network interface $ifname"
-        return 1
-    fi
-
-    # confirm there's a route to destination
-    if ip route get "$traddr" > /dev/null 2>&1; then
-        warn "no route to $traddr"
-        return 1
-    fi
-}
+initqueue --onetime modprobe --all -b -q nvme_tcp nvme_core nvme_fabrics
 
 parse_nvmf_discover() {
     traddr="none"
@@ -82,7 +54,7 @@ parse_nvmf_discover() {
             [ -n "$4" ] && trsvcid=$4
             ;;
         *)
-            warn "Invalid arguments for nvmf.discover=$1"
+            warn "Invalid arguments for rd.nvmf.discover=$1"
             return 0
             ;;
     esac
@@ -90,7 +62,9 @@ parse_nvmf_discover() {
         warn "traddr is mandatory for $trtype"
         return 0
     fi
-    if [ "$trtype" = "fc" ]; then
+    if [ "$trtype" = "tcp" ]; then
+        : > /tmp/nvmf_needs_network
+    elif [ "$trtype" = "fc" ]; then
         if [ "$traddr" = "auto" ]; then
             rm /etc/nvme/discovery.conf
             return 1
@@ -99,12 +73,9 @@ parse_nvmf_discover() {
             warn "host traddr is mandatory for fc"
             return 0
         fi
-    elif [ "$trtype" != "rdma" ] && [ "$trtype" != "tcp" ]; then
+    elif [ "$trtype" != "rdma" ]; then
         warn "unsupported transport $trtype"
         return 0
-    fi
-    if [ "$trtype" = "tcp" ]; then
-        validate_ip_conn
     fi
     if [ "$trtype" = "fc" ]; then
         echo "--transport=$trtype --traddr=$traddr --host-traddr=$hosttraddr" >> /etc/nvme/discovery.conf
@@ -114,31 +85,35 @@ parse_nvmf_discover() {
     return 0
 }
 
-nvmf_hostnqn=$(getarg nvmf.hostnqn=)
+nvmf_hostnqn=$(getarg rd.nvmf.hostnqn -d nvmf.hostnqn=)
 if [ -n "$nvmf_hostnqn" ]; then
     echo "$nvmf_hostnqn" > /etc/nvme/hostnqn
 fi
-nvmf_hostid=$(getarg nvmf.hostid=)
+nvmf_hostid=$(getarg rd.nvmf.hostid -d nvmf.hostid=)
 if [ -n "$nvmf_hostid" ]; then
     echo "$nvmf_hostid" > /etc/nvme/hostid
 fi
 
-for d in $(getargs nvmf.discover=); do
-    parse_nvmf_discover "$d" || break
+NVMF_FC_AUTO=
+for d in $(getargs rd.nvmf.discover -d nvmf.discover=); do
+    parse_nvmf_discover "$d" || {
+        NVMF_FC_AUTO=1
+        break
+    }
 done
 
-# Host NQN and host id are mandatory for NVMe-oF
-[ -f "/etc/nvme/hostnqn" ] || exit 0
-[ -f "/etc/nvme/hostid" ] || exit 0
+if [ -e /tmp/nvmf_needs_network ]; then
+    echo "rd.neednet=1" > /etc/cmdline.d/nvmf-neednet.conf
+    rm -f /tmp/nvmf_needs_network
+fi
 
-if [ -f "/etc/nvme/discovery.conf" ]; then
-    /sbin/initqueue --settled --onetime --unique --name nvme-discover /usr/sbin/nvme connect-all
-    if [ "$trtype" = "tcp" ]; then
-        : > /tmp/net."$ifname".did-setup
-    fi
-else
-    # No nvme command line arguments present, try autodiscovery
-    if [ "$trtype" = "fc" ]; then
-        /sbin/initqueue --finished --onetime --unique --name nvme-fc-autoconnect /sbin/nvmf-autoconnect.sh
+# Host NQN and host id are mandatory for NVMe-oF
+if [ -f "/etc/nvme/hostnqn" ] && [ -f "/etc/nvme/hostid" ]; then
+
+    # If no nvme command line arguments present, try autodiscovery
+    if [ $NVMF_FC_AUTO ] || [ ! -f "/etc/nvme/discovery.conf" ]; then
+        /sbin/initqueue --settled --onetime --unique --name nvme-fc-autoconnect /sbin/nvmf-autoconnect.sh
+    else
+        /sbin/initqueue --settled --onetime --unique --name nvme-discover /usr/sbin/nvme connect-all
     fi
 fi
