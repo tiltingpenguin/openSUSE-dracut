@@ -865,6 +865,7 @@ if [[ $regenerate_all == "yes" ]]; then
     cd "$dracutsysrootdir"/lib/modules || exit 1
     for i in *; do
         [[ -f $i/modules.dep ]] || [[ -f $i/modules.dep.bin ]] || continue
+        [[ -d $i/kernel ]] || continue
         "$dracut_cmd" --kver="$i" "${dracut_args[@]}"
         ((ret += $?))
     done
