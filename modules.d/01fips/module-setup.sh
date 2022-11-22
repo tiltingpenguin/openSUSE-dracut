@@ -2,6 +2,13 @@
 
 # called by dracut
 check() {
+    require_any_binary \
+         /usr/lib64/libkcapi/fipscheck \
+         /usr/lib/libkcapi/fipscheck \
+         /usr/libexec/libkcapi/fipscheck \
+         fipscheck \
+        || return 1
+
     return 255
 }
 
@@ -74,9 +81,10 @@ install() {
 
     inst_multiple rmmod insmod mount uname umount sed
     inst_multiple -o sha512hmac \
-                     fipscheck \
                      /usr/lib64/libkcapi/fipscheck \
-                     /usr/lib/libkcapi/fipscheck
+                     /usr/lib/libkcapi/fipscheck \
+                     /usr/libexec/libkcapi/fipscheck \
+                     fipscheck
 
     inst_simple /etc/system-fips
     [ -c "${initdir}"/dev/random ] || mknod "${initdir}"/dev/random c 1 8 \
