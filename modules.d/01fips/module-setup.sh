@@ -72,7 +72,7 @@ install() {
     inst_hook pre-udev 01 "$moddir/fips-load-crypto.sh"
     inst_script "$moddir/fips.sh" /sbin/fips.sh
 
-    inst_multiple rmmod insmod mount uname umount
+    inst_multiple rmmod insmod mount uname umount sed
     inst_multiple -o sha512hmac \
                      fipscheck \
                      /usr/lib64/libkcapi/fipscheck \
