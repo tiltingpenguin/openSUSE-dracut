@@ -1,20 +1,16 @@
 #!/bin/bash
 
 # find fipscheck, prefer kernel-based version
-fipscheck() {
-    local _fipscheck
-
-    if [ -f "/usr/lib64/libkcapi/fipscheck" ]; then
-        _fipscheck="/usr/lib64/libkcapi/fipscheck"
-    elif [ -f "/usr/lib/libkcapi/fipscheck" ]; then
-        _fipscheck="/usr/lib/libkcapi/fipscheck"
-    elif [ -f "/usr/libexec/libkcapi/fipscheck" ]; then
-        _fipscheck="/usr/libexec/libkcapi/fipscheck"
-    elif [ -f "/usr/bin/fipscheck" ]; then
-        _fipscheck="/usr/bin/fipscheck"
+fipscheck()
+{
+    FIPSCHECK=/usr/lib64/libkcapi/fipscheck
+    if [ ! -f $FIPSCHECK ]; then
+        FIPSCHECK=/usr/lib/libkcapi/fipscheck
     fi
-
-    echo $_fipscheck
+    if [ ! -f $FIPSCHECK ]; then
+        FIPSCHECK=/usr/bin/fipscheck
+    fi
+    echo $FIPSCHECK
 }
 
 type getarg > /dev/null 2>&1 || . /lib/dracut-lib.sh
