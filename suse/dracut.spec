@@ -83,6 +83,7 @@ Requires:       %{name} = %{version}-%{release}
 Requires:       libcryptsetup12-hmac
 Requires:       libgcrypt20-hmac
 Requires:       libkcapi-tools
+Requires:       libopenssl1_1-hmac
 
 %description fips
 This package requires everything which is needed to build an
