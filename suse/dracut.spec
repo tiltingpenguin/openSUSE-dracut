@@ -70,6 +70,7 @@ Conflicts:      btrfsprogs < 3.18
 Conflicts: suse-module-tools < 15.4.7
 %{?systemd_requires}
 Requires:       (iputils or arping2 or wicked)
+Requires:       (jq if nvme-cli)
 
 %description
 Dracut contains tools to create a bootable initramfs for Linux kernels >= 2.6.
