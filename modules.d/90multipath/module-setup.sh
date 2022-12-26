@@ -101,7 +101,6 @@ install() {
 
     inst_multiple \
         pkill \
-        pidof \
         kpartx \
         dmsetup \
         multipath \
@@ -116,7 +115,8 @@ install() {
         /etc/xdrdevices.conf \
         /etc/multipath.conf \
         /etc/multipath/* \
-        "$config_dir"/*
+        "$config_dir"/* \
+        "$tmpfilesdir/multipath.conf"
 
     mpathconf_installed \
         && [[ $hostonly ]] && [[ $hostonly_mode == "strict" ]] && {
@@ -147,6 +147,7 @@ install() {
             inst_simple "${moddir}/multipathd-configure.service" "${systemdsystemunitdir}/multipathd-configure.service"
             $SYSTEMCTL -q --root "$initdir" enable multipathd-configure.service
         fi
+        inst_simple "${systemdsystemunitdir}/multipathd.socket"
         inst_simple "${moddir}/multipathd.service" "${systemdsystemunitdir}/multipathd.service"
         $SYSTEMCTL -q --root "$initdir" enable multipathd.service
     else

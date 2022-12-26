@@ -53,38 +53,5 @@ fi
 [ -n $SUBVOLIDVAR ] && umount $ROOT/var
 [ -w $ROOT ] && mount -o remount,ro $ROOT
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 echo "Done."
 exit 0

@@ -2,13 +2,7 @@
 
 check() {
     require_binaries mksquashfs unsquashfs || return 1
-
-    for i in CONFIG_SQUASHFS CONFIG_BLK_DEV_LOOP CONFIG_OVERLAY_FS; do
-        if ! check_kernel_config $i; then
-            dinfo "dracut-squash module requires kernel configuration $i (y or m)"
-            return 1
-        fi
-    done
+    require_kernel_modules squashfs loop overlay || return 1
 
     return 255
 }
@@ -27,11 +21,6 @@ installpost() {
     for i in "$initdir"/*; do
         [[ $squash_dir == "$i"/* ]] || mv "$i" "$squash_dir"/
     done
-
-    # initdir also needs ld.so.* to make ld.so work
-    inst /etc/ld.so.cache
-    inst /etc/ld.so.conf
-    inst_dir /etc/ld.so.conf.d
 
     # Create mount points for squash loader
     mkdir -p "$initdir"/squash/
@@ -67,6 +56,9 @@ installpost() {
     ln_r /usr/bin /bin
     ln_r /usr/sbin /sbin
     inst_simple "$moddir"/init-squash.sh /init
+
+    # make sure that library links are correct and up to date for squash loader
+    build_ld_cache
 }
 
 install() {

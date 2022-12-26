@@ -259,6 +259,13 @@ do_dhcp() {
         return 1
     fi
 
+    if [ -n "$_timeout" ]; then
+        if ! (dhclient --help 2>&1 | grep -q -F -- '--timeout' 2> /dev/null); then
+            warn "rd.net.timeout.dhcp has no effect because dhclient does not implement the --timeout option"
+            unset _timeout
+        fi
+    fi
+
     if [ ! -e /run/NetworkManager/conf.d/10-dracut-dhclient.conf ]; then
         mkdir -p /run/NetworkManager/conf.d
         echo '[main]' > /run/NetworkManager/conf.d/10-dracut-dhclient.conf
@@ -578,7 +585,7 @@ if [ -z "$NO_TEAM_MASTER" ]; then
                     ip link set dev "$slave" down
                     (
                         unset TEAM_PORT_CONFIG
-                        _hwaddr=$(cat "/sys/class/net/$slave/address")
+                        read -r _hwaddr < "/sys/class/net/$slave/address"
                         _subchannels=$(iface_get_subchannels "$slave")
                         if [ -n "$_hwaddr" ] && [ -e "/etc/sysconfig/network-scripts/mac-${_hwaddr}.conf" ]; then
                             # shellcheck disable=SC1090
@@ -726,7 +733,7 @@ done
 if [ -z "$NO_AUTO_DHCP" ] && [ ! -e "/tmp/net.${netif}.up" ]; then
     ret=1
     if [ -e /tmp/net.bootdev ]; then
-        BOOTDEV=$(cat /tmp/net.bootdev)
+        read -r BOOTDEV < /tmp/net.bootdev
         if [ "$netif" = "$BOOTDEV" ] || [ "$BOOTDEV" = "$(cat "/sys/class/net/${netif}/address")" ]; then
             do_dhcp
             ret=$?

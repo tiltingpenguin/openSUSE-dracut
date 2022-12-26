@@ -11,18 +11,18 @@ check() {
 depends() {
     # if dmsetup is not installed, then we cannot support fedora/red hat
     # style live images
-    echo dm rootfs-block img-lib bash
+    echo dm rootfs-block img-lib overlayfs
     return 0
 }
 
 # called by dracut
 installkernel() {
-    instmods squashfs loop iso9660 overlay
+    instmods squashfs loop iso9660
 }
 
 # called by dracut
 install() {
-    inst_multiple umount dmsetup blkid dd losetup blockdev find rmdir
+    inst_multiple umount dmsetup blkid dd losetup blockdev find rmdir grep
     inst_multiple -o checkisomd5
     inst_hook cmdline 30 "$moddir/parse-dmsquash-live.sh"
     inst_hook cmdline 31 "$moddir/parse-iso-scan.sh"
