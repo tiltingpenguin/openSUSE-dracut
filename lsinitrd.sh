@@ -174,6 +174,8 @@ extract_files() {
     for f in "${!filenames[@]}"; do
         [[ $nofileinfo ]] || echo "initramfs:/$f"
         [[ $nofileinfo ]] || echo "========================================================================"
+        # shellcheck disable=SC2001
+        [[ $f == *"\\x"* ]] && f=$(echo "$f" | sed 's/\\x.\{2\}/????/g')
         $CAT "$image" 2> /dev/null | cpio --extract --verbose --quiet --to-stdout "$f" 2> /dev/null
         ((ret += $?))
         [[ $nofileinfo ]] || echo "========================================================================"
@@ -217,7 +219,9 @@ list_squash_content() {
 unpack_files() {
     if ((${#filenames[@]} > 0)); then
         for f in "${!filenames[@]}"; do
-            $CAT "$image" 2> /dev/null | cpio -id --quiet $verbose $f
+            # shellcheck disable=SC2001
+            [[ $f == *"\\x"* ]] && f=$(echo "$f" | sed 's/\\x.\{2\}/????/g')
+            $CAT "$image" 2> /dev/null | cpio -id --quiet $verbose "$f"
             ((ret += $?))
         done
     else
