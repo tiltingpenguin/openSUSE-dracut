@@ -805,7 +805,7 @@ while :; do
         --fstab) use_fstab_l="yes" ;;
         -h | --help)
             long_usage
-            exit 1
+            exit 0
             ;;
         --bzip2) compress_l="bzip2" ;;
         --lzma) compress_l="lzma" ;;
@@ -850,7 +850,7 @@ while :; do
             ;;
         --version)
             long_version
-            exit 1
+            exit 0
             ;;
         --)
             shift
