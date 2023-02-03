@@ -170,7 +170,7 @@ nbft_parse_hfi() {
         # Need to check $? here as he above is an assignment
         # shellcheck disable=2181
         if [ $? -ne 0 ] && [ "$adrfam" = ipv6 ]; then
-            prefix=64
+            prefix=128
         fi
         # Use brackets for IPv6
         if [ "$adrfam" = ipv6 ]; then
