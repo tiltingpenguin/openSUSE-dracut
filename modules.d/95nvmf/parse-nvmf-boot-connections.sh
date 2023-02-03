@@ -172,10 +172,9 @@ nbft_parse_hfi() {
         if [ $? -ne 0 ] && [ "$adrfam" = ipv6 ]; then
             prefix=64
         fi
-        # IPv6 has different syntax for prefix/mask
+        # Use brackets for IPv6
         if [ "$adrfam" = ipv6 ]; then
-            ipaddr="[$ip/$prefix]"
-            prefix=
+            ipaddr="[$ipaddr]"
         fi
 
         gateway=$(nbft_check_empty_address \
