@@ -1040,7 +1040,7 @@ stdloglvl=$((stdloglvl + verbosity_mod_l))
 ((stdloglvl < 0)) && stdloglvl=0
 
 [[ $drivers_dir_l ]] && drivers_dir=$drivers_dir_l
-drivers_dir="${drivers_dir%%+(/)}"
+drivers_dir="${drivers_dir%"${drivers_dir##*[!/]}"}"
 [[ $do_strip_l ]] && do_strip=$do_strip_l
 [[ $do_strip ]] || do_strip=yes
 [[ $aggressive_strip_l ]] && aggressive_strip=$aggressive_strip_l
