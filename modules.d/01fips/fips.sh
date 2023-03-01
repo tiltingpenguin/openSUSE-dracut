@@ -3,7 +3,10 @@
 # find fipscheck, prefer kernel-based version
 fipscheck()
 {
-    FIPSCHECK=/usr/lib64/libkcapi/fipscheck
+    FIPSCHECK=/usr/libexec/libkcapi/fipscheck
+    if [ ! -f $FIPSCHECK ]; then
+        FIPSCHECK=/usr/lib64/libkcapi/fipscheck
+    fi
     if [ ! -f $FIPSCHECK ]; then
         FIPSCHECK=/usr/lib/libkcapi/fipscheck
     fi

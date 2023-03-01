@@ -75,6 +75,7 @@ install() {
     inst_multiple rmmod insmod mount uname umount sed
     inst_multiple -o sha512hmac \
                      fipscheck \
+                     /usr/libexec/libkcapi/fipscheck \
                      /usr/lib64/libkcapi/fipscheck \
                      /usr/lib/libkcapi/fipscheck
 
