@@ -121,19 +121,6 @@ Requires:       keyutils
 This package contains all modules that are part of dracut upstream
 but are not normally supported or required.
 
-%package mkinitrd-deprecated
-Summary:        Dracut mkinitrd wrapper
-Group:          System/Base
-Requires:       %{name} = %{version}-%{release}
-Requires:       dracut
-Obsoletes:      mkinitrd < 2.8.2
-Provides:       mkinitrd = 2.8.2
-Provides:       dracut:/sbin/mkinitrd
-
-%description mkinitrd-deprecated
-This package contains the legacy initrd script for dracut.
-Call dracut directly instead.
-
 %prep
 %autosetup
 
@@ -185,10 +172,6 @@ install -m 0644 suse/s390x_persistent_policy.conf %{buildroot}%{_sysconfdir}/dra
 %else
 install -m 0644 suse/persistent_policy.conf %{buildroot}%{_sysconfdir}/dracut.conf.d/10-persistent_policy.conf
 %endif
-
-install -D -m 0755 suse/mkinitrd-suse.sh %{buildroot}/%{dracut_sbindir}/mkinitrd
-
-mv %{buildroot}%{_mandir}/man8/mkinitrd-suse.8 %{buildroot}%{_mandir}/man8/mkinitrd.8
 
 %if 0%{?suse_version}
 rm -f %{buildroot}%{dracutlibdir}/modules.d/45ifcfg/write-ifcfg.sh
@@ -281,10 +264,6 @@ fi
 %{dracutlibdir}/modules.d/95zfcp
 %{dracutlibdir}/modules.d/95znet
 %endif
-
-%files mkinitrd-deprecated
-%{dracut_sbindir}/mkinitrd
-%{_mandir}/man8/mkinitrd.8*
 
 %files
 %license COPYING
