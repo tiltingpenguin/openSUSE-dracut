@@ -145,10 +145,12 @@ dhcp_dhclient_run() {
 }
 
 dhcp_wicked_run() {
+    local _ipv=${1:-"-4"}
+
     [ -d /var/lib/wicked ] || mkdir -p /var/lib/wicked
 
     dhclient=
-    if [ "$1" = "-6" ] ; then
+    if [ "$_ipv" = "-6" ] ; then
         ipv6_mode=
         if [ -f "/tmp/net.$netif.auto6" ] ; then
             ipv6_mode="auto"
@@ -166,8 +168,8 @@ dhcp_wicked_run() {
     fi
 
     if dhcp_wicked_read_ifcfg ; then
-        [ -n "$macaddr" ] && ip "$1" link set address $macaddr dev $netif
-        [ -n "$mtu" ] && ip "$1" link set mtu $mtu dev $netif
+        [ -n "$macaddr" ] && ip "$_ipv" link set address $macaddr dev $netif
+        [ -n "$mtu" ] && ip "$_ipv" link set mtu $mtu dev $netif
     fi
 
     local needtimeout=0
@@ -187,12 +189,12 @@ dhcp_wicked_run() {
         _timeout=60
     fi
 
-    $dhclient ${_timeout:+--timeout $_timeout} --format leaseinfo --output "/tmp/leaseinfo.${netif}.dhcp.ipv${1:1:1}" --request - $netif << EOF
+    $dhclient ${_timeout:+--timeout $_timeout} --format leaseinfo --output "/tmp/leaseinfo.${netif}.dhcp.ipv${_ipv:1:1}" --request - $netif << EOF
 <request type="lease"/>
 EOF
-    dhcp_wicked_apply $1 || return $?
+    dhcp_wicked_apply "$_ipv" || return $?
 
-    if [ "$1" = "-6" ] ; then
+    if [ "$_ipv" = "-6" ] ; then
         wait_for_ipv6_dad $netif
     fi
 
