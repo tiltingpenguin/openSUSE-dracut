@@ -4,6 +4,8 @@ TEST_DESCRIPTION="root filesystem on LVM PV with thin pool"
 
 KVERSION=${KVERSION-$(uname -r)}
 
+export basedir=/usr/lib/dracut
+
 # Uncomment this to debug failures
 #DEBUGFAIL="rd.break rd.shell"
 
@@ -38,7 +40,8 @@ test_setup() {
             mkdir -p root usr/bin usr/lib usr/lib64 usr/sbin
         )
         inst_multiple sh df free ls shutdown poweroff stty cat ps ln \
-            mount dmesg mkdir cp dd sync
+            mount dmesg mkdir cp ping dd sync
+        inst_multiple -o wicked dhclient arping arping2
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
             [ -f ${_terminfodir}/l/linux ] && break
         done
@@ -77,6 +80,7 @@ test_setup() {
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
         -m "bash lvm mdraid kernel-modules qemu" \
         -d "piix ide-gd_mod ata_piix ext2 sd_mod" \
+        -o "systemd-initrd systemd" \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.makeroot "$KVERSION" || return 1
     rm -rf -- "$TESTDIR"/overlay
@@ -122,4 +126,4 @@ test_cleanup() {
 }
 
 # shellcheck disable=SC1090
-. "$testdir"/test-functions
+. "$basedir"/test/test-functions
