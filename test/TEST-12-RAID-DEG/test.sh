@@ -4,6 +4,8 @@ TEST_DESCRIPTION="root filesystem on an encrypted LVM PV on a degraded RAID-5"
 
 KVERSION=${KVERSION-$(uname -r)}
 
+export basedir=/usr/lib/dracut
+
 # Uncomment this to debug failures
 #DEBUGFAIL="rd.shell rd.break rd.debug"
 #DEBUGFAIL="rd.shell rd.break=pre-mount udev.log-priority=debug"
@@ -24,7 +26,7 @@ client_run() {
 
     "$testdir"/run-qemu \
         "${disk_args[@]}" \
-        -append "panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot $* systemd.log_target=kmsg root=LABEL=root rw rd.retry=10 rd.info console=ttyS0,115200n81 log_buf_len=2M selinux=0 rd.shell=0 $DEBUGFAIL " \
+        -append "nompath panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot $* systemd.log_target=kmsg root=LABEL=root rw rd.retry=10 rd.info console=ttyS0,115200n81 log_buf_len=2M selinux=0 rd.shell=0 $DEBUGFAIL " \
         -initrd "$TESTDIR"/initramfs.testing
 
     if ! grep -U --binary-files=binary -F -m 1 -q dracut-root-block-success "$TESTDIR"/marker.img; then
@@ -71,7 +73,8 @@ test_setup() {
             mkdir -p root usr/bin usr/lib usr/lib64 usr/sbin
         )
         inst_multiple sh df free ls shutdown poweroff stty cat ps ln \
-            mount dmesg mkdir cp dd sync
+            mount dmesg mkdir cp ping dd sync
+        inst multiple -o wicked dhclient arping arping2
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
             [ -f ${_terminfodir}/l/linux ] && break
         done
@@ -109,6 +112,7 @@ test_setup() {
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
         -m "bash crypt lvm mdraid kernel-modules qemu" \
         -d "piix ide-gd_mod ata_piix ext2 sd_mod" \
+        -o "systemd-initrd systemd" \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.makeroot "$KVERSION" || return 1
     rm -rf -- "$TESTDIR"/overlay
@@ -167,4 +171,4 @@ test_cleanup() {
 }
 
 # shellcheck disable=SC1090
-. "$testdir"/test-functions
+. "$basedir"/test/test-functions
