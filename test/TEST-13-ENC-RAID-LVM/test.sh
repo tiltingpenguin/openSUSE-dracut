@@ -4,6 +4,8 @@ TEST_DESCRIPTION="root filesystem on LVM on encrypted partitions of a RAID-5"
 
 KVERSION=${KVERSION-$(uname -r)}
 
+export basedir=/usr/lib/dracut
+
 # Uncomment this to debug failures
 #DEBUGFAIL="rd.shell rd.break" # udev.log-priority=debug
 #DEBUGFAIL="rd.shell rd.udev.log-priority=debug loglevel=70 systemd.log_target=kmsg systemd.log_target=debug"
@@ -26,7 +28,7 @@ test_run() {
 
     "$testdir"/run-qemu \
         "${disk_args[@]}" \
-        -append "panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot root=/dev/dracut/root rw rd.auto rd.retry=20 console=ttyS0,115200n81 selinux=0 rd.debug rootwait $LUKSARGS rd.shell=0 $DEBUGFAIL" \
+        -append "nompath panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot root=/dev/dracut/root rw rd.auto rd.retry=20 console=ttyS0,115200n81 selinux=0 rd.debug rootwait $LUKSARGS rd.shell=0 $DEBUGFAIL" \
         -initrd "$TESTDIR"/initramfs.testing
     grep -U --binary-files=binary -F -m 1 -q dracut-root-block-success "$TESTDIR"/marker.img || return 1
     echo "CLIENT TEST END: [OK]"
@@ -36,7 +38,7 @@ test_run() {
     echo "CLIENT TEST START: Any LUKS"
     "$testdir"/run-qemu \
         "${disk_args[@]}" \
-        -append "panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot root=/dev/dracut/root rw quiet rd.auto rd.retry=20 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $DEBUGFAIL" \
+        -append "nompath panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot root=/dev/dracut/root rw quiet rd.auto rd.retry=20 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $DEBUGFAIL" \
         -initrd "$TESTDIR"/initramfs.testing
     grep -U --binary-files=binary -F -m 1 -q dracut-root-block-success "$TESTDIR"/marker.img || return 1
     echo "CLIENT TEST END: [OK]"
@@ -46,7 +48,7 @@ test_run() {
     echo "CLIENT TEST START: Wrong LUKS UUID"
     "$testdir"/run-qemu \
         "${disk_args[@]}" \
-        -append "panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot root=/dev/dracut/root rw quiet rd.auto rd.retry=10 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $DEBUGFAIL rd.luks.uuid=failme" \
+        -append "nompath panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot root=/dev/dracut/root rw quiet rd.auto rd.retry=10 rd.info console=ttyS0,115200n81 selinux=0 rd.debug  $DEBUGFAIL rd.luks.uuid=failme" \
         -initrd "$TESTDIR"/initramfs.testing
     grep -U --binary-files=binary -F -m 1 -q dracut-root-block-success "$TESTDIR"/marker.img && return 1
     echo "CLIENT TEST END: [OK]"
@@ -68,7 +70,8 @@ test_setup() {
             mkdir -p root usr/bin usr/lib usr/lib64 usr/sbin
         )
         inst_multiple sh df free ls shutdown poweroff stty cat ps ln \
-            mount dmesg mkdir cp dd
+            mount dmesg mkdir cp ping dd
+        inst_multiple -o wicked dhclient arping arping2
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
             [ -f ${_terminfodir}/l/linux ] && break
         done
@@ -106,6 +109,7 @@ test_setup() {
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
         -m "bash crypt lvm mdraid kernel-modules qemu" \
         -d "piix ide-gd_mod ata_piix ext2 sd_mod" \
+        -o "systemd-initrd systemd" \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.makeroot "$KVERSION" || return 1
     rm -rf -- "$TESTDIR"/overlay
@@ -166,4 +170,4 @@ test_cleanup() {
 }
 
 # shellcheck disable=SC1090
-. "$testdir"/test-functions
+. "$basedir"/test/test-functions
