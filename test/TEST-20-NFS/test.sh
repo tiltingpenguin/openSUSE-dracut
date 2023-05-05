@@ -7,6 +7,8 @@ TEST_DESCRIPTION="root filesystem on NFS with $USE_NETWORK"
 
 KVERSION=${KVERSION-$(uname -r)}
 
+export basedir=/usr/lib/dracut
+
 # Uncomment this to debug failures
 #DEBUGFAIL="rd.debug loglevel=7 rd.break=initqueue rd.shell"
 SERVER_DEBUG="rd.debug loglevel=7"
@@ -26,7 +28,7 @@ run_server() {
         -net nic,macaddr=52:54:00:12:34:56,model=e1000 \
         -serial "${SERIAL:-"file:$TESTDIR/server.log"}" \
         -device i6300esb -watchdog-action poweroff \
-        -append "panic=1 oops=panic softlockup_panic=1 root=LABEL=dracut rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0 $SERVER_DEBUG" \
+        -append "nompath panic=1 oops=panic softlockup_panic=1 root=LABEL=dracut rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0 $SERVER_DEBUG" \
         -initrd "$TESTDIR"/initramfs.server \
         -pidfile "$TESTDIR"/server.pid -daemonize || return 1
     chmod 644 "$TESTDIR"/server.pid || return 1
@@ -37,7 +39,7 @@ run_server() {
     if ! [[ $SERIAL ]]; then
         while ! grep -q Serving "$TESTDIR"/server.log; do
             echo "Waiting for the server to startup"
-            sleep 1
+            sleep 4
         done
     else
         echo Sleeping 10 seconds to give the server a head start
@@ -70,8 +72,9 @@ client_test() {
         "${disk_args[@]}" \
         -net nic,macaddr="$mac",model=e1000 \
         -net socket,connect=127.0.0.1:12320 \
+        -serial "${SERIAL:-"file:$TESTDIR/client.log"}" \
         -device i6300esb -watchdog-action poweroff \
-        -append "panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot rd.shell=0 $cmdline $DEBUGFAIL rd.retry=10 quiet ro console=ttyS0,115200n81 selinux=0" \
+        -append "nompath panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot rd.shell=0 $cmdline $DEBUGFAIL rd.retry=10 quiet ro console=ttyS0,115200n81 selinux=0" \
         -initrd "$TESTDIR"/initramfs.testing
 
     # shellcheck disable=SC2181
@@ -363,6 +366,7 @@ test_setup() {
     "$basedir"/dracut.sh -l -i "$TESTDIR"/server/overlay / \
         -m "bash rootfs-block kernel-modules qemu" \
         -d "piix ide-gd_mod ata_piix ext3 sd_mod" \
+        -o "systemd-initrd systemd" \
         --nomdadmconf \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.makeroot "$KVERSION" || return 1
@@ -415,7 +419,7 @@ test_setup() {
     )
     # Make server's dracut image
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
-        -m "dash rootfs-block debug kernel-modules watchdog qemu network network-legacy" \
+        -m "bash rootfs-block debug kernel-modules watchdog qemu network network-legacy" \
         -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod e1000 i6300esb" \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.server "$KVERSION" || return 1
@@ -431,4 +435,4 @@ test_cleanup() {
 }
 
 # shellcheck disable=SC1090
-. "$testdir"/test-functions
+. "$basedir"/test/test-functions
