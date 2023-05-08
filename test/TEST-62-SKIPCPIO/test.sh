@@ -5,6 +5,8 @@
 # shellcheck disable=SC2034
 TEST_DESCRIPTION="test skipcpio"
 
+export basedir=/usr/lib/dracut
+
 test_check() {
     cpio dd truncate find sort diff &> /dev/null
 }
@@ -40,7 +42,7 @@ skipcpio_simple() {
 2
 EOF
 
-    "$basedir"/src/skipcpio/skipcpio "$CPIO_TESTDIR/skipcpio_simple.cpio" \
+    "$basedir"/skipcpio "$CPIO_TESTDIR/skipcpio_simple.cpio" \
         | cpio -i --list > "$CPIO_TESTDIR/skipcpio_simple.list"
     cat << EOF | diff - "$CPIO_TESTDIR/skipcpio_simple.list"
 .
@@ -54,6 +56,10 @@ test_run() {
     set -x
     set -e
 
+    # bug in setup: export CPIO_TESTDIR cannot work for test.sh --run
+    . test.sh --setup
+    export CPIO_TESTDIR
+
     skipcpio_simple
 
     return 0
@@ -62,7 +68,6 @@ test_run() {
 test_setup() {
     CPIO_TESTDIR=$(mktemp --directory -p "$TESTDIR" cpio-test.XXXXXXXXXX) \
         || return 1
-    export CPIO_TESTDIR
     return 0
 }
 
@@ -72,4 +77,4 @@ test_cleanup() {
 }
 
 # shellcheck disable=SC1090
-. "$testdir"/test-functions
+. "$basedir"/test/test-functions
