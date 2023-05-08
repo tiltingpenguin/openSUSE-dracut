@@ -7,6 +7,8 @@ TEST_DESCRIPTION="root filesystem over multiple iSCSI with $USE_NETWORK"
 
 KVERSION=${KVERSION-$(uname -r)}
 
+export basedir=/usr/lib/dracut
+
 #DEBUGFAIL="rd.shell rd.break rd.debug loglevel=7 "
 #SERVER_DEBUG="rd.debug loglevel=7"
 #SERIAL="tcp:127.0.0.1:9999"
@@ -28,7 +30,7 @@ run_server() {
         -net nic,macaddr=52:54:00:12:34:56,model=e1000 \
         -net nic,macaddr=52:54:00:12:34:57,model=e1000 \
         -net socket,listen=127.0.0.1:12331 \
-        -append "panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot root=/dev/disk/by-id/ata-disk_serverroot rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0 $SERVER_DEBUG" \
+        -append "nompath panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot root=/dev/disk/by-id/ata-disk_serverroot rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0 $SERVER_DEBUG" \
         -initrd "$TESTDIR"/initramfs.server \
         -pidfile "$TESTDIR"/server.pid -daemonize || return 1
     chmod 644 "$TESTDIR"/server.pid || return 1
@@ -67,6 +69,7 @@ run_client() {
         -append "panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot rw rd.auto rd.retry=50 console=ttyS0,115200n81 selinux=0 rd.debug=0 rd.shell=0 $DEBUGFAIL $*" \
         -initrd "$TESTDIR"/initramfs.testing
     if ! grep -U --binary-files=binary -F -m 1 -q iscsi-OK "$TESTDIR"/marker.img; then
+        cp "$TESTDIR"/server.log /tmp/dracut-testsuite-logs/
         echo "CLIENT TEST END: $test_name [FAILED - BAD EXIT]"
         return 1
     fi
@@ -130,6 +133,14 @@ test_run() {
     fi
     do_test_run
     ret=$?
+
+    TESTNAME=$(basename $(pwd))
+    for file in $(ls $TESTDIR); do
+        #[[ $file = *.img ]] && continue
+        [[ $file = *.log ]] || continue
+        cp -v $TESTDIR/$file /tmp/dracut-testsuite-logs/$TESTNAME-$file
+    done
+
     if [[ -s $TESTDIR/server.pid ]]; then
         kill -TERM "$(cat "$TESTDIR"/server.pid)"
         rm -f -- "$TESTDIR"/server.pid
@@ -192,8 +203,9 @@ test_setup() {
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
-        -m "dash crypt lvm mdraid kernel-modules qemu" \
+        -m "bash crypt lvm mdraid kernel-modules qemu" \
         -d "piix ide-gd_mod ata_piix ext3 sd_mod" \
+        -o "systemd-initrd systemd" \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.makeroot "$KVERSION" || return 1
     rm -rf -- "$TESTDIR"/overlay
@@ -283,7 +295,7 @@ test_setup() {
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
-        -m "dash rootfs-block kernel-modules qemu" \
+        -m "bash rootfs-block kernel-modules qemu" \
         -d "piix ide-gd_mod ata_piix ext3 sd_mod" \
         --nomdadmconf \
         --no-hostonly-cmdline -N \
@@ -336,7 +348,7 @@ test_setup() {
     )
     # Make server's dracut image
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
-        -a "dash rootfs-block debug kernel-modules network network-legacy" \
+        -a "bash rootfs-block debug kernel-modules network network-legacy" \
         -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod e1000 drbg" \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.server "$KVERSION" || return 1
@@ -352,4 +364,4 @@ test_cleanup() {
 }
 
 # shellcheck disable=SC1090
-. "$testdir"/test-functions
+. "$basedir"/test/test-functions
