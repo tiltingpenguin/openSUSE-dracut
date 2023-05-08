@@ -50,9 +50,9 @@ linkup() {
 ip addr add 127.0.0.1/8 dev lo
 ip link set lo up
 
-wait_for_if_link enx525400123456
-ip addr add 192.168.50.1/24 dev enx525400123456
-linkup enx525400123456
+wait_for_if_link eth0
+ip addr add 192.168.50.1/24 dev eth0
+linkup eth0
 
 modprobe af_packet
 nbd-server
