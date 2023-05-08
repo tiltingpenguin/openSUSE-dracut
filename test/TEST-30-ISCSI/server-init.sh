@@ -61,11 +61,14 @@ linkup enx525400123457
 
 modprobe af_packet
 
+wait_for_route_ok
+
 : > /var/lib/dhcpd/dhcpd.leases
 chmod 777 /var/lib/dhcpd/dhcpd.leases
 dhcpd -d -cf /etc/dhcpd.conf -lf /var/lib/dhcpd/dhcpd.leases &
 
 tgtd
+sleep 10
 tgtadm --lld iscsi --mode target --op new --tid 1 --targetname iqn.2009-06.dracut:target0
 tgtadm --lld iscsi --mode target --op new --tid 2 --targetname iqn.2009-06.dracut:target1
 tgtadm --lld iscsi --mode target --op new --tid 3 --targetname iqn.2009-06.dracut:target2
@@ -75,6 +78,8 @@ tgtadm --lld iscsi --mode logicalunit --op new --tid 3 --lun 3 -b /dev/disk/by-i
 tgtadm --lld iscsi --mode target --op bind --tid 1 -I 192.168.50.101
 tgtadm --lld iscsi --mode target --op bind --tid 2 -I 192.168.51.101
 tgtadm --lld iscsi --mode target --op bind --tid 3 -I 192.168.50.101
+
+tcpdump -i enx525400123456 &
 
 # Wait forever for the VM to die
 echo "Serving iSCSI"

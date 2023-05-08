@@ -8,7 +8,7 @@ TEST_DESCRIPTION="root filesystem over iSCSI with $USE_NETWORK"
 KVERSION=${KVERSION-$(uname -r)}
 
 #DEBUGFAIL="rd.shell rd.break rd.debug loglevel=7 "
-#SERVER_DEBUG="rd.debug loglevel=7"
+SERVER_DEBUG="rd.debug loglevel=7"
 #SERIAL="tcp:127.0.0.1:9999"
 
 run_server() {
@@ -28,7 +28,7 @@ run_server() {
         -net nic,macaddr=52:54:00:12:34:56,model=e1000 \
         -net nic,macaddr=52:54:00:12:34:57,model=e1000 \
         -net socket,listen=127.0.0.1:12330 \
-        -append "panic=1 oops=panic softlockup_panic=1 quiet root=/dev/disk/by-id/ata-disk_serverroot rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0 $SERVER_DEBUG" \
+        -append "nompath panic=1 oops=panic softlockup_panic=1 quiet root=/dev/disk/by-id/ata-disk_serverroot rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0 $SERVER_DEBUG" \
         -initrd "$TESTDIR"/initramfs.server \
         -pidfile "$TESTDIR"/server.pid -daemonize || return 1
     chmod 644 "$TESTDIR"/server.pid || return 1
@@ -37,11 +37,16 @@ run_server() {
     tty -s && stty sane
 
     if ! [[ $SERIAL ]]; then
+    let count=0;
         while :; do
+            if [ $count -gt 300 ]; then
+                return 1
+            fi
             grep Serving "$TESTDIR"/server.log && break
             echo "Waiting for the server to startup"
             tail "$TESTDIR"/server.log
             sleep 1
+            let count++
         done
     else
         echo Sleeping 10 seconds to give the server a head start
@@ -81,16 +86,17 @@ run_client() {
 
 do_test_run() {
     initiator=$(iscsi-iname)
+    _irootparam="rd.iscsi.param=node.conn[0].timeo.noop_out_interval=120 rd.iscsi.param=node.conn[0].timeo.noop_out_timeout=120 node.session.timeo.replacement_timeout=86400"
 
     run_client "root=dhcp" \
-        "root=/dev/root netroot=dhcp ip=enp0s1:dhcp" \
-        "rd.iscsi.initiator=$initiator" \
+        "nompath root=/dev/root netroot=dhcp ip=enp0s1:dhcp" \
+        "rd.iscsi.initiator=$initiator $_irootparam" \
         || return 1
 
     run_client "netroot=iscsi target0" \
-        "root=LABEL=singleroot netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target0" \
+        "nompath root=LABEL=singleroot netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target0" \
         "ip=192.168.50.101::192.168.50.1:255.255.255.0:iscsi-1:enp0s1:off" \
-        "rd.iscsi.initiator=$initiator" \
+        "rd.iscsi.initiator=$initiator $_irootparam" \
         || return 1
 
     run_client "netroot=iscsi target1 target2" \
@@ -98,11 +104,11 @@ do_test_run() {
         "ip=dhcp" \
         "netroot=iscsi:192.168.51.1::::iqn.2009-06.dracut:target1" \
         "netroot=iscsi:192.168.50.1::::iqn.2009-06.dracut:target2" \
-        "rd.iscsi.initiator=$initiator" \
+        "rd.iscsi.initiator=$initiator $_irootparam" \
         || return 1
 
     run_client "root=ibft" \
-        "root=LABEL=singleroot" \
+        "nompath root=LABEL=singleroot" \
         "rd.iscsi.ibft=1" \
         "rd.iscsi.firmware=1" \
         || return 1
@@ -117,7 +123,16 @@ test_run() {
         return 1
     fi
     do_test_run
+
     ret=$?
+
+    TESTNAME=$(basename $(pwd))
+    for file in $(ls $TESTDIR); do
+        #[[ $file = *.img ]] && continue
+        [[ $file = *.log ]] || continue
+        cp -v $TESTDIR/$file /root/dracut-testsuite-logs/$TESTNAME-$file
+    done
+
     if [[ -s $TESTDIR/server.pid ]]; then
         kill -TERM "$(cat "$TESTDIR"/server.pid)"
         rm -f -- "$TESTDIR"/server.pid
@@ -180,8 +195,9 @@ test_setup() {
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
-        -m "dash crypt lvm mdraid kernel-modules qemu" \
+        -m "bash crypt lvm mdraid kernel-modules qemu" \
         -d "piix ide-gd_mod ata_piix ext3 sd_mod" \
+        -o "systemd-initrd systemd" \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.makeroot "$KVERSION" || return 1
     rm -rf -- "$TESTDIR"/overlay
@@ -248,7 +264,7 @@ test_setup() {
         _nsslibs=${_nsslibs#|}
         _nsslibs=${_nsslibs%|}
 
-        inst_libdir_file -n "$_nsslibs" 'libnss_*.so*'
+        inst_libdir_file -n "$_nsslibs" 'ltestdirbnss_*.so*'
 
         cp -a /etc/ld.so.conf* "$initdir"/etc
         ldconfig -r "$initdir"
@@ -271,8 +287,9 @@ test_setup() {
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
-        -m "dash rootfs-block kernel-modules qemu" \
+        -m "bash rootfs-block kernel-modules qemu" \
         -d "piix ide-gd_mod ata_piix ext3 sd_mod" \
+        -o "systemd-initrd systemd" \
         --nomdadmconf \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.makeroot "$KVERSION" || return 1
@@ -289,7 +306,7 @@ test_setup() {
     # Invoke KVM and/or QEMU to actually create the target filesystem.
     "$testdir"/run-qemu \
         "${disk_args[@]}" \
-        -append "root=/dev/dracut/root rw rootfstype=ext3 quiet console=ttyS0,115200n81 selinux=0" \
+        -append "nompath root=/dev/dracut/root rw rootfstype=ext3 quiet console=ttyS0,115200n81 selinux=0" \
         -initrd "$TESTDIR"/initramfs.makeroot || return 1
     grep -U --binary-files=binary -F -m 1 -q dracut-root-block-created "$TESTDIR"/marker.img || return 1
     rm -- "$TESTDIR"/marker.img
@@ -325,8 +342,9 @@ test_setup() {
     )
     # Make server's dracut image
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
-        -a "dash rootfs-block debug kernel-modules network network-legacy" \
+        -a "bash rootfs-block debug kernel-modules network network-legacy" \
         -d "af_packet piix ide-gd_mod ata_piix ext3 sd_mod e1000 drbg" \
+        -o "systemd-initrd systemd" \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.server "$KVERSION" || return 1
 
