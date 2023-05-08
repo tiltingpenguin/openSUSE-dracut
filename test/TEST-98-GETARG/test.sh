@@ -6,6 +6,8 @@
 # shellcheck disable=SC2034
 TEST_DESCRIPTION="dracut getarg command"
 
+export basedir=/usr/lib/dracut
+
 test_check() {
     return 0
 }
@@ -154,4 +156,4 @@ test_cleanup() {
 }
 
 # shellcheck disable=SC1090
-. "$testdir"/test-functions
+. "$basedir"/test/test-functions
