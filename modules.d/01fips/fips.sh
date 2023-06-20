@@ -200,7 +200,7 @@ do_fips() {
             BOOT_IMAGE="$(echo "${BOOT_IMAGE}" | sed 's/^(.*)//')"
 
             BOOT_IMAGE_NAME="${BOOT_IMAGE##*/}"
-            BOOT_IMAGE_PATH="${BOOT_IMAGE%${BOOT_IMAGE_NAME}}"
+            BOOT_IMAGE_PATH="${BOOT_IMAGE%"${BOOT_IMAGE_NAME}"}"
 
             local _vmname
             _vmname=$(get_vmname)

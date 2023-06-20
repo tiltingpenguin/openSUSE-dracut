@@ -111,8 +111,9 @@ if [[ $1 ]]; then
 else
     if [[ -d /efi/Default ]] || [[ -d /boot/Default ]] || [[ -d /boot/efi/Default ]]; then
         MACHINE_ID="Default"
-    elif [[ -f /etc/machine-id ]]; then
+    elif [[ -s /etc/machine-id ]]; then
         read -r MACHINE_ID < /etc/machine-id
+        [[ $MACHINE_ID == "uninitialized" ]] && MACHINE_ID="Default"
     else
         MACHINE_ID="Default"
     fi
@@ -174,6 +175,8 @@ extract_files() {
     for f in "${!filenames[@]}"; do
         [[ $nofileinfo ]] || echo "initramfs:/$f"
         [[ $nofileinfo ]] || echo "========================================================================"
+        # shellcheck disable=SC2001
+        [[ $f == *"\\x"* ]] && f=$(echo "$f" | sed 's/\\x.\{2\}/????/g')
         $CAT "$image" 2> /dev/null | cpio --extract --verbose --quiet --to-stdout "$f" 2> /dev/null
         ((ret += $?))
         [[ $nofileinfo ]] || echo "========================================================================"
@@ -217,7 +220,9 @@ list_squash_content() {
 unpack_files() {
     if ((${#filenames[@]} > 0)); then
         for f in "${!filenames[@]}"; do
-            $CAT "$image" 2> /dev/null | cpio -id --quiet $verbose $f
+            # shellcheck disable=SC2001
+            [[ $f == *"\\x"* ]] && f=$(echo "$f" | sed 's/\\x.\{2\}/????/g')
+            $CAT "$image" 2> /dev/null | cpio -id --quiet $verbose "$f"
             ((ret += $?))
         done
     else
@@ -335,6 +340,11 @@ case $bin in
         fi
         ;;
 esac
+
+type "${CAT%% *}" > /dev/null 2>&1 || {
+    echo "Need '${CAT%% *}' to unpack the initramfs."
+    exit 1
+}
 
 skipcpio() {
     $SKIP "$@" | $ORIG_CAT

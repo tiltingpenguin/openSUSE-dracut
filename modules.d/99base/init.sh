@@ -299,6 +299,9 @@ udevadm info --cleanup-db
 
 debug_off # Turn off debugging for this section
 
+CAPSH=$(command -v capsh)
+SWITCH_ROOT=$(command -v switch_root)
+
 # unexport some vars
 export_n root rflags fstype netroot NEWROOT
 unset CMDLINE
@@ -328,7 +331,8 @@ if getarg init= > /dev/null; then
     ignoreargs="console BOOT_IMAGE"
     # only pass arguments after init= to the init
     CLINE=${CLINE#*init=}
-    set -- "$CLINE"
+    # shellcheck disable=SC2086
+    set -- $CLINE
     shift # clear out the rest of the "init=" arg
     for x in "$@"; do
         for s in $ignoreargs; do
@@ -339,7 +343,8 @@ if getarg init= > /dev/null; then
     unset CLINE
 else
     debug_off # Turn off debugging for this section
-    set -- "$CLINE"
+    # shellcheck disable=SC2086
+    set -- $CLINE
     for x in "$@"; do
         case "$x" in
             [0-9] | s | S | single | emergency | auto)
@@ -368,8 +373,6 @@ info "Switching root"
 
 unset PS4
 
-CAPSH=$(command -v capsh)
-SWITCH_ROOT=$(command -v switch_root)
 PATH=$OLDPATH
 export PATH
 
@@ -378,10 +381,10 @@ if [ -f /etc/capsdrop ]; then
     info "Calling $INIT with capabilities $CAPS_INIT_DROP dropped."
     unset RD_DEBUG
     exec "$CAPSH" --drop="$CAPS_INIT_DROP" -- \
-        -c "exec switch_root \"$NEWROOT\" \"$INIT\" $initargs" \
+        -c "exec \"$SWITCH_ROOT\" \"$NEWROOT\" \"$INIT\" $initargs" \
         || {
             warn "Command:"
-            warn capsh --drop="$CAPS_INIT_DROP" -- -c exec switch_root "$NEWROOT" "$INIT" "$initargs"
+            warn capsh --drop="$CAPS_INIT_DROP" -- -c exec "$SWITCH_ROOT" "$NEWROOT" "$INIT" "$initargs"
             warn "failed."
             emergency_shell
         }

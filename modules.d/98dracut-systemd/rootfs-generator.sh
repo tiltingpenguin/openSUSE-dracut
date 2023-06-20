@@ -6,28 +6,10 @@ generator_wait_for_dev() {
     local _name
     local _timeout
 
-    _name="$(str_replace "$1" '/' '\x2f')"
+    _name=$(dev_unit_name "$1")
     _timeout=$(getarg rd.timeout)
     _timeout=${_timeout:-0}
 
-    if ! [ -e "$hookdir/initqueue/finished/devexists-${_name}.sh" ]; then
-
-        # If a LUKS device needs unlocking via systemd in the initrd, assume
-        # it's for the root device. In that case, don't block on it if it's
-        # after remote-fs-pre.target since the initqueue is ordered before it so
-        # it will never actually show up (think Tang-pinned rootfs).
-        cat > "$hookdir/initqueue/finished/devexists-${_name}.sh" << EOF
-if ! grep -q After=remote-fs-pre.target /run/systemd/generator/systemd-cryptsetup@*.service 2>/dev/null; then
-    [ -e "$1" ]
-fi
-EOF
-        {
-            printf '[ -e "%s" ] || ' "$1"
-            printf 'warn "\"%s\" does not exist"\n' "$1"
-        } >> "$hookdir/emergency/80-${_name}.sh"
-    fi
-
-    _name=$(dev_unit_name "$1")
     if ! [ -L "$GENERATOR_DIR"/initrd.target.wants/"${_name}".device ]; then
         [ -d "$GENERATOR_DIR"/initrd.target.wants ] || mkdir -p "$GENERATOR_DIR"/initrd.target.wants
         ln -s ../"${_name}".device "$GENERATOR_DIR"/initrd.target.wants/"${_name}".device
@@ -44,14 +26,13 @@ EOF
 }
 
 generator_mount_rootfs() {
-    local _type=$2
-    local _flags=$3
+    local _type="$2"
+    local _flags="$3"
     local _name
 
     [ -z "$1" ] && return 0
 
     _name=$(dev_unit_name "$1")
-    [ -d "$GENERATOR_DIR" ] || mkdir -p "$GENERATOR_DIR"
     if ! [ -f "$GENERATOR_DIR"/sysroot.mount ]; then
         {
             echo "[Unit]"
@@ -77,12 +58,12 @@ generator_fsck_after_pre_mount() {
     [ -z "$1" ] && return 0
 
     _name=$(dev_unit_name "$1")
-    [ -d /run/systemd/generator/systemd-fsck@"${_name}".service.d ] || mkdir -p /run/systemd/generator/systemd-fsck@"${_name}".service.d
-    if ! [ -f /run/systemd/generator/systemd-fsck@"${_name}".service.d/after-pre-mount.conf ]; then
+    [ -d "$GENERATOR_DIR"/systemd-fsck@"${_name}".service.d ] || mkdir -p "$GENERATOR_DIR"/systemd-fsck@"${_name}".service.d
+    if ! [ -f "$GENERATOR_DIR"/systemd-fsck@"${_name}".service.d/after-pre-mount.conf ]; then
         {
             echo "[Unit]"
             echo "After=dracut-pre-mount.service"
-        } > /run/systemd/generator/systemd-fsck@"${_name}".service.d/after-pre-mount.conf
+        } > "$GENERATOR_DIR"/systemd-fsck@"${_name}".service.d/after-pre-mount.conf
     fi
 
 }
@@ -101,10 +82,12 @@ case "${root#block:}" in
         ;;
 esac
 
-GENERATOR_DIR="$1"
-
 if [ "$rootok" = "1" ]; then
-    generator_wait_for_dev "${root#block:}" "$RDRETRY"
+    GENERATOR_DIR="$1"
+    [ -z "$GENERATOR_DIR" ] && exit 1
+    [ -d "$GENERATOR_DIR" ] || mkdir -p "$GENERATOR_DIR"
+
+    generator_wait_for_dev "${root#block:}"
     generator_fsck_after_pre_mount "${root#block:}"
     strstr "$(cat /proc/cmdline)" 'root=' || generator_mount_rootfs "${root#block:}" "$(getarg rootfstype=)" "$(getarg rootflags=)"
 fi

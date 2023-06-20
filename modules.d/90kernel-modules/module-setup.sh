@@ -28,7 +28,8 @@ installkernel() {
             scsi_dh_rdac scsi_dh_emc scsi_dh_alua \
             =drivers/usb/storage \
             =ide nvme vmd \
-            virtio_blk virtio_scsi
+            virtio_blk virtio_scsi \
+            =drivers/ufs
 
         dracut_instmods -o -s "${_blockfuncs}" "=drivers"
     }
@@ -54,7 +55,7 @@ installkernel() {
             "=drivers/watchdog"
 
         instmods \
-            yenta_socket \
+            yenta_socket spi_pxa2xx_platform \
             atkbd i8042 firewire-ohci pcmcia hv-vmbus \
             virtio virtio_ring virtio_pci pci_hyperv \
             "=drivers/pcmcia"
@@ -70,6 +71,7 @@ installkernel() {
                 "=drivers/gpio" \
                 "=drivers/hwmon" \
                 "=drivers/hwspinlock" \
+                "=drivers/interconnect" \
                 "=drivers/i2c/busses" \
                 "=drivers/mailbox" \
                 "=drivers/memory" \

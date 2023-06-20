@@ -32,6 +32,7 @@ depends() {
 install() {
 
     inst_multiple -o \
+        "$tmpfilesdir"/systemd-network.conf \
         "$dbussystem"/org.freedesktop.network1.conf \
         "$dbussystemservices"/org.freedesktop.network1.service \
         "$systemdutildir"/networkd.conf \
@@ -39,7 +40,9 @@ install() {
         "$systemdutildir"/systemd-networkd \
         "$systemdutildir"/systemd-network-generator \
         "$systemdutildir"/systemd-networkd-wait-online \
+        "$systemdnetwork"/80-6rd-tunnel.network \
         "$systemdnetwork"/80-container-host0.network \
+        "$systemdnetwork"/80-container-vb.network \
         "$systemdnetwork"/80-container-ve.network \
         "$systemdnetwork"/80-container-vz.network \
         "$systemdnetwork"/80-vm-vt.network \
@@ -49,6 +52,7 @@ install() {
         "$systemdsystemunitdir"/systemd-networkd.socket \
         "$systemdsystemunitdir"/systemd-network-generator.service \
         "$systemdsystemunitdir"/systemd-networkd-wait-online.service \
+        "$systemdsystemunitdir"/systemd-networkd-wait-online@.service \
         "$systemdsystemunitdir"/systemd-network-generator.service \
         "$sysusers"/systemd-network.conf \
         networkctl ip
@@ -69,13 +73,15 @@ install() {
             "$systemdutilconfdir/networkd.conf.d/*.conf" \
             "$systemdnetworkconfdir/*" \
             "$systemdsystemconfdir"/systemd-networkd.service \
-            "$systemdsystemconfdir/systemd-networkd.service/*.conf" \
+            "$systemdsystemconfdir/systemd-networkd.service.d/*.conf" \
             "$systemdsystemconfdir"/systemd-networkd.socket \
-            "$systemdsystemconfdir/systemd-networkd.socket/*.conf" \
+            "$systemdsystemconfdir/systemd-networkd.socket.d/*.conf" \
             "$systemdsystemconfdir"/systemd-network-generator.service \
-            "$systemdsystemconfdir/systemd-network-generator.service/*.conf" \
+            "$systemdsystemconfdir/systemd-network-generator.service.d/*.conf" \
             "$systemdsystemconfdir"/systemd-networkd-wait-online.service \
-            "$systemdsystemconfdir/systemd-networkd-wait-online.service/*.conf" \
+            "$systemdsystemconfdir/systemd-networkd-wait-online.service.d/*.conf" \
+            "$systemdsystemconfdir"/systemd-networkd-wait-online@.service \
+            "$systemdsystemconfdir/systemd-networkd-wait-online@.service.d/*.conf" \
             "$sysusersconfdir"/systemd-network.conf
     fi
 }

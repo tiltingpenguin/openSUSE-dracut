@@ -12,6 +12,9 @@
 # routing,dns,dhcp-options,etc.
 #
 
+# we really need to use `expr substr` with dash
+# shellcheck disable=SC2003 disable=SC2308
+
 command -v getarg > /dev/null || . /lib/dracut-lib.sh
 
 if [ -n "$netroot" ] && [ -z "$(getarg ip=)" ] && [ -z "$(getarg BOOTIF=)" ]; then
@@ -69,7 +72,7 @@ for p in $(getargs ip=); do
     for autoopt in $(str_replace "$autoconf" "," " "); do
         case $autoopt in
             error) die "Error parsing option 'ip=$p'" ;;
-            bootp | rarp | both) die "Sorry, ip=$autoopt is currenty unsupported" ;;
+            bootp | rarp | both) die "Sorry, ip=$autoopt is currently unsupported" ;;
             none | off)
                 [ -z "$ip" ] \
                     && die "For argument 'ip=$p'\nValue '$autoopt' without static configuration does not make sense"
@@ -139,7 +142,7 @@ fi
 
 # This ensures that BOOTDEV is always first in IFACES
 if [ -n "$BOOTDEV" ] && [ -n "$IFACES" ]; then
-    IFACES="${IFACES%$BOOTDEV*} ${IFACES#*$BOOTDEV}"
+    IFACES="${IFACES%"$BOOTDEV"*} ${IFACES#*"$BOOTDEV"}"
     IFACES="$BOOTDEV $IFACES"
 fi
 

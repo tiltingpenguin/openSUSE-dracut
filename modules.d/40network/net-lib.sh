@@ -245,7 +245,7 @@ set_ifname() {
 
 # pxelinux provides macaddr '-' separated, but we need ':'
 fix_bootif() {
-    local macaddr=${1}
+    local macaddr="${1}"
     local IFS='-'
     # shellcheck disable=SC2086
     macaddr=$(printf '%s:' ${macaddr})
@@ -313,9 +313,9 @@ ibft_to_cmdline() {
                 [ -e "${iface}"/hostname ] && read -r hostname < "${iface}"/hostname
                 if [ "$family" = "ipv6" ]; then
                     if [ -n "$ip" ]; then
-                        [ -n "$prefix" ] || prefix=64
-                        ip="[${ip}/${prefix}]"
-                        mask=
+                        [ -n "$prefix" ] || prefix=128
+                        ip="[${ip}]"
+                        mask=$prefix
                     fi
                     if [ -n "$gw" ]; then
                         gw="[${gw}]"
@@ -397,11 +397,11 @@ parse_iscsi_root() {
             iscsi_target_ip=${v#[[]}
             iscsi_target_ip=${iscsi_target_ip%%[]]*}
             # shellcheck disable=SC1087
-            v=${v#[[]$iscsi_target_ip[]]:}
+            v=${v#[[]"$iscsi_target_ip"[]]:}
             ;;
         *)
             iscsi_target_ip=${v%%[:]*}
-            v=${v#$iscsi_target_ip:}
+            v=${v#"$iscsi_target_ip":}
             ;;
     esac
 
@@ -469,7 +469,7 @@ parse_iscsi_root() {
 }
 
 ip_to_var() {
-    local v=${1}:
+    local v="${1}":
     local i
     set --
     while [ -n "$v" ]; do
@@ -478,7 +478,7 @@ ip_to_var() {
             i="${v%%\]:*}"
             i="${i##\[}"
             set -- "$@" "$i"
-            v=${v#\[$i\]:}
+            v=${v#\["$i"\]:}
         else
             set -- "$@" "${v%%:*}"
             v=${v#*:}
@@ -567,7 +567,7 @@ ip_to_var() {
 }
 
 route_to_var() {
-    local v=${1}:
+    local v="${1}":
     local i
     set --
     while [ -n "$v" ]; do
@@ -576,7 +576,7 @@ route_to_var() {
             i="${v%%\]:*}"
             i="${i##\[}"
             set -- "$@" "$i"
-            v=${v#\[$i\]:}
+            v=${v#\["$i"\]:}
         else
             set -- "$@" "${v%%:*}"
             v=${v#*:}
@@ -693,7 +693,7 @@ wait_for_route_ok() {
 
     while [ $cnt -lt $timeout ]; do
         li=$(ip route show)
-        [ -n "$li" ] && [ -z "${li##*$1*}" ] && return 0
+        [ -n "$li" ] && [ -z "${li##*"$1"*}" ] && return 0
         sleep 0.1
         cnt=$((cnt + 1))
     done
@@ -729,7 +729,6 @@ wait_for_ipv6_dad() {
     while [ $cnt -lt $timeout ]; do
         [ -n "$(ip -6 addr show dev "$@")" ] \
             && [ -z "$(ip -6 addr show dev "$@" tentative)" ] \
-            && { ip -6 route list proto ra dev "$@" | grep -q ^default; } \
             && return 0
         [ -n "$(ip -6 addr show dev "$@" dadfailed)" ] \
             && return 1

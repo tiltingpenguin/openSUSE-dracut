@@ -387,7 +387,7 @@ inst_fsck_help() {
 }
 
 # Use with form hostonly="$(optional_hostonly)" inst_xxxx <args>
-# If hosotnly mode is set to "strict", hostonly restrictions will still
+# If hostonly mode is set to "strict", hostonly restrictions will still
 # be applied, else will ignore hostonly mode and try to install all
 # given modules.
 optional_hostonly() {
@@ -540,7 +540,7 @@ inst_rules() {
             inst_rule_initqueue "$_found"
             inst_simple "$_found" "$_target/${_found##*/}"
         done
-        [[ $_found ]] || dinfo "Skipping udev rule: $_rule"
+        [[ $_found ]] || ddebug "Skipping udev rule: $_rule"
     done
 }
 
@@ -567,13 +567,13 @@ inst_rules_wildcard() {
             _found=$_rule
         done
     fi
-    [[ $_found ]] || dinfo "Skipping udev rule: $_rule"
+    [[ $_found ]] || ddebug "Skipping udev rule: $_rule"
 }
 
 # make sure that library links are correct and up to date
 build_ld_cache() {
     for f in "$dracutsysrootdir"/etc/ld.so.conf "$dracutsysrootdir"/etc/ld.so.conf.d/*; do
-        [[ -f $f ]] && inst_simple "${f#$dracutsysrootdir}"
+        [[ -f $f ]] && inst_simple "${f#"$dracutsysrootdir"}"
     done
     if ! $DRACUT_LDCONFIG -r "$initdir" -f /etc/ld.so.conf; then
         if [[ $EUID == 0 ]]; then
@@ -696,8 +696,8 @@ inst_libdir_file() {
         for _dir in $libdirs; do
             for _i in "$@"; do
                 for _f in "$dracutsysrootdir$_dir"/$_i; do
-                    [[ ${_f#$dracutsysrootdir} =~ $_pattern ]] || continue
-                    [[ -e $_f ]] && _files+=("${_f#$dracutsysrootdir}")
+                    [[ ${_f#"$dracutsysrootdir"} =~ $_pattern ]] || continue
+                    [[ -e $_f ]] && _files+=("${_f#"$dracutsysrootdir"}")
                 done
             done
         done
@@ -705,7 +705,7 @@ inst_libdir_file() {
         for _dir in $libdirs; do
             for _i in "$@"; do
                 for _f in "$dracutsysrootdir$_dir"/$_i; do
-                    [[ -e $_f ]] && _files+=("${_f#$dracutsysrootdir}")
+                    [[ -e $_f ]] && _files+=("${_f#"$dracutsysrootdir"}")
                 done
             done
         done
@@ -1064,11 +1064,11 @@ for_each_module_dir() {
     local _mod
     local _moddir
     local _func
+    local _reason
     _func=$1
     for _moddir in "$dracutbasedir/modules.d"/[0-9][0-9]*; do
         [[ -d $_moddir ]] || continue
-        [[ -e $_moddir/install || -e $_moddir/installkernel || -e \
-        $_moddir/module-setup.sh ]] || continue
+        [[ -e $_moddir/install || -e $_moddir/installkernel || -e $_moddir/module-setup.sh ]] || continue
         _mod=${_moddir##*/}
         _mod=${_mod#[0-9][0-9]}
         $_func "$_mod" 1 "$_moddir"
@@ -1085,7 +1085,10 @@ for_each_module_dir() {
             && [[ " $omit_dracutmodules " == *\ $_mod\ * ]] \
             && continue
 
-        derror "dracut module '$_mod' cannot be found or installed."
+        [[ -d $(echo "$dracutbasedir/modules.d"/[0-9][0-9]"$_mod") ]] \
+            && _reason="installed" \
+            || _reason="found"
+        derror "dracut module '$_mod' cannot be $_reason."
         [[ " $force_add_dracutmodules " == *\ $_mod\ * ]] && exit 1
         [[ " $dracutmodules " == *\ $_mod\ * ]] && exit 1
         [[ " $add_dracutmodules " == *\ $_mod\ * ]] && exit 1
@@ -1187,7 +1190,7 @@ is_qemu_virtualized() {
     # 1 if a virt environment could not be detected
     # 255 if any error was encountered
     if type -P systemd-detect-virt > /dev/null 2>&1; then
-        if ! vm=$(systemd-detect-virt --vm > /dev/null 2>&1); then
+        if ! vm=$(systemd-detect-virt --vm 2> /dev/null); then
             return 255
         fi
         [[ $vm == "qemu" ]] && return 0
