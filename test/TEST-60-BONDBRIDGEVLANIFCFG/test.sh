@@ -13,8 +13,8 @@ export basedir=/usr/lib/dracut
 
 # Uncomment this to debug failures
 #DEBUGFAIL="rd.shell rd.break"
-#DEBUGFAIL="rd.shell rd.break rd.debug"
-#SERIAL="tcp:127.0.0.1:9999"
+DEBUGFAIL="rd.shell rd.break rd.debug"
+SERIAL="tcp:127.0.0.1:9999"
 
 run_server() {
     # Start server first
