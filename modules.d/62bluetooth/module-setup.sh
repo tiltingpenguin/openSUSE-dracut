@@ -8,10 +8,12 @@ check() {
     require_any_binary /usr/lib/bluetooth/bluetoothd /usr/libexec/bluetooth/bluetoothd || return 1
 
     if [[ $hostonly ]]; then
-        # Include by default if a Peripheral (0x500) is found of minor class:
+        # Include by default if bluetooth kernel module is loaded
+        # and if Peripheral (0x500) is found of minor class:
         #  * Keyboard (0x40)
         #  * Keyboard/pointing (0xC0)
-        grep -qiE 'Class=0x[0-9a-f]{3}5[4c]0' /var/lib/bluetooth/*/*/info 2> /dev/null && return 0
+        # and if Appearance is set to the value defined for keyboard (0x03C1)
+        [ -d "/sys/class/bluetooth" ] && grep -qiE -e 'Class=0x[0-9a-f]{3}5[4c]0' -e 'Appearance=0x03c1' /var/lib/bluetooth/*/*/info 2> /dev/null && return 0
     fi
 
     return 255
@@ -56,6 +58,7 @@ install() {
 
     inst_multiple -o \
         "$dbussystem"/bluetooth.conf \
+        "$dbussystemservices"/org.bluez.service \
         "${systemdsystemunitdir}/bluetooth.target" \
         "${systemdsystemunitdir}/bluetooth.service" \
         bluetoothctl
@@ -70,6 +73,8 @@ install() {
         inst_multiple -o \
             /etc/bluetooth/main.conf \
             "$dbussystemconfdir"/bluetooth.conf \
+            "$systemdsystemconfdir"/bluetooth.service \
+            "$systemdsystemconfdir/bluetooth.service.d/*.conf" \
             "${var_lib_files[@]#"$dracutsysrootdir"}"
     fi
 
