@@ -41,7 +41,7 @@ BuildRequires:  pkgconfig(libkmod)
 BuildRequires:  pkgconfig(systemd) >= 219
 BuildRequires:  cargo
 BuildRequires:  rust
-Requires:       awk
+Requires:       gawk
 Requires:       %{_bindir}/get_kernel_version
 Requires:       bash
 Requires:       coreutils
