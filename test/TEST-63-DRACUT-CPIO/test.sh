@@ -6,6 +6,8 @@
 TEST_DESCRIPTION="kernel cpio extraction tests for dracut-cpio"
 # see dracut-cpio source for unit tests
 
+export basedir=/usr/lib/dracut
+
 test_check() {
     if ! [[ -x $basedir/dracut-cpio ]]; then
         echo "Test needs dracut-cpio... Skipping"
@@ -61,6 +63,10 @@ EOF
 test_run() {
     set -x
 
+    # bug in setup: export CPIO_TESTDIR cannot work for test.sh --run
+    . test.sh --setup
+    export CPIO_TESTDIR
+
     # dracut-cpio is typically used with compression and strip disabled, to
     # increase the chance of (reflink) extent sharing.
     test_dracut_cpio "simple" "--no-compress" "--nostrip" || return 1
@@ -72,7 +78,6 @@ test_run() {
 test_setup() {
     CPIO_TESTDIR=$(mktemp --directory -p "$TESTDIR" cpio-test.XXXXXXXXXX) \
         || return 1
-    export CPIO_TESTDIR
     return 0
 }
 
@@ -82,4 +87,4 @@ test_cleanup() {
 }
 
 # shellcheck disable=SC1090
-. "$testdir"/test-functions
+. "$basedir"/test/test-functions

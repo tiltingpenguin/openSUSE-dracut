@@ -54,20 +54,22 @@ udevadm settle
 
 ip link show
 
-wait_for_if_link enx525401123456
-wait_for_if_link enx525401123457
-wait_for_if_link enx525401123458
-wait_for_if_link enx525401123459
+wait_for_if_link enp0s2
+wait_for_if_link enp0s3
+wait_for_if_link enp0s4
+wait_for_if_link enp0s5
 
-ip link set dev enx525401123456 name net1
-ip link set dev enx525401123457 name net2
-ip link set dev enx525401123458 name net3
-ip link set dev enx525401123459 name net4
+ip link set dev enp0s2 name net1
+ip link set dev enp0s3 name net2
+ip link set dev enp0s4 name net3
+ip link set dev enp0s5 name net4
 
 modprobe --all -b -q 8021q ipvlan macvlan
 : > /dev/watchdog
 ip addr add 127.0.0.1/8 dev lo
 linkup lo
+ip addr add 192.168.51.1/24 dev net3
+linkup net3
 ip addr add 192.168.50.1/24 dev net1
 linkup net1
 : > /dev/watchdog
@@ -84,9 +86,10 @@ ip link set dev net2.1 up
 ip link set dev net2.2 up
 ip link set dev net2.3 up
 ip link set dev net2.4 up
-ip addr add 192.168.51.1/24 dev net3
-linkup net3
 linkup net4
+
+wait_for_route_ok
+
 : > /dev/watchdog
 modprobe af_packet
 : > /dev/watchdog
@@ -117,11 +120,16 @@ exportfs -r
 : > /dev/watchdog
 chmod 777 /var/lib/dhcpd/dhcpd.leases
 : > /dev/watchdog
-dhcpd -cf /etc/dhcpd.conf -lf /var/lib/dhcpd/dhcpd.leases net1 net3
+
+dhcpd -f -d -cf /etc/dhcpd.conf -lf /var/lib/dhcpd/dhcpd.leases net1 net3 &
+
+sleep 10
+
 #echo -n 'V' : > /dev/watchdog
 #sh -i
-#tcpdump -i net1
+tcpdump -i net3 &
 # Wait forever for the VM to die
+
 echo "Serving"
 while :; do
     sleep 10

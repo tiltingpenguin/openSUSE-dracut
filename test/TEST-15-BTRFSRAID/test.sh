@@ -4,6 +4,8 @@ TEST_DESCRIPTION="root filesystem on multiple device btrfs"
 
 KVERSION=${KVERSION-$(uname -r)}
 
+export basedir=/usr/lib/dracut
+
 # Uncomment this to debug failures
 #DEBUGFAIL="rd.shell"
 test_run() {
@@ -43,7 +45,8 @@ test_setup() {
             mkdir -p root usr/bin usr/lib usr/lib64 usr/sbin
         )
         inst_multiple sh df free ls shutdown poweroff stty cat ps ln \
-            mount dmesg mkdir cp sync dd
+            mount dmesg mkdir cp ping sync dd
+        inst_multiple -o wicked dhclient arping arping2
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
             [ -f ${_terminfodir}/l/linux ] && break
         done
@@ -81,6 +84,7 @@ test_setup() {
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
         -m "bash btrfs rootfs-block kernel-modules qemu" \
         -d "piix ide-gd_mod ata_piix btrfs sd_mod" \
+        -o "systemd-initrd systemd" \
         --nomdadmconf \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.makeroot "$KVERSION" || return 1
@@ -131,4 +135,4 @@ test_cleanup() {
 }
 
 # shellcheck disable=SC1090
-. "$testdir"/test-functions
+. "$basedir"/test/test-functions

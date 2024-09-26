@@ -7,6 +7,8 @@ TEST_DESCRIPTION="root filesystem on NBD with $USE_NETWORK"
 
 KVERSION=${KVERSION-$(uname -r)}
 
+export basedir=/usr/lib/dracut
+
 # Uncomment this to debug failures
 # DEBUGFAIL="rd.debug systemd.log_target=console loglevel=7"
 #DEBUGFAIL="rd.shell rd.break rd.debug systemd.log_target=console loglevel=7 systemd.log_level=debug"
@@ -42,7 +44,7 @@ run_server() {
         -serial "${SERIAL:-"file:$TESTDIR/server.log"}" \
         -net nic,macaddr=52:54:00:12:34:56,model=e1000 \
         -net socket,listen=127.0.0.1:12340 \
-        -append "panic=1 oops=panic softlockup_panic=1 rd.luks=0 systemd.crash_reboot quiet root=/dev/disk/by-id/ata-disk_serverroot rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0 $SERVER_DEBUG" \
+        -append "nompath panic=1 oops=panic softlockup_panic=1 rd.luks=0 systemd.crash_reboot quiet root=/dev/disk/by-id/ata-disk_serverroot rootfstype=ext3 rw console=ttyS0,115200n81 selinux=0 $SERVER_DEBUG" \
         -initrd "$TESTDIR"/initramfs.server \
         -pidfile "$TESTDIR"/server.pid -daemonize || return 1
     chmod 644 "$TESTDIR"/server.pid || return 1
@@ -125,6 +127,7 @@ test_run() {
         return 1
     fi
     client_run
+    cp "$TESTDIR"/server.log /tmp/dracut-testsuite-logs/
     kill_server
 }
 
@@ -248,8 +251,9 @@ make_encrypted_root() {
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
-        -m "dash crypt lvm mdraid kernel-modules qemu" \
+        -m "bash crypt lvm mdraid kernel-modules qemu" \
         -d "piix ide-gd_mod ata_piix ext3 ext3 sd_mod" \
+        -o "systemd-initrd systemd" \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.makeroot "$KVERSION" || return 1
     rm -rf -- "$TESTDIR"/overlay
@@ -328,8 +332,9 @@ make_client_root() {
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
-        -m "dash rootfs-block kernel-modules qemu" \
+        -m "bash rootfs-block kernel-modules qemu" \
         -d "piix ide-gd_mod ata_piix ext3 sd_mod" \
+        -o "systemd-initrd systemd" \
         --nomdadmconf \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.makeroot "$KVERSION" || return 1
@@ -427,8 +432,9 @@ EOF
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
-        -m "dash rootfs-block kernel-modules qemu" \
+        -m "bash rootfs-block kernel-modules qemu" \
         -d "piix ide-gd_mod ata_piix ext3 sd_mod" \
+        -o "systemd-initrd systemd" \
         --nomdadmconf \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.makeroot "$KVERSION" || return 1
@@ -515,4 +521,4 @@ test_cleanup() {
 }
 
 # shellcheck disable=SC1090
-. "$testdir"/test-functions
+. "$basedir"/test/test-functions

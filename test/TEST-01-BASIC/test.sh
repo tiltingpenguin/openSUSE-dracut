@@ -7,6 +7,8 @@ KVERSION=${KVERSION-$(uname -r)}
 # Uncomment this to debug failures
 # DEBUGFAIL="rd.shell rd.break"
 
+export basedir=/usr/lib/dracut
+
 test_run() {
     dd if=/dev/zero of="$TESTDIR"/marker.img bs=1MiB count=1
     declare -a disk_args=()
@@ -17,10 +19,10 @@ test_run() {
     "$testdir"/run-qemu \
         "${disk_args[@]}" \
         -device i6300esb -watchdog-action poweroff \
-        -append "panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot \"root=LABEL=  rdinit=/bin/sh\" rw systemd.log_level=debug systemd.log_target=console rd.retry=3 rd.debug console=ttyS0,115200n81 rd.shell=0 $DEBUGFAIL" \
+        -append "panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot \"root=LABEL=  rdinit=/bin/sh\" rw systemd.log_level=debug systemd.log_target=console rd.retry=3 rd.debug console=ttyS0 rd.shell=0 $DEBUGFAIL" \
         -initrd "$TESTDIR"/initramfs.testing || return 1
 
-    grep -U --binary-files=binary -F -m 1 -q dracut-root-block-success "$TESTDIR"/marker.img
+    grep -U --binary-files=binary -F -m 1 -q dracut-root-block-success "$TESTDIR"/marker.img || return 1
 }
 
 test_setup() {
@@ -39,8 +41,9 @@ test_setup() {
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
-        -m "test-makeroot dash rootfs-block kernel-modules" \
+        -m "test-makeroot bash rootfs-block kernel-modules" \
         -d "piix ide-gd_mod ata_piix ext3 sd_mod" \
+        -o "systemd-initrd systemd" \
         -I "mkfs.ext3" \
         -i ./create-root.sh /lib/dracut/hooks/initqueue/01-create-root.sh \
         --nomdadmconf \
@@ -58,7 +61,7 @@ test_setup() {
     # Invoke KVM and/or QEMU to actually create the target filesystem.
     "$testdir"/run-qemu \
         "${disk_args[@]}" \
-        -append "root=/dev/dracut/root rw rootfstype=ext3 quiet console=ttyS0,115200n81 selinux=0" \
+        -append "root=/dev/dracut/root rw rootfstype=ext3 quiet console=ttyS0 selinux=0" \
         -initrd "$TESTDIR"/initramfs.makeroot || return 1
     grep -U --binary-files=binary -F -m 1 -q dracut-root-block-created "$TESTDIR"/marker.img || return 1
     rm -- "$TESTDIR"/marker.img
@@ -77,4 +80,4 @@ test_cleanup() {
 }
 
 # shellcheck disable=SC1090
-. "$testdir"/test-functions
+. "$basedir"/test/test-functions

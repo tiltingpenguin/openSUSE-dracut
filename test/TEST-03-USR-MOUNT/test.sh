@@ -5,6 +5,8 @@ TEST_DESCRIPTION="root filesystem on a btrfs filesystem with /usr subvolume"
 
 KVERSION=${KVERSION-$(uname -r)}
 
+export basedir=/usr/lib/dracut
+
 # Uncomment this to debug failures
 #DEBUGFAIL="rd.shell rd.break"
 
@@ -25,7 +27,7 @@ client_run() {
     "$testdir"/run-qemu \
         "${disk_args[@]}" \
         -device i6300esb -watchdog-action poweroff \
-        -append "panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot root=LABEL=dracut $client_opts loglevel=7 rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug rd.shell=0 $DEBUGFAIL" \
+        -append "nompath panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot root=LABEL=dracut $client_opts loglevel=7 rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug rd.shell=0 $DEBUGFAIL" \
         -initrd "$TESTDIR"/initramfs.testing || return 1
 
     if ! grep -U --binary-files=binary -F -m 1 -q dracut-root-block-success "$TESTDIR"/marker.img; then
@@ -58,8 +60,9 @@ test_setup() {
     # We do it this way so that we do not risk trashing the host mdraid
     # devices, volume groups, encrypted partitions, etc.
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
-        -m "test-makeroot dash btrfs rootfs-block kernel-modules" \
+        -m "test-makeroot bash btrfs rootfs-block kernel-modules" \
         -d "piix ide-gd_mod ata_piix btrfs sd_mod" \
+        -o "systemd-initrd systemd" \
         -I "mkfs.btrfs" \
         -i ./create-root.sh /lib/dracut/hooks/initqueue/01-create-root.sh \
         --nomdadmconf \
@@ -103,4 +106,4 @@ test_cleanup() {
 }
 
 # shellcheck disable=SC1090
-. "$testdir"/test-functions
+. "$basedir"/test/test-functions

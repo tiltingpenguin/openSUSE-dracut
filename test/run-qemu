@@ -2,6 +2,25 @@
 # Check which virtualization technology to use
 # We prefer kvm, kqemu, userspace in that order.
 
+ARCH=$(uname -m)
+            case $ARCH in
+                x86_64|i*86)
+                     QEMU_PKG=qemu-x86
+                     ;;
+                ppc64*)
+                     QEMU_PKG="qemu-ppc qemu-vgabios"
+                     ;;
+                s390x)
+                     QEMU_PKG=qemu-s390
+                     ;;
+                aarch64)
+                     QEMU_PKG=qemu-arm
+                     ;;
+            esac
+
+rpm -q $QEMU_PKG || zypper -n in --no-recommends "$QEMU_PKG" qemu-kvm
+[[ $? -ne 0 ]] && { echo "error installing required packages"; exit 1; }
+
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 QEMU_CPU="${QEMU_CPU:-max}"
 

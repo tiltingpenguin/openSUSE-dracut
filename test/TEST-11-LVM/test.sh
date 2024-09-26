@@ -8,6 +8,8 @@ KVERSION=${KVERSION-$(uname -r)}
 # Uncomment this to debug failures
 #DEBUGFAIL="rd.break rd.shell"
 
+export basedir=/usr/lib/dracut
+
 test_run() {
     dd if=/dev/zero of="$TESTDIR"/marker.img bs=1MiB count=1
     declare -a disk_args=()
@@ -23,7 +25,7 @@ test_run() {
         -append "panic=1 oops=panic softlockup_panic=1 systemd.crash_reboot root=/dev/dracut/root rw rd.auto=1 quiet rd.retry=3 rd.info console=ttyS0,115200n81 selinux=0 rd.debug rd.shell=0 $DEBUGFAIL" \
         -initrd "$TESTDIR"/initramfs.testing || return 1
 
-    grep -U --binary-files=binary -F -m 1 -q dracut-root-block-success "$TESTDIR"/marker.img
+    grep -U --binary-files=binary -F -m 1 -q dracut-root-block-success "$TESTDIR"/marker.img || return 1
 }
 
 test_setup() {
@@ -40,7 +42,8 @@ test_setup() {
             mkdir -p root usr/bin usr/lib usr/lib64 usr/sbin
         )
         inst_multiple sh df free ls shutdown poweroff stty cat ps ln \
-            mount dmesg mkdir cp dd sync
+            mount dmesg mkdir cp ping dd sync
+        inst_multiple -o wicked dhclient arping arping2
         for _terminfodir in /lib/terminfo /etc/terminfo /usr/share/terminfo; do
             [ -f ${_terminfodir}/l/linux ] && break
         done
@@ -79,6 +82,7 @@ test_setup() {
     "$basedir"/dracut.sh -l -i "$TESTDIR"/overlay / \
         -m "bash lvm mdraid kernel-modules qemu" \
         -d "piix ide-gd_mod ata_piix ext2 sd_mod" \
+        -o "systemd-initrd systemd" \
         --no-hostonly-cmdline -N \
         -f "$TESTDIR"/initramfs.makeroot "$KVERSION" || return 1
     rm -rf -- "$TESTDIR"/overlay
@@ -124,4 +128,4 @@ test_cleanup() {
 }
 
 # shellcheck disable=SC1090
-. "$testdir"/test-functions
+. "$basedir"/test/test-functions

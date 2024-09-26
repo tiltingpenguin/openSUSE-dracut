@@ -11,10 +11,9 @@ echo "made it to the rootfs! Powering down."
 (
     echo OK
     ip -o -4 address show scope global | while read -r _ if rest; do echo "$if"; done | sort
-    for i in /run/initramfs/state/etc/sysconfig/network-scripts/ifcfg-*; do
-        echo "$i"
-        grep -v 'UUID=' "$i"
-    done
+    if ! $(grep -q NetworkManager /proc/cmdline); then
+        ip -o -4 route show all | sort
+    fi
     echo EOF
 ) | dd oflag=direct,dsync of=/dev/sda
 
